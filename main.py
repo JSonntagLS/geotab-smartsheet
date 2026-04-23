@@ -32,16 +32,15 @@ def sync_to_smartsheet(df):
         sheet_id = int(st.secrets["SMARTSHEET_ID"])
         sheet = smart.Sheets.get_sheet(sheet_id)
         
-        # Build a map of column titles to IDs, cleaning up any accidental spaces
+        # Build a map of column titles to IDs
         columns = {col.title.strip(): col.id for col in sheet.columns}
         
-        # Identify the Primary Column ID (usually where 'Vehicle Name' lives)
+        # Find the Primary Column ID and Mileage Column ID
         primary_col_id = next(col.id for col in sheet.columns if col.primary)
-        
-        # Identify the Mileage Column ID
         mil_col_name = "Current Mileage"
+        
         if mil_col_name not in columns:
-            st.error(f"Could not find column '{mil_col_name}'. Found: {list(columns.keys())}")
+            st.error(f"Could not find column '{mil_col_name}'.")
             return
         
         mil_col_id = columns[mil_col_name]
@@ -49,27 +48,39 @@ def sync_to_smartsheet(df):
         
         # Match Geotab data to Smartsheet rows
         for index, row in df.iterrows():
+            # Clean Geotab Name for comparison
+            geotab_name = str(row["Vehicle Name"]).strip().upper()
+            
             for s_row in sheet.rows:
                 # Find the cell in the Primary Column
                 veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
                 
-                # Compare Geotab name to Smartsheet cell value
-                if veh_cell and str(veh_cell.value).strip() == str(row["Vehicle Name"]).strip():
-                    new_row = smartsheet.models.Row()
-                    new_row.id = s_row.id
+                if veh_cell:
+                    # Get Smartsheet cell value or display_value and clean it
+                    ss_name = str(veh_cell.value or veh_cell.display_value or "").strip().upper()
                     
-                    new_cell = smartsheet.models.Cell()
-                    new_cell.column_id = mil_col_id
-                    new_cell.value = row["Current Mileage"]
-                    
-                    new_row.cells.append(new_cell)
-                    updated_rows.append(new_row)
+                    if ss_name == geotab_name:
+                        new_row = smartsheet.models.Row()
+                        new_row.id = s_row.id
+                        
+                        new_cell = smartsheet.models.Cell()
+                        new_cell.column_id = mil_col_id
+                        new_cell.value = row["Current Mileage"]
+                        new_cell.strict = False # Allows Smartsheet to handle formatting
+                        
+                        new_row.cells.append(new_cell)
+                        updated_rows.append(new_row)
         
         if updated_rows:
-            smart.Sheets.update_rows(sheet_id, updated_rows)
+            # Push updates
+            result = smart.Sheets.update_rows(sheet_id, updated_rows)
             st.success(f"✅ Successfully updated {len(updated_rows)} vehicles in Smartsheet!")
         else:
-            st.warning("Connected to sheet, but no matching Vehicle Names were found. Make sure the names in Geotab match Smartsheet exactly.")
+            # Troubleshooting output if it fails again
+            st.warning("No matches found. Check that names match exactly.")
+            with st.expander("🔍 See Comparison Detail"):
+                st.write("First Geotab Name searched:", df["Vehicle Name"].iloc)
+                st.write("First Smartsheet Name found:", sheet.rows.cells.value)
             
     except Exception as e:
         st.error(f"Smartsheet Sync Error: {e}")
