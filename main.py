@@ -27,64 +27,66 @@ def get_geotab_api():
 # 3. Smartsheet Sync Function
 def sync_to_smartsheet(df):
     try:
-        # Initialize client
         smart = smartsheet.Smartsheet(st.secrets["SMARTSHEET_TOKEN"])
         sheet_id = int(st.secrets["SMARTSHEET_ID"])
         sheet = smart.Sheets.get_sheet(sheet_id)
         
-        # Build a map of column titles to IDs
+        # 1. Map Columns
         columns = {col.title.strip(): col.id for col in sheet.columns}
         
-        # Find the Primary Column ID and Mileage Column ID
-        primary_col_id = next(col.id for col in sheet.columns if col.primary)
+        # Fix for the 'TypedList' error: explicitly find the Primary column ID
+        primary_col_id = None
+        for col in sheet.columns:
+            if col.primary:
+                primary_col_id = col.id
+                break
+        
         mil_col_name = "Current Mileage"
+        mil_col_id = columns.get(mil_col_name)
         
-        if mil_col_name not in columns:
-            st.error(f"Could not find column '{mil_col_name}'.")
+        if not primary_col_id or not mil_col_id:
+            st.error(f"Column mapping failed. Primary: {primary_col_id}, Mileage: {mil_col_id}")
             return
-        
-        mil_col_id = columns[mil_col_name]
+
         updated_rows = []
         
-        # Match Geotab data to Smartsheet rows
+        # 2. Match Logic
         for index, row in df.iterrows():
-            # Clean Geotab Name for comparison
             geotab_name = str(row["Vehicle Name"]).strip().upper()
             
             for s_row in sheet.rows:
-                # Find the cell in the Primary Column
+                # Find the cell that belongs to the primary column
                 veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
                 
                 if veh_cell:
-                    # Get Smartsheet cell value or display_value and clean it
-                    ss_name = str(veh_cell.value or veh_cell.display_value or "").strip().upper()
+                    # Check both 'value' and 'display_value' for a match
+                    ss_val = str(veh_cell.value if veh_cell.value is not None else veh_cell.display_value or "").strip().upper()
                     
-                    if ss_name == geotab_name:
+                    if ss_val == geotab_name:
                         new_row = smartsheet.models.Row()
                         new_row.id = s_row.id
                         
                         new_cell = smartsheet.models.Cell()
                         new_cell.column_id = mil_col_id
                         new_cell.value = row["Current Mileage"]
-                        new_cell.strict = False # Allows Smartsheet to handle formatting
+                        new_cell.strict = False
                         
                         new_row.cells.append(new_cell)
                         updated_rows.append(new_row)
         
+        # 3. Push Updates
         if updated_rows:
-            # Push updates
-            result = smart.Sheets.update_rows(sheet_id, updated_rows)
+            smart.Sheets.update_rows(sheet_id, updated_rows)
             st.success(f"✅ Successfully updated {len(updated_rows)} vehicles in Smartsheet!")
         else:
-            # Troubleshooting output if it fails again
-            st.warning("No matches found. Check that names match exactly.")
-            with st.expander("🔍 See Comparison Detail"):
-                st.write("First Geotab Name searched:", df["Vehicle Name"].iloc)
-                st.write("First Smartsheet Name found:", sheet.rows.cells.value)
+            st.warning("No matches found. Ensure names in Smartsheet match Geotab exactly.")
+            # This helps us debug if it fails again
+            if len(sheet.rows) > 0:
+                sample_ss = sheet.rows.cells.value or sheet.rows.cells.display_value
+                st.info(f"Debug: Looking for '{geotab_name}' but found '{sample_ss}' in first SS row.")
             
     except Exception as e:
         st.error(f"Smartsheet Sync Error: {e}")
-
 # 4. Main Execution
 api = get_geotab_api()
 
