@@ -34,8 +34,6 @@ def sync_to_smartsheet(df):
         # --- DEBUG SECTION ---
         with st.expander("🔍 Connection Debugger"):
             st.write(f"Found {len(sheet.columns)} columns and {len(sheet.rows)} rows.")
-            
-            # Map columns and show IDs
             col_map = {col.title.strip(): col.id for col in sheet.columns}
             st.write("Column Mapping:", col_map)
             
@@ -50,14 +48,12 @@ def sync_to_smartsheet(df):
             return
 
         updated_rows = []
-        match_count = 0
 
         # --- MATCHING LOGIC ---
         for _, g_row in df.iterrows():
             geotab_name = str(g_row["Vehicle Name"]).strip().upper()
             
             for s_row in sheet.rows:
-                # We use a helper to find the cell to avoid the 'TypedList' error
                 veh_cell = None
                 for cell in s_row.cells:
                     if cell.column_id == primary_col_id:
@@ -65,20 +61,27 @@ def sync_to_smartsheet(df):
                         break
                 
                 if veh_cell:
-                    # Check value OR display_value
                     ss_val = str(veh_cell.value if veh_cell.value is not None else veh_cell.display_value or "").strip().upper()
                     
+                    # FIXED INDENTATION: The update logic must be inside this 'if'
                     if ss_val == geotab_name:
-                        match_count += 1
                         new_row = smartsheet.models.Row()
                         new_row.id = s_row.id
                         
-                        new_cell = smartsheet.models.Cell()
-                        new_cell.column_id = mil_col_id
-                        new_cell.value = g_row["Current Mileage"]
-                        new_cell.strict = False
+                        # Create the Mileage Cell
+                        mil_cell = smartsheet.models.Cell()
+                        mil_cell.column_id = mil_col_id
+                        mil_cell.value = float(g_row["Current Mileage"])
+                        mil_cell.display_value = str(int(g_row["Current Mileage"]))
                         
-                        new_row.cells.append(new_cell)
+                        # Create the Serial Cell
+                        ser_col_id = col_map.get("Serial")
+                        ser_cell = smartsheet.models.Cell()
+                        ser_cell.column_id = ser_col_id
+                        ser_cell.value = str(g_row["Serial"])
+                        
+                        new_row.cells.append(mil_cell)
+                        new_row.cells.append(ser_cell)
                         updated_rows.append(new_row)
 
         # --- EXECUTION ---
@@ -87,8 +90,13 @@ def sync_to_smartsheet(df):
             st.success(f"✅ Successfully updated {len(updated_rows)} vehicles in Smartsheet!")
         else:
             st.warning("No matches found. Ensure names in Smartsheet match Geotab exactly.")
+            # FIXED: Avoided 'sheet.rows.cells' which causes the TypedList error
             if len(sheet.rows) > 0:
-                st.info(f"First Smartsheet Row Name detected: '{sheet.rows.cells.display_value}'")
+                first_name = "Unknown"
+                for cell in sheet.rows.cells:
+                    if cell.column_id == primary_col_id:
+                        first_name = cell.display_value or cell.value
+                st.info(f"First Smartsheet Row Name detected: '{first_name}'")
             
     except Exception as e:
         st.error(f"Smartsheet Sync Error: {e}")
