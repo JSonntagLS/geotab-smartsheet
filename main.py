@@ -48,12 +48,15 @@ def sync_to_smartsheet(df):
             return
 
         updated_rows = []
+        match_count = 0
 
         # --- MATCHING LOGIC ---
         for _, g_row in df.iterrows():
+            # Standardize Geotab name
             geotab_name = str(g_row["Vehicle Name"]).strip().upper()
             
             for s_row in sheet.rows:
+                # Find the primary cell (Vehicle Name) in this Smartsheet row
                 veh_cell = None
                 for cell in s_row.cells:
                     if cell.column_id == primary_col_id:
@@ -61,42 +64,50 @@ def sync_to_smartsheet(df):
                         break
                 
                 if veh_cell:
+                    # Standardize Smartsheet name for comparison
                     ss_val = str(veh_cell.value if veh_cell.value is not None else veh_cell.display_value or "").strip().upper()
                     
-                    # FIXED INDENTATION: The update logic must be inside this 'if'
+                    # If names match, prepare the update
                     if ss_val == geotab_name:
+                        match_count += 1
                         new_row = smartsheet.models.Row()
                         new_row.id = s_row.id
                         
-                        # Create the Mileage Cell
+                        # Prepare the Mileage Cell
                         mil_cell = smartsheet.models.Cell()
                         mil_cell.column_id = mil_col_id
                         mil_cell.value = float(g_row["Current Mileage"])
-                        mil_cell.display_value = str(int(g_row["Current Mileage"]))
+                        mil_cell.strict = False  # Allows Smartsheet to handle type conversion
                         
-                        # Create the Serial Cell
+                        # Prepare the Serial Cell
                         ser_col_id = col_map.get("Serial")
                         ser_cell = smartsheet.models.Cell()
                         ser_cell.column_id = ser_col_id
                         ser_cell.value = str(g_row["Serial"])
+                        ser_cell.strict = False
                         
+                        # Add cells to the row object
                         new_row.cells.append(mil_cell)
                         new_row.cells.append(ser_cell)
+                        
+                        # Add row to our master list of updates
                         updated_rows.append(new_row)
 
         # --- EXECUTION ---
         if updated_rows:
+            # Send all updates to Smartsheet in one batch
             smart.Sheets.update_rows(sheet_id, updated_rows)
             st.success(f"✅ Successfully updated {len(updated_rows)} vehicles in Smartsheet!")
         else:
             st.warning("No matches found. Ensure names in Smartsheet match Geotab exactly.")
-            # FIXED: Avoided 'sheet.rows.cells' which causes the TypedList error
             if len(sheet.rows) > 0:
+                # Safe debug display for the first row name
                 first_name = "Unknown"
                 for cell in sheet.rows.cells:
                     if cell.column_id == primary_col_id:
                         first_name = cell.display_value or cell.value
-                st.info(f"First Smartsheet Row Name detected: '{first_name}'")
+                        break
+                st.info(f"Debug: Looking for '{geotab_name}' but first row in SS is '{first_name}'")
             
     except Exception as e:
         st.error(f"Smartsheet Sync Error: {e}")
