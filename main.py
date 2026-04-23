@@ -33,31 +33,33 @@ if api:
     
     devices = api.get('Device')
     
-    # NEW: Let's pull the latest Odometer Status specifically for all vehicles
-    # This diagnostic ID is the standard for raw odometer readings
-    odometer_data = api.get('StatusData', search={
-        'diagnosticSearch': {'id': 'DiagnosticOdometerId'},
-        'resultsLimit': len(devices)
-    })
+    # 1. Pull BOTH types of odometer data to cover all vehicle types
+    raw_odo = api.get('StatusData', search={'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': len(devices)})
+    adj_odo = api.get('StatusData', search={'diagnosticSearch': {'id': 'DiagnosticOdometerAdjustmentId'}, 'resultsLimit': len(devices)})
 
-    # Create a mapping of Device ID -> Odometer Value
-    # Geotab returns this in meters, so we'll convert to miles
-    mileage_dict = {
-        item['device']['id']: round(item['data'] / 1609.344, 0) 
-        for item in odometer_data if 'data' in item
-    }
+    # 2. Create a mapping (Meters to Miles)
+    mileage_dict = {}
+    for item in (raw_odo + adj_odo):
+        dev_id = item['device']['id']
+        miles = round(item['data'] / 1609.344, 0)
+        # Only update if we don't have a value yet or if this value is higher
+        if dev_id not in mileage_dict or miles > mileage_dict[dev_id]:
+            mileage_dict[dev_id] = miles
 
+    # 3. Build the Single Fleet Table
     fleet_data = []
     for device in devices:
-        # Get mileage from our new dictionary, default to 0 if not found
-        current_mileage = mileage_dict.get(device['id'], 0)
-
         fleet_data.append({
             "Vehicle Name": device['name'],
             "Serial": device['serialNumber'],
-            "Current Mileage": current_mileage
+            "Current Mileage": mileage_dict.get(device['id'], 0)
         })
 
+    df = pd.DataFrame(fleet_data).sort_values(by="Current Mileage", ascending=False)
+    
+    # Display ONLY ONE table
+    st.subheader("📊 Fleet Mileage Overview")
+    st.dataframe(df, use_container_width=True, hide_index=True)
     df = pd.DataFrame(fleet_data)
     
     # Let's sort it so the high-mileage ones are at the top
