@@ -9,6 +9,8 @@ st.title("🚜 Geotab Mileage Sync")
 # 2. Authentication Function
 def get_geotab_api():
     try:
+        # We start with 'my.geotab.com', and authenticate() 
+        # will find the correct server (e.g., my3.geotab.com) for you.
         api = mygeotab.API(
             username=st.secrets["GEOTAB_USER"],
             password=st.secrets["GEOTAB_PASSWORD"],
@@ -16,8 +18,11 @@ def get_geotab_api():
         )
         api.authenticate()
         return api
+    except mygeotab.AuthenticationException:
+        st.error("Authentication failed. Ensure the user is set to 'Basic Authentication' in Geotab and not SAML/SSO.")
+        return None
     except Exception as e:
-        st.error(f"Geotab Authentication Failed: {e}")
+        st.error(f"Geotab Error: {e}")
         return None
 
 # 3. Data Pulling Logic
