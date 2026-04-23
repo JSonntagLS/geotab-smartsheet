@@ -29,65 +29,66 @@ def sync_to_smartsheet(df):
     try:
         smart = smartsheet.Smartsheet(st.secrets["SMARTSHEET_TOKEN"])
         sheet_id = int(st.secrets["SMARTSHEET_ID"])
-        # We fetch the sheet with 'all' to ensure all cell data is populated
         sheet = smart.Sheets.get_sheet(sheet_id)
         
-        # 1. Map Columns by searching the list directly
-        primary_col_id = None
-        mil_col_id = None
-        mil_col_name = "Current Mileage"
+        # --- DEBUG SECTION ---
+        with st.expander("🔍 Connection Debugger"):
+            st.write(f"Found {len(sheet.columns)} columns and {len(sheet.rows)} rows.")
+            
+            # Map columns and show IDs
+            col_map = {col.title.strip(): col.id for col in sheet.columns}
+            st.write("Column Mapping:", col_map)
+            
+            primary_col_id = next((col.id for col in sheet.columns if col.primary), None)
+            st.write(f"Primary Column ID: {primary_col_id}")
+            
+            mil_col_id = col_map.get("Current Mileage")
+            st.write(f"Mileage Column ID: {mil_col_id}")
 
-        for col in sheet.columns:
-            if col.primary:
-                primary_col_id = col.id
-            if col.title.strip() == mil_col_name:
-                mil_col_id = col.id
-        
         if not primary_col_id or not mil_col_id:
-            st.error(f"Could not find required columns. Primary Found: {bool(primary_col_id)}, Mileage Found: {bool(mil_col_id)}")
+            st.error("Failed to map columns. Check spelling of 'Current Mileage'.")
             return
 
         updated_rows = []
-        
-        # 2. Matching Logic
+        match_count = 0
+
+        # --- MATCHING LOGIC ---
         for _, g_row in df.iterrows():
             geotab_name = str(g_row["Vehicle Name"]).strip().upper()
             
             for s_row in sheet.rows:
-                # Access cells via a loop to avoid 'TypedList' index errors
-                veh_cell_val = ""
+                # We use a helper to find the cell to avoid the 'TypedList' error
+                veh_cell = None
                 for cell in s_row.cells:
                     if cell.column_id == primary_col_id:
-                        # Check value then display_value as backup
-                        veh_cell_val = str(cell.value if cell.value is not None else cell.display_value or "").strip().upper()
+                        veh_cell = cell
                         break
                 
-                if veh_cell_val == geotab_name:
-                    new_row = smartsheet.models.Row()
-                    new_row.id = s_row.id
+                if veh_cell:
+                    # Check value OR display_value
+                    ss_val = str(veh_cell.value if veh_cell.value is not None else veh_cell.display_value or "").strip().upper()
                     
-                    new_cell = smartsheet.models.Cell()
-                    new_cell.column_id = mil_col_id
-                    new_cell.value = g_row["Current Mileage"]
-                    new_cell.strict = False
-                    
-                    new_row.cells.append(new_cell)
-                    updated_rows.append(new_row)
-        
-        # 3. Push Updates
+                    if ss_val == geotab_name:
+                        match_count += 1
+                        new_row = smartsheet.models.Row()
+                        new_row.id = s_row.id
+                        
+                        new_cell = smartsheet.models.Cell()
+                        new_cell.column_id = mil_col_id
+                        new_cell.value = g_row["Current Mileage"]
+                        new_cell.strict = False
+                        
+                        new_row.cells.append(new_cell)
+                        updated_rows.append(new_row)
+
+        # --- EXECUTION ---
         if updated_rows:
             smart.Sheets.update_rows(sheet_id, updated_rows)
             st.success(f"✅ Successfully updated {len(updated_rows)} vehicles in Smartsheet!")
         else:
             st.warning("No matches found. Ensure names in Smartsheet match Geotab exactly.")
-            # Safer debug info
             if len(sheet.rows) > 0:
-                first_row_val = "Empty"
-                for cell in sheet.rows.cells:
-                    if cell.column_id == primary_col_id:
-                        first_row_val = cell.value or cell.display_value
-                        break
-                st.info(f"Debug: Looking for Geotab names like '{df['Vehicle Name'].iloc}'. The first name found in Smartsheet was '{first_row_val}'.")
+                st.info(f"First Smartsheet Row Name detected: '{sheet.rows.cells.display_value}'")
             
     except Exception as e:
         st.error(f"Smartsheet Sync Error: {e}")
