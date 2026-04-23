@@ -28,23 +28,45 @@ def get_geotab_api():
 # 3. Data Pulling Logic
 api = get_geotab_api()
 
+# 3. Data Pulling Logic
+api = get_geotab_api()
+
 if api:
     st.success("Connected to Geotab!")
     
     devices = api.get('Device')
     
-    # 1. Pull BOTH types of odometer data to cover all vehicle types
+    # Pull both odometer types to ensure no 0s
     raw_odo = api.get('StatusData', search={'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': len(devices)})
     adj_odo = api.get('StatusData', search={'diagnosticSearch': {'id': 'DiagnosticOdometerAdjustmentId'}, 'resultsLimit': len(devices)})
 
-    # 2. Create a mapping (Meters to Miles)
+    # Map the best available mileage to each device
     mileage_dict = {}
     for item in (raw_odo + adj_odo):
         dev_id = item['device']['id']
         miles = round(item['data'] / 1609.344, 0)
-        # Only update if we don't have a value yet or if this value is higher
         if dev_id not in mileage_dict or miles > mileage_dict[dev_id]:
             mileage_dict[dev_id] = miles
+
+    # Build the final list
+    fleet_data = []
+    for device in devices:
+        fleet_data.append({
+            "Vehicle Name": device['name'],
+            "Serial": device['serialNumber'],
+            "Current Mileage": mileage_dict.get(device['id'], 0)
+        })
+
+    # Create DataFrame and Sort
+    df = pd.DataFrame(fleet_data).sort_values(by="Current Mileage", ascending=False)
+
+    # 4. Display ONLY THIS ONE table
+    st.subheader("📊 Fleet Mileage Overview")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # 5. The Sync Button (Needs Smartsheet Info Next)
+    if st.button("🔄 Sync Data to Smartsheet"):
+        st.info("Ready to connect! I just need your Sheet ID and Column Names to finish this.")
 
     # 3. Build the Single Fleet Table
     fleet_data = []
