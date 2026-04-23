@@ -44,6 +44,7 @@ def sync_to_smartsheet(df):
             return
 
         updated_rows = []
+        seen_row_ids = set()  # TRACKER TO PREVENT ERROR 1137
 
         # --- MATCHING LOGIC ---
         for _, g_row in df.iterrows():
@@ -51,6 +52,10 @@ def sync_to_smartsheet(df):
                 geotab_name = str(g_row["Vehicle Name"]).strip().upper()
                 
                 for s_row in sheet.rows:
+                    # Skip if we already prepared an update for this specific row ID
+                    if s_row.id in seen_row_ids:
+                        continue
+
                     veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
                     
                     if veh_cell:
@@ -60,13 +65,13 @@ def sync_to_smartsheet(df):
                             new_row = smartsheet.models.Row()
                             new_row.id = s_row.id
                             
-                            # MILEAGE: Must be a number (int or float)
+                            # MILEAGE: Number
                             mil_cell = smartsheet.models.Cell()
                             mil_cell.column_id = mil_col_id
                             mil_cell.value = int(g_row["Current Mileage"]) 
                             mil_cell.strict = False 
                             
-                            # SERIAL: Must be a string
+                            # SERIAL: String
                             ser_cell = smartsheet.models.Cell()
                             ser_cell.column_id = ser_col_id
                             ser_cell.value = str(g_row["Serial"])
@@ -74,19 +79,22 @@ def sync_to_smartsheet(df):
                             
                             new_row.cells.append(mil_cell)
                             new_row.cells.append(ser_cell)
+                            
                             updated_rows.append(new_row)
+                            seen_row_ids.add(s_row.id) # Mark this row as "done"
+                            break # Move to the next Geotab vehicle
             except Exception:
-                continue # Skip individual row errors to prevent batch failure
+                continue
 
         # --- EXECUTION ---
         if updated_rows:
-            # We wrap the update in a result check to get the specific error code if it fails
             result = smart.Sheets.update_rows(sheet_id, updated_rows)
             
-            if isinstance(result, smartsheet.models.Error):
+            # Check for error objects in the response
+            if hasattr(result, 'result') and result.result.error_code:
                 st.error(f"Smartsheet API Error {result.result.error_code}: {result.result.message}")
             else:
-                st.success(f"✅ Successfully updated {len(updated_rows)} vehicles!")
+                st.success(f"✅ Successfully updated {len(updated_rows)} unique vehicles!")
         else:
             st.warning("No matches found. Check that names match exactly.")
             
