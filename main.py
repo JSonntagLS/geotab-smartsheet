@@ -101,4 +101,22 @@ if api:
 
     # Build the final list
     fleet_data = []
-    for device in devices
+    for device in devices:
+        fleet_data.append({
+            "Vehicle Name": device['name'],
+            "Serial": device['serialNumber'],
+            "Current Mileage": mileage_dict.get(device['id'], 0)
+        })
+
+    # Create DataFrame and Sort
+    df = pd.DataFrame(fleet_data).sort_values(by="Current Mileage", ascending=False)
+
+    # 5. Display Dashboard
+    st.subheader("📊 Current Fleet Mileage (from Geotab)")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # 6. The Sync Button
+    st.divider()
+    if st.button("🔄 Sync Geotab Mileage to Smartsheet"):
+        with st.spinner("Updating Smartsheet..."):
+            sync_to_smartsheet(df)
