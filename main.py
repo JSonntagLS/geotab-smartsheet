@@ -35,79 +35,59 @@ def sync_to_smartsheet(df):
         with st.expander("🔍 Connection Debugger"):
             st.write(f"Found {len(sheet.columns)} columns and {len(sheet.rows)} rows.")
             col_map = {col.title.strip(): col.id for col in sheet.columns}
-            st.write("Column Mapping:", col_map)
             
             primary_col_id = next((col.id for col in sheet.columns if col.primary), None)
-            st.write(f"Primary Column ID: {primary_col_id}")
-            
             mil_col_id = col_map.get("Current Mileage")
-            st.write(f"Mileage Column ID: {mil_col_id}")
+            ser_col_id = col_map.get("Serial")
 
         if not primary_col_id or not mil_col_id:
             st.error("Failed to map columns. Check spelling of 'Current Mileage'.")
             return
 
         updated_rows = []
-        match_count = 0
 
         # --- MATCHING LOGIC ---
         for _, g_row in df.iterrows():
-            # Standardize Geotab name
             geotab_name = str(g_row["Vehicle Name"]).strip().upper()
             
             for s_row in sheet.rows:
-                # Find the primary cell (Vehicle Name) in this Smartsheet row
-                veh_cell = None
-                for cell in s_row.cells:
-                    if cell.column_id == primary_col_id:
-                        veh_cell = cell
-                        break
+                # Find the primary cell in this row
+                veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
                 
                 if veh_cell:
-                    # Standardize Smartsheet name for comparison
                     ss_val = str(veh_cell.value if veh_cell.value is not None else veh_cell.display_value or "").strip().upper()
                     
-                    # If names match, prepare the update
                     if ss_val == geotab_name:
-                        match_count += 1
                         new_row = smartsheet.models.Row()
                         new_row.id = s_row.id
                         
-                        # Prepare the Mileage Cell
+                        # FORCE MILEAGE: Sending as a string often bypasses "silent" rejection
                         mil_cell = smartsheet.models.Cell()
                         mil_cell.column_id = mil_col_id
-                        mil_cell.value = float(g_row["Current Mileage"])
-                        mil_cell.strict = False  # Allows Smartsheet to handle type conversion
+                        mil_cell.value = str(int(g_row["Current Mileage"])) # Convert to string
+                        mil_cell.strict = False 
                         
-                        # Prepare the Serial Cell
-                        ser_col_id = col_map.get("Serial")
+                        # FORCE SERIAL
                         ser_cell = smartsheet.models.Cell()
                         ser_cell.column_id = ser_col_id
                         ser_cell.value = str(g_row["Serial"])
                         ser_cell.strict = False
                         
-                        # Add cells to the row object
                         new_row.cells.append(mil_cell)
                         new_row.cells.append(ser_cell)
-                        
-                        # Add row to our master list of updates
                         updated_rows.append(new_row)
 
         # --- EXECUTION ---
         if updated_rows:
-            # Send all updates to Smartsheet in one batch
-            smart.Sheets.update_rows(sheet_id, updated_rows)
-            st.success(f"✅ Successfully updated {len(updated_rows)} vehicles in Smartsheet!")
+            # We use 'allow_partial_success' to see if some rows work while others fail
+            response = smart.Sheets.update_rows(sheet_id, updated_rows)
+            
+            if response.message == 'SUCCESS':
+                st.success(f"✅ Pushed {len(updated_rows)} updates to Smartsheet! Refresh your sheet now.")
+            else:
+                st.warning(f"Smartsheet responded with: {response.message}")
         else:
-            st.warning("No matches found. Ensure names in Smartsheet match Geotab exactly.")
-            if len(sheet.rows) > 0:
-                # Safe debug display for the first row name
-                first_name = "Unknown"
-                for cell in sheet.rows.cells:
-                    if cell.column_id == primary_col_id:
-                        first_name = cell.display_value or cell.value
-                        break
-                st.info(f"Debug: Looking for '{geotab_name}' but first row in SS is '{first_name}'")
+            st.warning("No matches found between Geotab names and Smartsheet names.")
             
     except Exception as e:
         st.error(f"Smartsheet Sync Error: {e}")
