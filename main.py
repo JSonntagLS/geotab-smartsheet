@@ -44,7 +44,7 @@ def sync_to_smartsheet(df):
             return
 
         updated_rows = []
-        seen_row_ids = set()  # TRACKER TO PREVENT ERROR 1137
+        seen_row_ids = set()
 
         # --- MATCHING LOGIC ---
         for _, g_row in df.iterrows():
@@ -52,7 +52,6 @@ def sync_to_smartsheet(df):
                 geotab_name = str(g_row["Vehicle Name"]).strip().upper()
                 
                 for s_row in sheet.rows:
-                    # Skip if we already prepared an update for this specific row ID
                     if s_row.id in seen_row_ids:
                         continue
 
@@ -65,13 +64,13 @@ def sync_to_smartsheet(df):
                             new_row = smartsheet.models.Row()
                             new_row.id = s_row.id
                             
-                            # MILEAGE: Number
+                            # MILEAGE: Convert to float first to handle decimals safely
                             mil_cell = smartsheet.models.Cell()
                             mil_cell.column_id = mil_col_id
-                            mil_cell.value = int(g_row["Current Mileage"]) 
+                            mil_cell.value = int(float(g_row["Current Mileage"])) 
                             mil_cell.strict = False 
                             
-                            # SERIAL: String
+                            # SERIAL
                             ser_cell = smartsheet.models.Cell()
                             ser_cell.column_id = ser_col_id
                             ser_cell.value = str(g_row["Serial"])
@@ -81,8 +80,8 @@ def sync_to_smartsheet(df):
                             new_row.cells.append(ser_cell)
                             
                             updated_rows.append(new_row)
-                            seen_row_ids.add(s_row.id) # Mark this row as "done"
-                            break # Move to the next Geotab vehicle
+                            seen_row_ids.add(s_row.id)
+                            break 
             except Exception:
                 continue
 
@@ -90,11 +89,13 @@ def sync_to_smartsheet(df):
         if updated_rows:
             result = smart.Sheets.update_rows(sheet_id, updated_rows)
             
-            # Check for error objects in the response
-            if hasattr(result, 'result') and result.result.error_code:
-                st.error(f"Smartsheet API Error {result.result.error_code}: {result.result.message}")
+            # FIXED SUCCESS LOGIC: 
+            # If the result is a list or has a 'message' of SUCCESS, it worked!
+            if isinstance(result, list) or (hasattr(result, 'message') and result.message == 'SUCCESS'):
+                st.success(f"✅ Successfully updated {len(updated_rows)} unique vehicles in Smartsheet!")
             else:
-                st.success(f"✅ Successfully updated {len(updated_rows)} unique vehicles!")
+                # Only try to print error details if the result isn't a successful list
+                st.error("Smartsheet update failed. Please check column permissions.")
         else:
             st.warning("No matches found. Check that names match exactly.")
             
