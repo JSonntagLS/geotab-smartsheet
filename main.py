@@ -35,7 +35,6 @@ def sync_to_smartsheet(df):
         with st.expander("🔍 Connection Debugger"):
             st.write(f"Found {len(sheet.columns)} columns and {len(sheet.rows)} rows.")
             col_map = {col.title.strip(): col.id for col in sheet.columns}
-            
             primary_col_id = next((col.id for col in sheet.columns if col.primary), None)
             mil_col_id = col_map.get("Current Mileage")
             ser_col_id = col_map.get("Serial")
@@ -48,49 +47,51 @@ def sync_to_smartsheet(df):
 
         # --- MATCHING LOGIC ---
         for _, g_row in df.iterrows():
-            geotab_name = str(g_row["Vehicle Name"]).strip().upper()
-            
-            for s_row in sheet.rows:
-                # Find the primary cell in this row
-                veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
+            try:
+                geotab_name = str(g_row["Vehicle Name"]).strip().upper()
                 
-                if veh_cell:
-                    ss_val = str(veh_cell.value if veh_cell.value is not None else veh_cell.display_value or "").strip().upper()
+                for s_row in sheet.rows:
+                    veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
                     
-                    if ss_val == geotab_name:
-                        new_row = smartsheet.models.Row()
-                        new_row.id = s_row.id
+                    if veh_cell:
+                        ss_val = str(veh_cell.value if veh_cell.value is not None else veh_cell.display_value or "").strip().upper()
                         
-                        # FORCE MILEAGE: Sending as a string often bypasses "silent" rejection
-                        mil_cell = smartsheet.models.Cell()
-                        mil_cell.column_id = mil_col_id
-                        mil_cell.value = str(int(g_row["Current Mileage"])) # Convert to string
-                        mil_cell.strict = False 
-                        
-                        # FORCE SERIAL
-                        ser_cell = smartsheet.models.Cell()
-                        ser_cell.column_id = ser_col_id
-                        ser_cell.value = str(g_row["Serial"])
-                        ser_cell.strict = False
-                        
-                        new_row.cells.append(mil_cell)
-                        new_row.cells.append(ser_cell)
-                        updated_rows.append(new_row)
+                        if ss_val == geotab_name:
+                            new_row = smartsheet.models.Row()
+                            new_row.id = s_row.id
+                            
+                            # MILEAGE: Must be a number (int or float)
+                            mil_cell = smartsheet.models.Cell()
+                            mil_cell.column_id = mil_col_id
+                            mil_cell.value = int(g_row["Current Mileage"]) 
+                            mil_cell.strict = False 
+                            
+                            # SERIAL: Must be a string
+                            ser_cell = smartsheet.models.Cell()
+                            ser_cell.column_id = ser_col_id
+                            ser_cell.value = str(g_row["Serial"])
+                            ser_cell.strict = False
+                            
+                            new_row.cells.append(mil_cell)
+                            new_row.cells.append(ser_cell)
+                            updated_rows.append(new_row)
+            except Exception:
+                continue # Skip individual row errors to prevent batch failure
 
         # --- EXECUTION ---
         if updated_rows:
-            # We use 'allow_partial_success' to see if some rows work while others fail
-            response = smart.Sheets.update_rows(sheet_id, updated_rows)
+            # We wrap the update in a result check to get the specific error code if it fails
+            result = smart.Sheets.update_rows(sheet_id, updated_rows)
             
-            if response.message == 'SUCCESS':
-                st.success(f"✅ Pushed {len(updated_rows)} updates to Smartsheet! Refresh your sheet now.")
+            if isinstance(result, smartsheet.models.Error):
+                st.error(f"Smartsheet API Error {result.result.error_code}: {result.result.message}")
             else:
-                st.warning(f"Smartsheet responded with: {response.message}")
+                st.success(f"✅ Successfully updated {len(updated_rows)} vehicles!")
         else:
-            st.warning("No matches found between Geotab names and Smartsheet names.")
+            st.warning("No matches found. Check that names match exactly.")
             
     except Exception as e:
-        st.error(f"Smartsheet Sync Error: {e}")
+        st.error(f"Critical Sync Error: {e}")
         
 # 4. Main Execution
 api = get_geotab_api()
