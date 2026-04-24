@@ -2,6 +2,7 @@ import streamlit as st
 import mygeotab
 import pandas as pd
 import smartsheet
+from datetime import datetime
 
 # 1. Setup Page
 st.set_page_config(page_title="Lease Rotation Engine", page_icon="🚜", layout="wide")
@@ -28,11 +29,15 @@ def sync_to_smartsheet(df):
         sheet_id = int(st.secrets["SMARTSHEET_ID"])
         sheet = smart.Sheets.get_sheet(sheet_id)
         
+        # Get current date in YYYY-MM-DD format
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        
         # Map Columns
         col_map = {col.title.strip(): col.id for col in sheet.columns}
         primary_col_id = next((col.id for col in sheet.columns if col.primary), None)
         mil_col_id = col_map.get("Current Mileage")
         ser_col_id = col_map.get("Serial")
+        date_col_id = col_map.get("Last Sync Date") # Added this
 
         if not primary_col_id or not mil_col_id:
             st.error("Missing required columns in Smartsheet.")
@@ -49,7 +54,6 @@ def sync_to_smartsheet(df):
                     if s_row.id in seen_row_ids:
                         continue
 
-                    # Get Vehicle Name from Smartsheet
                     veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
                     if veh_cell:
                         ss_val = str(veh_cell.value or veh_cell.display_value or "").strip().upper()
@@ -58,18 +62,23 @@ def sync_to_smartsheet(df):
                             new_row = smartsheet.models.Row()
                             new_row.id = s_row.id
                             
-                            # Prepare Mileage Cell
+                            # Mileage Cell
                             mil_cell = smartsheet.models.Cell()
                             mil_cell.column_id = mil_col_id
                             mil_cell.value = int(float(g_row["Current Mileage"]))
-                            mil_cell.strict = False
                             
-                            # Prepare Serial Cell
+                            # Serial Cell
                             ser_cell = smartsheet.models.Cell()
                             ser_cell.column_id = ser_col_id
                             ser_cell.value = str(g_row["Serial"])
+
+                            # Last Sync Date Cell
+                            date_cell = smartsheet.models.Cell()
+                            date_cell.column_id = date_col_id
+                            date_cell.value = today_date # Pushes today's date
                             
-                            new_row.cells.extend([mil_cell, ser_cell])
+                            # Add all three cells to the row
+                            new_row.cells.extend([mil_cell, ser_cell, date_cell])
                             updated_rows.append(new_row)
                             seen_row_ids.add(s_row.id)
                             break
@@ -79,11 +88,11 @@ def sync_to_smartsheet(df):
         if updated_rows:
             result = smart.Sheets.update_rows(sheet_id, updated_rows)
             if isinstance(result, list) or (hasattr(result, 'message') and result.message == 'SUCCESS'):
-                st.success(f"✅ Successfully updated {len(updated_rows)} vehicles in Smartsheet!")
+                st.success(f"✅ Successfully updated {len(updated_rows)} vehicles and sync dates!")
             else:
-                st.error("Update sent but Smartsheet returned an unexpected response.")
+                st.error("Update failed. Check column permissions.")
         else:
-            st.warning("No matching vehicle names found between Geotab and Smartsheet.")
+            st.warning("No matching vehicle names found.")
             
     except Exception as e:
         st.error(f"Critical Sync Error: {e}")
