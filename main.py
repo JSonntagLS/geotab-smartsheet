@@ -39,10 +39,6 @@ def sync_to_smartsheet(df):
             ser_col_id = col_map.get("Serial")
             date_col_id = col_map.get("Last Sync Date")
 
-        if not primary_col_id or not mil_col_id:
-            st.error("❌ Critical Mapping Error: Check column names.")
-            return
-
         # 1. BUILD FAST LOOKUP
         ss_rows_lookup = {}
         for s_row in sheet.rows:
@@ -53,45 +49,58 @@ def sync_to_smartsheet(df):
                 if name:
                     ss_rows_lookup[name] = s_row.id
 
-        updated_rows = []
+        # 2. MATCHING WITH DUPLICATE PROTECTION (FIXES ERROR 1137)
+        # We use a dictionary keyed by Row ID to ensure each row is only updated once
+        final_updates_dict = {}
+
         for _, g_row in df.iterrows():
             geotab_name = str(g_row["Vehicle Name"]).strip().upper()
             
             if geotab_name in ss_rows_lookup:
-                new_row = smartsheet.models.Row()
-                new_row.id = ss_rows_lookup[geotab_name]
+                row_id = ss_rows_lookup[geotab_name]
                 
-                # We use str() for all values to prevent Data Type mismatches
-                c1 = smartsheet.models.Cell()
-                c1.column_id = mil_col_id
-                c1.value = str(int(float(g_row["Current Mileage"]))) # Force to string
-                
-                c2 = smartsheet.models.Cell()
-                c2.column_id = ser_col_id
-                c2.value = str(g_row["Serial"])
-                
-                c3 = smartsheet.models.Cell()
-                c3.column_id = date_col_id
-                c3.value = today_date
-                
-                new_row.cells.extend([c1, c2, c3])
-                updated_rows.append(new_row)
+                # If we haven't added this row yet, create the update
+                if row_id not in final_updates_dict:
+                    new_row = smartsheet.models.Row()
+                    new_row.id = row_id
+                    
+                    c1 = smartsheet.models.Cell()
+                    c1.column_id = mil_col_id
+                    c1.value = str(int(float(g_row["Current Mileage"])))
+                    
+                    c2 = smartsheet.models.Cell()
+                    c2.column_id = ser_col_id
+                    c2.value = str(g_row["Serial"])
+                    
+                    c3 = smartsheet.models.Cell()
+                    c3.column_id = date_col_id
+                    c3.value = today_date
+                    
+                    new_row.cells.extend([c1, c2, c3])
+                    final_updates_dict[row_id] = new_row
 
-        # 2. EXECUTION
+        # Convert dictionary values back to a list for the API
+        updated_rows = list(final_updates_dict.values())
+
+        # 3. EXECUTION
         if updated_rows:
             result = smart.Sheets.update_rows(sheet_id, updated_rows)
             
-            # Detailed success check
+            # Flexible success check
+            success = False
             if hasattr(result, 'message') and result.message == 'SUCCESS':
-                st.success(f"✅ Updated {len(updated_rows)} vehicles!")
-            elif isinstance(result, list):
-                st.success(f"✅ Updated {len(result)} rows (List Response).")
+                success = True
+            elif isinstance(result, list) or (hasattr(result, 'data') and isinstance(result.data, list)):
+                success = True
+
+            if success:
+                st.success(f"✅ Successfully updated {len(updated_rows)} unique vehicles!")
             else:
-                st.warning("Data sent. If sheet didn't update, check column 'Read-Only' status.")
+                st.error("❌ Update failed. Check Raw Response below.")
                 with st.expander("View Raw Smartsheet Response"):
                     st.write(result)
         else:
-            st.error("No matches found between Geotab and Smartsheet.")
+            st.warning("No matches found between Geotab and Smartsheet.")
             
     except Exception as e:
         st.error(f"🚨 Sync Error: {type(e).__name__} - {str(e)}")
