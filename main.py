@@ -38,8 +38,11 @@ def sync_to_smartsheet(df):
         ser_col_id = col_map.get("Serial")
         date_col_id = col_map.get("Last Sync Date")
 
+        if not primary_col_id or not mil_col_id:
+            st.error("Missing required columns in Smartsheet.")
+            return
+
         # 2. OPTIMIZATION: Create a "Quick Lookup" dictionary of Smartsheet rows
-        # Key = Vehicle Name (UPPER), Value = Row Object
         ss_rows_lookup = {}
         for s_row in sheet.rows:
             veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
@@ -50,35 +53,46 @@ def sync_to_smartsheet(df):
 
         updated_rows = []
 
-        # 3. FAST MATCHING: No nested loop!
+        # 3. FAST MATCHING
         for _, g_row in df.iterrows():
             geotab_name = str(g_row["Vehicle Name"]).strip().upper()
             
-            # Instant lookup instead of looping through all rows again
             if geotab_name in ss_rows_lookup:
                 target_row = ss_rows_lookup[geotab_name]
                 
                 new_row = smartsheet.models.Row()
                 new_row.id = target_row.id
                 
-                # Cells
-                mil_cell = smartsheet.models.Cell(column_id=mil_col_id, value=int(float(g_row["Current Mileage"])))
-                ser_cell = smartsheet.models.Cell(column_id=ser_col_id, value=str(g_row["Serial"]))
-                date_cell = smartsheet.models.Cell(column_id=date_col_id, value=today_date)
+                # CORRECT CELL INITIALIZATION
+                mil_cell = smartsheet.models.Cell()
+                mil_cell.column_id = mil_col_id
+                mil_cell.value = int(float(g_row["Current Mileage"]))
+                
+                ser_cell = smartsheet.models.Cell()
+                ser_cell.column_id = ser_col_id
+                ser_cell.value = str(g_row["Serial"])
+                
+                date_cell = smartsheet.models.Cell()
+                date_cell.column_id = date_col_id
+                date_cell.value = today_date
                 
                 new_row.cells.extend([mil_cell, ser_cell, date_cell])
                 updated_rows.append(new_row)
 
         # 4. Push Updates
         if updated_rows:
-            smart.Sheets.update_rows(sheet_id, updated_rows)
-            st.success(f"✅ Fast Sync Complete: {len(updated_rows)} vehicles updated.")
+            result = smart.Sheets.update_rows(sheet_id, updated_rows)
+            
+            # Success check that won't crash on 'list' objects
+            if isinstance(result, list) or (hasattr(result, 'message') and result.message == 'SUCCESS'):
+                st.success(f"✅ Fast Sync Complete: {len(updated_rows)} vehicles updated!")
+            else:
+                st.error("Smartsheet update failed.")
         else:
             st.warning("No matches found.")
             
     except Exception as e:
         st.error(f"Sync Error: {e}")
-
 # 4. Main Execution
 api = get_geotab_api()
 
