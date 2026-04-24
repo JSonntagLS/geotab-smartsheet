@@ -1,0 +1,30 @@
+name: Monday Morning Fleet Sync
+
+on:
+  schedule:
+    - cron: '0 10 * * 1' # 10:00 UTC is 5:00 AM Central
+  workflow_dispatch: # Allows you to run it manually for testing
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install mygeotab smartsheet-python-sdk pandas
+
+      - name: Run Sync Robot
+        run: python auto_sync.py
+        env:
+          GEOTAB_USER: ${{ secrets.GEOTAB_USER }}
+          GEOTAB_PASSWORD: ${{ secrets.GEOTAB_PASSWORD }}
+          GEOTAB_DB: ${{ secrets.GEOTAB_DB }}
+          SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
+          SMARTSHEET_ID: ${{ secrets.SMARTSHEET_ID }}
