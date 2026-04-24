@@ -31,53 +31,79 @@ def sync_to_smartsheet(df):
         
         today_date = datetime.now().strftime("%Y-%m-%d")
         
-        # 1. Map Columns
-        col_map = {col.title.strip(): col.id for col in sheet.columns}
-        primary_col_id = next((col.id for col in sheet.columns if col.primary), None)
-        mil_col_id = col_map.get("Current Mileage")
-        ser_col_id = col_map.get("Serial")
-        date_col_id = col_map.get("Last Sync Date")
+        # --- DEBUGGER: SHOWS COLUMN MAPPING ---
+        with st.expander("🔍 Connection & Column Debugger", expanded=True):
+            col_map = {col.title.strip(): col.id for col in sheet.columns}
+            st.write(f"Sheet Found: {len(sheet.rows)} rows detected.")
+            st.write("Column IDs Found:", col_map)
+            
+            primary_col_id = next((col.id for col in sheet.columns if col.primary), None)
+            mil_col_id = col_map.get("Current Mileage")
+            ser_col_id = col_map.get("Serial")
+            date_col_id = col_map.get("Last Sync Date")
 
         if not primary_col_id or not mil_col_id:
-            st.error("Missing required columns in Smartsheet.")
+            st.error("❌ Critical Mapping Error: Could not find 'Current Mileage' column.")
             return
 
-        # 2. OPTIMIZATION: Create a "Quick Lookup" dictionary of Smartsheet rows
+        # 1. BUILD FAST LOOKUP
         ss_rows_lookup = {}
         for s_row in sheet.rows:
+            # Finding the primary cell (Vehicle Name) in this row
             veh_cell = next((c for c in s_row.cells if c.column_id == primary_col_id), None)
             if veh_cell:
-                name = str(veh_cell.value or veh_cell.display_value or "").strip().upper()
+                # Use display_value if value is None
+                name_val = veh_cell.value if veh_cell.value is not None else veh_cell.display_value
+                name = str(name_val or "").strip().upper()
                 if name:
-                    ss_rows_lookup[name] = s_row
+                    ss_rows_lookup[name] = s_row.id # Store the ID for fast lookup
 
         updated_rows = []
+        matches_found = 0
 
-        # 3. FAST MATCHING
+        # 2. MATCHING & CELL PREP
         for _, g_row in df.iterrows():
             geotab_name = str(g_row["Vehicle Name"]).strip().upper()
             
             if geotab_name in ss_rows_lookup:
-                target_row = ss_rows_lookup[geotab_name]
-                
+                matches_found += 1
                 new_row = smartsheet.models.Row()
-                new_row.id = target_row.id
+                new_row.id = ss_rows_lookup[geotab_name]
                 
-                # CORRECT CELL INITIALIZATION
-                mil_cell = smartsheet.models.Cell()
-                mil_cell.column_id = mil_col_id
-                mil_cell.value = int(float(g_row["Current Mileage"]))
+                # Create Individual Cells
+                c1 = smartsheet.models.Cell()
+                c1.column_id = mil_col_id
+                c1.value = int(float(g_row["Current Mileage"]))
                 
-                ser_cell = smartsheet.models.Cell()
-                ser_cell.column_id = ser_col_id
-                ser_cell.value = str(g_row["Serial"])
+                c2 = smartsheet.models.Cell()
+                c2.column_id = ser_col_id
+                c2.value = str(g_row["Serial"])
                 
-                date_cell = smartsheet.models.Cell()
-                date_cell.column_id = date_col_id
-                date_cell.value = today_date
+                c3 = smartsheet.models.Cell()
+                c3.column_id = date_col_id
+                c3.value = today_date
                 
-                new_row.cells.extend([mil_cell, ser_cell, date_cell])
+                new_row.cells.extend([c1, c2, c3])
                 updated_rows.append(new_row)
+
+        # 3. EXECUTION & DETAILED OUTPUT
+        st.write(f"Processed {len(df)} Geotab vehicles. Found {matches_found} matches in Smartsheet.")
+
+        if updated_rows:
+            # Sending updates in one batch
+            result = smart.Sheets.update_rows(sheet_id, updated_rows)
+            
+            if hasattr(result, 'message') and result.message == 'SUCCESS':
+                st.success(f"✅ Successfully updated {len(updated_rows)} vehicles!")
+            elif isinstance(result, list):
+                st.success(f"✅ Batch update of {len(result)} rows completed.")
+            else:
+                st.warning("Update sent, but received unusual response. Check Smartsheet.")
+        else:
+            st.error("No matches found. Check that 'Vehicle Name' in Smartsheet matches Geotab exactly.")
+            
+    except Exception as e:
+        st.error(f"🚨 Sync Error: {type(e).__name__} - {str(e)}")
 
         # 4. Push Updates
         if updated_rows:
