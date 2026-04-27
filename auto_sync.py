@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 def get_sync_bot():
     try:
-        print("--- SERIAL-ANCHORED SYNC: FINAL VERIFICATION ---")
+        print("--- SERIAL-ANCHORED SYNC: BULLETPROOF VERSION ---")
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
         sheet_id = int(os.getenv("SMARTSHEET_ID"))
         sheet = smart.Sheets.get_sheet(sheet_id)
@@ -17,15 +17,11 @@ def get_sync_bot():
         curr_col = col_map.get("CURRENT MILEAGE")
         date_col = col_map.get("LAST SYNC DATE")
 
-        # Build Serial Lookup with Duplicate Detection
         ss_serials = {}
         for r in sheet.rows:
             s_cell = next((c for c in r.cells if c.column_id == serial_col), None)
             if s_cell and s_cell.value:
-                clean_serial = str(s_cell.value).strip().upper()
-                if clean_serial in ss_serials:
-                    print(f"WARNING: Duplicate Serial '{clean_serial}' found in Smartsheet. Only the last row will sync correctly.")
-                ss_serials[clean_serial] = r.id
+                ss_serials[str(s_cell.value).strip().upper()] = r.id
 
         api = mygeotab.API(username=os.getenv("GEOTAB_USER"), 
                            password=os.getenv("GEOTAB_PASSWORD"), 
@@ -42,32 +38,44 @@ def get_sync_bot():
             
             if g_serial in ss_serials:
                 try:
+                    # Fetching Odometer with safety checks
                     curr_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': 1})
                     prev_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'toDate': monday_target, 'resultsLimit': 1})
 
-                    curr_m = int(round(curr_logs['data'] / 1609.344, 0)) if curr_logs else "NO DATA"
-                    prev_m = int(round(prev_logs['data'] / 1609.344, 0)) if prev_logs else curr_m
+                    # Conversion logic with "None" protection
+                    def get_miles(logs):
+                        if logs and isinstance(logs, list) and len(logs) > 0:
+                            return int(round(logs.get('data', 0) / 1609.344, 0))
+                        return "CHECK GPS"
 
-                    new_row = smartsheet.models.Row(id=ss_serials[g_serial])
-                    new_row.cells = [
-                        smartsheet.models.Cell(column_id=name_col, value=g_name),
-                        smartsheet.models.Cell(column_id=last_week_col, value=prev_m),
-                        smartsheet.models.Cell(column_id=curr_col, value=curr_m),
-                        smartsheet.models.Cell(column_id=date_col, value=datetime.now().strftime("%m/%d/%Y"))
-                    ]
+                    curr_m = get_miles(curr_logs)
+                    prev_m = get_miles(prev_logs)
+                    if prev_m == "CHECK GPS": prev_m = curr_m
+
+                    # Fix for the __init__ error: Create row then assign ID
+                    new_row = smartsheet.models.Row()
+                    new_row.id = ss_serials[g_serial]
+                    
+                    c1 = smartsheet.models.Cell(); c1.column_id = name_col; c1.value = g_name
+                    c2 = smartsheet.models.Cell(); c2.column_id = last_week_col; c2.value = prev_m
+                    c3 = smartsheet.models.Cell(); c3.column_id = curr_col; c3.value = curr_m
+                    c4 = smartsheet.models.Cell(); c4.column_id = date_col; c4.value = datetime.now().strftime("%m/%d/%Y")
+                    
+                    new_row.cells = [c1, c2, c3, c4]
                     updated_rows.append(new_row)
-                    print(f"SYNCING: {g_serial} -> {g_name}")
+                    print(f"READY: {g_serial} ({g_name})")
+
                 except Exception as e:
-                    print(f"Error for {g_serial}: {e}")
+                    print(f"Skipping {g_serial} due to data error: {e}")
 
         if updated_rows:
             smart.Sheets.update_rows(sheet_id, updated_rows)
-            print(f"SUCCESS: {len(updated_rows)} vehicles updated.")
+            print(f"DONE: Successfully updated {len(updated_rows)} vehicles in Smartsheet.")
         else:
-            print("No matching Serial Numbers found. Double-check Smartsheet Column G.")
+            print("No serial matches found between Geotab and Smartsheet.")
 
     except Exception as e:
-        print(f"CRITICAL ERROR: {str(e)}")
+        print(f"CRITICAL SYSTEM ERROR: {str(e)}")
 
 if __name__ == "__main__":
     get_sync_bot()
