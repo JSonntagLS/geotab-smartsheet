@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
 
@@ -28,3 +28,9 @@ jobs:
           GEOTAB_DB: ${{ secrets.GEOTAB_DB }}
           SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
           SMARTSHEET_ID: ${{ secrets.SMARTSHEET_ID }}
+
+      - name: Upload Fleet CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-data
+          path: fleet_live.csv
