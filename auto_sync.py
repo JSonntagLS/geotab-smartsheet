@@ -5,15 +5,13 @@ from datetime import datetime, timedelta
 
 def get_sync_bot():
     try:
-        print("--- STARTING CORRECTED SYNC ---")
+        print("--- STARTING MANUAL CONSTRUCTION SYNC ---")
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
         sheet_id = int(os.getenv("SMARTSHEET_ID"))
         
-        # Verify Connection
         sheet = smart.Sheets.get_sheet(sheet_id)
         print(f"Connected to: '{sheet.name}'")
 
-        # Map Columns
         col_map = {col.title.strip(): col.id for col in sheet.columns}
         name_id = col_map.get("Vehicle Name")
         last_week_id = col_map.get("Last Week's Odometer")
@@ -21,23 +19,20 @@ def get_sync_bot():
         date_id = col_map.get("Last Sync Date")
         ser_id = col_map.get("Serial")
 
-        # Build Row Lookup
         ss_rows_lookup = {}
         for r in sheet.rows:
             name_cell = next((c for c in r.cells if c.column_id == name_id), None)
             if name_cell and name_cell.value:
                 ss_rows_lookup[str(name_cell.value).strip().upper()] = r.id
 
-        # Geotab Setup
         api = mygeotab.API(username=os.getenv("GEOTAB_USER"), 
                            password=os.getenv("GEOTAB_PASSWORD"), 
                            database=os.getenv("GEOTAB_DB"))
         api.authenticate()
         
         today = datetime.now()
-        # Monday 12:00 AM anchor
         monday_start = (today - timedelta(days=today.weekday() + 7)).replace(hour=0, minute=0, second=0, microsecond=0)
-        monday_end = monday_start + timedelta(days=2) # 48-hour window for historical data
+        monday_end = monday_start + timedelta(days=2)
 
         devices = api.get('Device')
         updated_rows = []
@@ -45,27 +40,40 @@ def get_sync_bot():
         for d in devices:
             g_name = str(d['name']).strip().upper()
             if g_name in ss_rows_lookup:
-                # 1. Get Live Current Mileage
+                # 1. Fetch Data
                 live_data = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': 1})
                 current_miles = round(live_data['data'] / 1609.344, 0) if live_data else 0
 
-                # 2. Get Historical Monday Odometer
                 hist_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'fromDate': monday_start, 'toDate': monday_end})
                 start_miles = round(min(hist_logs, key=lambda x: x['dateTime'])['data'] / 1609.344, 0) if hist_logs else 0
 
-                # 3. Corrected Smartsheet Row Construction
+                # 2. Build Cells Manually (No arguments in __init__)
+                c1 = smartsheet.models.Cell()
+                c1.column_id = last_week_id
+                c1.value = int(start_miles)
+
+                c2 = smartsheet.models.Cell()
+                c2.column_id = current_id
+                c2.value = int(current_miles)
+
+                c3 = smartsheet.models.Cell()
+                c3.column_id = ser_id
+                c3.value = str(d['serialNumber'])
+
+                c4 = smartsheet.models.Cell()
+                c4.column_id = date_id
+                c4.value = today.strftime("%Y-%m-%d")
+
+                # 3. Build Row Manually
                 new_row = smartsheet.models.Row()
-                new_row.id = ss_rows_lookup[g_name] # Fixed: ID set as attribute, not in __init__
+                new_row.id = ss_rows_lookup[g_name]
+                new_row.cells.append(c1)
+                new_row.cells.append(c2)
+                new_row.cells.append(c3)
+                new_row.cells.append(c4)
                 
-                cells = [
-                    smartsheet.models.Cell(column_id=last_week_id, value=int(start_miles)),
-                    smartsheet.models.Cell(column_id=current_id, value=int(current_miles)),
-                    smartsheet.models.Cell(column_id=ser_id, value=str(d['serialNumber'])),
-                    smartsheet.models.Cell(column_id=date_id, value=today.strftime("%Y-%m-%d"))
-                ]
-                new_row.cells.extend(cells)
                 updated_rows.append(new_row)
-                print(f"Matched: {g_name}")
+                print(f"Matched and Prepared: {g_name}")
 
         if updated_rows:
             result = smart.Sheets.update_rows(sheet_id, updated_rows)
