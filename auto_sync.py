@@ -2,11 +2,10 @@ import mygeotab
 import smartsheet
 import os
 from datetime import datetime, timedelta
-import json
 
 def get_sync_bot():
     try:
-        print("--- DEBUG PROTOCOL: RAW DATA INSPECTION ---")
+        print("--- SERIAL-ANCHORED SYNC: FINAL REFINEMENT ---")
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
         sheet_id = int(os.getenv("SMARTSHEET_ID"))
         sheet = smart.Sheets.get_sheet(sheet_id)
@@ -18,11 +17,8 @@ def get_sync_bot():
         curr_col = col_map.get("CURRENT MILEAGE")
         date_col = col_map.get("LAST SYNC DATE")
 
-        ss_serials = {}
-        for r in sheet.rows:
-            s_cell = next((c for c in r.cells if c.column_id == serial_col), None)
-            if s_cell and s_cell.value:
-                ss_serials[str(s_cell.value).strip().upper()] = r.id
+        ss_serials = {str(r.get_column(serial_col).value).strip().upper(): r.id 
+                      for r in sheet.rows if r.get_column(serial_col).value}
 
         api = mygeotab.API(username=os.getenv("GEOTAB_USER"), 
                            password=os.getenv("GEOTAB_PASSWORD"), 
@@ -33,8 +29,16 @@ def get_sync_bot():
         monday_target = (datetime.now() - timedelta(days=7)).replace(hour=0, minute=0, second=0)
         updated_rows = []
 
-        # Debugging the first vehicle match
-        debug_count = 0
+        def extract_miles(logs):
+            if not logs or not isinstance(logs, list):
+                return "CHECK GPS"
+            try:
+                # Sort logs by dateTime to get the absolute latest one
+                latest_log = sorted(logs, key=lambda x: x['dateTime'])[-1]
+                raw_data = latest_log.get('data', 0)
+                return int(round(raw_data / 1609.344, 0))
+            except:
+                return "CHECK GPS"
 
         for d in devices:
             g_serial = str(d.get('serialNumber', '')).strip().upper()
@@ -42,54 +46,37 @@ def get_sync_bot():
             
             if g_serial in ss_serials:
                 try:
-                    curr_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': 1})
-                    
-                    # --- DEBUG SECTION ---
-                    if debug_count < 3:
-                        print(f"\n[DEBUG] Raw Geotab Response for {g_serial}:")
-                        print(f"Type: {type(curr_logs)}")
-                        print(f"Content: {curr_logs}")
-                        debug_count += 1
-                    # ---------------------
-
-                    def extract_miles(logs):
-                        # Forcefully check every level of the response
-                        if not logs: return "CHECK GPS"
-                        
-                        try:
-                            # Attempt 1: Direct list access
-                            if isinstance(logs, list) and len(logs) > 0:
-                                val = logs
-                                if isinstance(val, dict):
-                                    return int(round(val.get('data', 0) / 1609.344, 0))
-                            # Attempt 2: If it's a weird object with a .data attribute
-                            return int(round(logs.data / 1609.344, 0))
-                        except:
-                            return "CHECK GPS"
+                    curr_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': 10})
+                    prev_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'toDate': monday_target, 'resultsLimit': 1})
 
                     curr_m = extract_miles(curr_logs)
-                    
+                    prev_m = extract_miles(prev_logs)
+                    if prev_m == "CHECK GPS": prev_m = curr_m
+
                     new_row = smartsheet.models.Row()
                     new_row.id = ss_serials[g_serial]
                     
                     cells = []
-                    for cid, val in [(name_col, g_name), (curr_col, curr_m), (date_col, datetime.now().strftime("%Y-%m-%d"))]:
-                        new_cell = smartsheet.models.Cell()
-                        new_cell.column_id = cid
-                        new_cell.value = val
-                        cells.append(new_cell)
+                    updates = [(name_col, g_name), (last_week_col, prev_m), (curr_col, curr_m), (date_col, datetime.now().strftime("%Y-%m-%d"))]
+                    
+                    for cid, val in updates:
+                        c = smartsheet.models.Cell()
+                        c.column_id = cid
+                        c.value = val
+                        cells.append(c)
                     
                     new_row.cells = cells
                     updated_rows.append(new_row)
+                    print(f"READY: {g_serial} -> {curr_m} miles")
 
                 except Exception as e:
                     print(f"Skipping {g_serial} | Error: {str(e)}")
 
         if updated_rows:
             smart.Sheets.update_rows(sheet_id, updated_rows)
-            print(f"\n--- SYNC COMPLETE: Updated {len(updated_rows)} rows ---")
+            print(f"SUCCESS: {len(updated_rows)} vehicles pushed to Smartsheet.")
         else:
-            print("\nNo data to update.")
+            print("No matches found.")
 
     except Exception as e:
         print(f"CRITICAL ERROR: {str(e)}")
