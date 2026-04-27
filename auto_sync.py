@@ -5,21 +5,31 @@ from datetime import datetime, timedelta
 
 def get_sync_bot():
     try:
-        print("--- FINAL DATA EXTRACTION FIX ---")
+        print("--- FINAL ATTEMPT: MANUAL EXTRACTION ---")
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
         sheet_id = int(os.getenv("SMARTSHEET_ID"))
         
         sheet = smart.Sheets.get_sheet(sheet_id)
         print(f"Connected to: '{sheet.name}'")
 
-        col_map = {col.title.strip(): col.id for col in sheet.columns}
+        # Map Columns by Title
+        col_map = {col.title.strip(): col.id for col in sheet.columns if col.title}
         name_id = col_map.get("Vehicle Name")
         last_week_id = col_map.get("Last Week's Odometer")
         current_id = col_map.get("Current Mileage")
         date_id = col_map.get("Last Sync Date")
         ser_id = col_map.get("Serial")
 
-        ss_rows_lookup = {str(r.cells.value).strip().upper(): r.id for r in sheet.rows if r.cells.value}
+        # Build Row Lookup manually to avoid 'TypedList' errors
+        ss_rows_lookup = {}
+        for r in sheet.rows:
+            # Find the specific cell for 'Vehicle Name' within the row
+            target_cell = next((c for c in r.cells if c.column_id == name_id), None)
+            if target_cell and target_cell.value:
+                clean_name = str(target_cell.value).strip().upper()
+                ss_rows_lookup[clean_name] = r.id
+
+        print(f"Mapped {len(ss_rows_lookup)} vehicles from Smartsheet.")
 
         api = mygeotab.API(username=os.getenv("GEOTAB_USER"), 
                            password=os.getenv("GEOTAB_PASSWORD"), 
@@ -58,26 +68,36 @@ def get_sync_bot():
                 else:
                     start_miles = current_miles 
 
-                # 3. Construct Update
+                # 3. Construct Update using standard objects
                 new_row = smartsheet.models.Row()
                 new_row.id = ss_rows_lookup[g_name]
                 
-                # Manual Cell Population to avoid __init__ errors
-                c1, c2, c3, c4 = smartsheet.models.Cell(), smartsheet.models.Cell(), smartsheet.models.Cell(), smartsheet.models.Cell()
-                c1.column_id, c1.value = last_week_id, int(start_miles)
-                c2.column_id, c2.value = current_id, int(current_miles)
-                c3.column_id, c3.value = ser_id, str(d.get('serialNumber', ''))
-                c4.column_id, c4.value = date_id, today.strftime("%Y-%m-%d")
+                # Use standard Cell objects with explicit attribute assignment
+                c1 = smartsheet.models.Cell()
+                c1.column_id = last_week_id
+                c1.value = int(start_miles)
+
+                c2 = smartsheet.models.Cell()
+                c2.column_id = current_id
+                c2.value = int(current_miles)
+
+                c3 = smartsheet.models.Cell()
+                c3.column_id = ser_id
+                c3.value = str(d.get('serialNumber', ''))
+
+                c4 = smartsheet.models.Cell()
+                c4.column_id = date_id
+                c4.value = today.strftime("%Y-%m-%d")
                 
-                new_row.cells.extend([c1, c2, c3, c4])
+                new_row.cells = [c1, c2, c3, c4]
                 updated_rows.append(new_row)
-                print(f"Prepared: {g_name} | {start_miles} -> {current_miles}")
+                print(f"Update Prepared: {g_name} ({start_miles} to {current_miles})")
 
         if updated_rows:
             result = smart.Sheets.update_rows(sheet_id, updated_rows)
-            print(f"SYNC COMPLETE: {result.message}")
+            print(f"SYNC STATUS: {result.message}")
         else:
-            print("No matches found.")
+            print("No matching vehicles found.")
 
     except Exception as e:
         print(f"CRITICAL ERROR: {str(e)}")
