@@ -5,35 +5,28 @@ from datetime import datetime, timedelta
 
 def get_sync_bot():
     try:
-        print("--- STARTING VIN-ANCHORED SYNC (FLEXIBLE) ---")
+        print("--- VIN MATCHING & AUTO-RENAME SYNC ---")
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
         sheet_id = int(os.getenv("SMARTSHEET_ID"))
         sheet = smart.Sheets.get_sheet(sheet_id)
         
-        # This part is now much more aggressive about finding your columns
         col_map = {col.title.strip().upper(): col.id for col in sheet.columns if col.title}
-        
         vin_id = col_map.get("VIN")
         name_id = col_map.get("VEHICLE NAME")
         last_week_id = col_map.get("LAST WEEK'S ODOMETER")
         current_id = col_map.get("CURRENT MILEAGE")
         date_id = col_map.get("LAST SYNC DATE")
 
-        if not vin_id:
-            # Fallback: Print all available columns if VIN isn't found
-            print(f"ERROR: 'VIN' column not detected. Available headers: {list(col_map.keys())}")
-            return
-
-        # Build lookup: Mapping VIN -> Row ID
-        ss_vin_lookup = {}
+        # Map Smartsheet VINs to Row IDs
+        ss_vins = {}
         for r in sheet.rows:
-            # Finding the VIN cell by ID
             v_cell = next((c for c in r.cells if c.column_id == vin_id), None)
             if v_cell and v_cell.value:
-                # We strip and uppercase the VIN to ensure a perfect match
-                ss_vin_lookup[str(v_cell.value).strip().upper()] = r.id
+                # We store the last 6 of the VIN for easier matching
+                clean_vin = str(v_cell.value).strip().upper()[-6:]
+                ss_vins[clean_vin] = r.id
 
-        print(f"Found {len(ss_vin_lookup)} VINs in Smartsheet. Connecting to Geotab...")
+        print(f"Found {len(ss_vins)} VINs in Smartsheet. Connecting to Geotab...")
 
         api = mygeotab.API(username=os.getenv("GEOTAB_USER"), 
                            password=os.getenv("GEOTAB_PASSWORD"), 
@@ -45,43 +38,44 @@ def get_sync_bot():
         updated_rows = []
 
         for d in devices:
-            g_vin = str(d.get('vin', '')).strip().upper()
+            full_vin = str(d.get('vin', '')).strip().upper()
+            g_last_6 = full_vin[-6:]
             g_name = str(d.get('name', '')).strip()
             
-            if g_vin in ss_vin_lookup:
+            if g_last_6 in ss_vins:
                 try:
-                    # Fetch Mileages safely
+                    # 1. Fetch Mileages
                     curr_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': 1})
                     prev_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'toDate': monday_target, 'resultsLimit': 1})
 
-                    curr_m = int(round(curr_logs['data'] / 1609.344, 0)) if curr_logs else "NO GPS"
+                    curr_m = int(round(curr_logs['data'] / 1609.344, 0)) if curr_logs else "NO DATA"
                     prev_m = int(round(prev_logs['data'] / 1609.344, 0)) if prev_logs else curr_m
 
-                    # Create the update row
+                    # 2. Prepare Smartsheet Row Update (Including the Name Update)
                     new_row = smartsheet.models.Row()
-                    new_row.id = ss_vin_lookup[g_vin]
+                    new_row.id = ss_vins[g_last_6]
                     
-                    # Manual cell creation to avoid API library version conflicts
-                    c1 = smartsheet.models.Cell(); c1.column_id = name_id; c1.value = g_name
-                    c2 = smartsheet.models.Cell(); c2.column_id = last_week_id; c2.value = prev_m
-                    c3 = smartsheet.models.Cell(); c3.column_id = current_id; c3.value = curr_m
-                    c4 = smartsheet.models.Cell(); c4.column_id = date_id; c4.value = datetime.now().strftime("%Y-%m-%d")
-                    
-                    new_row.cells = [c1, c2, c3, c4]
+                    # This will automatically sync the Geotab name to Smartsheet
+                    new_row.cells = [
+                        smartsheet.models.Cell(column_id=name_id, value=g_name),
+                        smartsheet.models.Cell(column_id=last_week_id, value=prev_m),
+                        smartsheet.models.Cell(column_id=current_id, value=curr_m),
+                        smartsheet.models.Cell(column_id=date_id, value=datetime.now().strftime("%Y-%m-%d"))
+                    ]
                     updated_rows.append(new_row)
-                    print(f"Matched {g_vin[-6:]}: {g_name}")
+                    print(f"Matched {g_last_6}: Syncing name '{g_name}' and mileage.")
 
                 except Exception as e:
-                    print(f"Skipping {g_vin}: {e}")
+                    print(f"Error on VIN {g_last_6}: {e}")
 
         if updated_rows:
-            result = smart.Sheets.update_rows(sheet_id, updated_rows)
-            print(f"SUCCESS: {result.message}")
+            smart.Sheets.update_rows(sheet_id, updated_rows)
+            print(f"SUCCESS: Synced {len(updated_rows)} vehicles.")
         else:
-            print("No matching VINs found. Did you save the Smartsheet after adding the VINs?")
+            print("No matching VINs found. Check that the VINs in Smartsheet match Geotab.")
 
     except Exception as e:
-        print(f"SYSTEM FAILURE: {str(e)}")
+        print(f"CRITICAL FAILURE: {str(e)}")
 
 if __name__ == "__main__":
     get_sync_bot()
