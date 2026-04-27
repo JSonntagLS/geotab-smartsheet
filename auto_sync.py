@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 def get_sync_bot():
     try:
-        print("--- SYNC REPAIR: STOPPING ODOMETER MATH ---")
+        print("--- SYNC REPAIR V2: FIXING DATA PARSING ---")
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
         sheet_id = int(os.getenv("SMARTSHEET_ID"))
         sheet = smart.Sheets.get_sheet(sheet_id)
@@ -32,34 +32,35 @@ def get_sync_bot():
 
         for d in devices:
             g_serial = str(d.get('serialNumber', '')).strip().upper()
-            g_name = str(d.get('name', '')).strip()
+            g_name = str(d.get('name', 'Unknown Device')).strip()
             
             if g_serial in ss_serials:
                 try:
-                    # 1. Get the ABSOLUTE LATEST odometer reading (Live)
+                    # 1. Get Live Odometer (using resultsLimit to get only the most recent)
                     curr_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': 1})
                     
-                    # 2. Get the odometer reading from LAST WEEK
-                    prev_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'toDate': monday_target, 'resultsLimit': 1})
+                    # 2. Get Odometer from 7 days ago
+                    prev_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'toDate': monday_target.isoformat(), 'resultsLimit': 1})
 
                     def parse_val(logs):
-                        if logs and isinstance(logs, list) and len(logs) > 0:
+                        # Geotab returns a LIST. We need to check if the list has items, then grab the first one.
+                        if isinstance(logs, list) and len(logs) > 0:
+                            # logs is the dictionary we need to .get('data') from
                             return int(round(logs.get('data', 0) / 1609.344, 0))
                         return None
 
-                    # Live data
                     live_odometer = parse_val(curr_logs)
-                    # Historical data
                     past_odometer = parse_val(prev_logs)
 
-                    # Fallback logic: If we can't find last week, make it the same as today (0 miles driven)
-                    if past_odometer is None: past_odometer = live_odometer
-                    if live_odometer is None: live_odometer = "CHECK GPS"
-
+                    # Fallbacks to ensure Smartsheet doesn't get a "Null/None" value
+                    if live_odometer is None:
+                        live_odometer = "CHECK GPS"
+                    if past_odometer is None:
+                        past_odometer = 0 # Or live_odometer if you prefer 0 miles driven vs 0 total
+                    
                     new_row = smartsheet.models.Row()
                     new_row.id = ss_serials[g_serial]
                     
-                    # DIRECT MAPPING - No subtractions allowed
                     updates = [
                         (name_col, g_name), 
                         (last_week_col, past_odometer), 
@@ -72,18 +73,21 @@ def get_sync_bot():
                         c = smartsheet.models.Cell()
                         c.column_id = cid
                         c.value = val
+                        # Force cell to be 'None-safe'
+                        if c.value is None: c.value = ""
                         cells.append(c)
                     
                     new_row.cells = cells
                     updated_rows.append(new_row)
-                    print(f"SYNCING: {g_serial} | Today: {live_odometer} | Last Week: {past_odometer}")
+                    print(f"READY: {g_serial} | Live: {live_odometer} | Last Week: {past_odometer}")
 
                 except Exception as e:
                     print(f"Skipping {g_serial} | Error: {str(e)}")
 
         if updated_rows:
+            # Batch updates to avoid hitting Smartsheet API limits
             smart.Sheets.update_rows(sheet_id, updated_rows)
-            print(f"SUCCESS: {len(updated_rows)} vehicles updated.")
+            print(f"SUCCESS: {len(updated_rows)} vehicles pushed to Smartsheet.")
 
     except Exception as e:
         print(f"CRITICAL ERROR: {str(e)}")
