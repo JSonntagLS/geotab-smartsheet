@@ -7,17 +7,9 @@ def harvest_data():
     print(f"--- STARTING DATA HARVEST: {datetime.now()} ---")
     
     # 1. Connect to Geotab
-    try:
-        api = mygeotab.API(
-            username=os.getenv("GEOTAB_USER"), 
-            password=os.getenv("GEOTAB_PASSWORD"), 
-            database=os.getenv("GEOTAB_DB")
-        )
-        api.authenticate()
-        print("Authenticated with Geotab.")
-    except Exception as e:
-        print(f"Auth Failed: {e}")
-        return
+    api = mygeotab.API(username=os.getenv("GEOTAB_USER"), password=os.getenv("GEOTAB_PASSWORD"), database=os.getenv("GEOTAB_DB"))
+    api.authenticate()
+    print("Authenticated with Geotab.")
 
     # 2. Collect Data
     devices = api.get('Device')
@@ -25,31 +17,31 @@ def harvest_data():
     print(f"Found {len(devices)} devices. Starting mileage pull...")
 
     for d in devices:
-        # Request the single most recent odometer reading for this VIN
         logs = api.get('StatusData', search={
             'deviceSearch': {'id': d['id']}, 
             'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 
             'resultsLimit': 1
         })
         
-        # The logic fix that handles the "List" error properly
+        # Robust check for the list
         miles = 0
-        if isinstance(logs, list) and len(logs) > 0:
-            # We look inside the first item of the list
-            meters = logs.get('data', 0)
+        if logs and isinstance(logs, list):
+            # Grab the first actual item in the list
+            first_entry = logs
+            # Now read the data from that item
+            meters = first_entry.get('data', 0)
             miles = round(meters / 1609.344, 0)
         
         output.append({
             "Vehicle Name": d['name'],
             "Serial": d['serialNumber'],
-            "Live Odometer": miles,
-            "Last Checked": datetime.now().strftime("%Y-%m-%d %H:%M")
+            "Live Odometer": miles
         })
 
     # 3. Save to CSV
     df = pd.DataFrame(output)
     df.to_csv("fleet_live.csv", index=False)
-    print("SUCCESS: fleet_live.csv has been created/updated.")
+    print("SUCCESS: fleet_live.csv created.")
 
 if __name__ == "__main__":
     harvest_data()
