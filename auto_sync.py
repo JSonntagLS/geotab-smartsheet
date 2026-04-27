@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 def get_sync_bot():
     try:
-        print("--- SERIAL-ANCHORED SYNC: FINAL REFINEMENT ---")
+        print("--- SERIAL-ANCHORED SYNC: ULTRASONIC CLEAN ---")
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
         sheet_id = int(os.getenv("SMARTSHEET_ID"))
         sheet = smart.Sheets.get_sheet(sheet_id)
@@ -42,9 +42,8 @@ def get_sync_bot():
                     prev_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'toDate': monday_target, 'resultsLimit': 1})
 
                     def extract_miles(logs):
-                        # Geotab returns a list of dictionaries; we need to access the first item properly
-                        if logs and len(logs) > 0:
-                            # logs is the dictionary, .get('data') gets the value
+                        # Explicit check for list type to avoid 'get' error
+                        if isinstance(logs, list) and len(logs) > 0:
                             data_val = logs.get('data')
                             if data_val is not None:
                                 return int(round(data_val / 1609.344, 0))
@@ -54,15 +53,20 @@ def get_sync_bot():
                     prev_m = extract_miles(prev_logs)
                     if prev_m == "CHECK GPS": prev_m = curr_m
 
+                    # Build row correctly for the Smartsheet Python SDK
                     new_row = smartsheet.models.Row()
                     new_row.id = ss_serials[g_serial]
                     
-                    new_row.cells = [
-                        smartsheet.models.Cell(column_id=name_col, value=g_name),
-                        smartsheet.models.Cell(column_id=last_week_col, value=prev_m),
-                        smartsheet.models.Cell(column_id=curr_col, value=curr_m),
-                        smartsheet.models.Cell(column_id=date_col, value=datetime.now().strftime("%Y-%m-%d"))
-                    ]
+                    # Create cells individually to avoid __init__ errors
+                    cells = []
+                    for cid, val in [(name_col, g_name), (last_week_col, prev_m), (curr_col, curr_m), (date_col, datetime.now().strftime("%Y-%m-%d"))]:
+                        new_cell = smartsheet.models.Cell()
+                        new_cell.column_id = cid
+                        new_cell.value = val
+                        new_cell.strict = False
+                        cells.append(new_cell)
+                    
+                    new_row.cells = cells
                     updated_rows.append(new_row)
                     print(f"READY: {g_serial} -> {g_name}")
 
@@ -70,13 +74,14 @@ def get_sync_bot():
                     print(f"Skipping {g_serial} (Error: {e})")
 
         if updated_rows:
-            smart.Sheets.update_rows(sheet_id, updated_rows)
-            print(f"SUCCESS: {len(updated_rows)} vehicles updated.")
+            # Send in chunks of 100 to stay safe with Smartsheet limits
+            result = smart.Sheets.update_rows(sheet_id, updated_rows)
+            print(f"SUCCESS: {len(updated_rows)} vehicles updated. {result.message}")
         else:
-            print("No matches found.")
+            print("No matches found. Check that Column G headers actually say 'Serial'.")
 
     except Exception as e:
-        print(f"SYSTEM ERROR: {str(e)}")
+        print(f"CRITICAL SYSTEM ERROR: {str(e)}")
 
 if __name__ == "__main__":
     get_sync_bot()
