@@ -37,22 +37,31 @@ def get_sync_bot():
         
         today_date = datetime.now().strftime("%Y-%m-%d")
 
+        # COLUMN MAPPING
         col_map = {col.title.strip(): col.id for col in sheet.columns}
         primary_col_id = next((col.id for col in sheet.columns if col.primary), None)
+        
         mil_col_id = col_map.get("Current Mileage")
+        last_week_col_id = col_map.get("Last Week's Odometer") # NEW COLUMN
         ser_col_id = col_map.get("Serial")
         date_col_id = col_map.get("Last Sync Date")
 
-        # BUILD LOOKUP
+        # BUILD LOOKUP AND CAPTURE PREVIOUS DATA
         ss_rows_lookup = {}
         for r in sheet.rows:
             # Find the primary cell (Vehicle Name)
             veh_cell = next((c for c in r.cells if c.column_id == primary_col_id), None)
+            
+            # Find the existing 'Current Mileage' value to shift it
+            current_mil_cell = next((c for c in r.cells if c.column_id == mil_col_id), None)
+            existing_value = current_mil_cell.value if current_mil_cell else None
+
             if veh_cell:
                 name_val = veh_cell.value if veh_cell.value is not None else veh_cell.display_value
                 name = str(name_val or "").strip().upper()
                 if name:
-                    ss_rows_lookup[name] = r.id
+                    # Store both the row ID and the current mileage found in the sheet
+                    ss_rows_lookup[name] = {"id": r.id, "old_value": existing_value}
         
         print(f"Indexed {len(ss_rows_lookup)} rows from Smartsheet.")
 
@@ -62,25 +71,34 @@ def get_sync_bot():
         for d in devices:
             name = str(d['name']).strip().upper()
             if name in ss_rows_lookup:
-                row_id = ss_rows_lookup[name]
+                row_info = ss_rows_lookup[name]
+                row_id = row_info["id"]
+                
                 if row_id not in seen_ids:
                     new_row = smartsheet.models.Row()
                     new_row.id = row_id
                     
-                    # Create Cells
-                    c1 = smartsheet.models.Cell()
-                    c1.column_id = mil_col_id
-                    c1.value = str(int(mileage_dict.get(d['id'], 0)))
+                    # 1. SHIFT: Move the old 'Current Mileage' into 'Last Week's Odometer'
+                    c_old = smartsheet.models.Cell()
+                    c_old.column_id = last_week_col_id
+                    c_old.value = row_info["old_value"]
                     
-                    c2 = smartsheet.models.Cell()
-                    c2.column_id = ser_col_id
-                    c2.value = str(d['serialNumber'])
+                    # 2. UPDATE: Put the fresh Geotab reading into 'Current Mileage'
+                    c_new = smartsheet.models.Cell()
+                    c_new.column_id = mil_col_id
+                    c_new.value = str(int(mileage_dict.get(d['id'], 0)))
                     
-                    c3 = smartsheet.models.Cell()
-                    c3.column_id = date_col_id
-                    c3.value = today_date
+                    # 3. Serial Number
+                    c_ser = smartsheet.models.Cell()
+                    c_ser.column_id = ser_col_id
+                    c_ser.value = str(d['serialNumber'])
                     
-                    new_row.cells.extend([c1, c2, c3])
+                    # 4. Sync Date
+                    c_date = smartsheet.models.Cell()
+                    c_date.column_id = date_col_id
+                    c_date.value = today_date
+                    
+                    new_row.cells.extend([c_old, c_new, c_ser, c_date])
                     updated_rows.append(new_row)
                     seen_ids.add(row_id)
 
