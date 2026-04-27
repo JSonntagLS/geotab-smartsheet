@@ -49,8 +49,7 @@ def sync_to_smartsheet(df):
                 if name:
                     ss_rows_lookup[name] = s_row.id
 
-        # 2. MATCHING WITH DUPLICATE PROTECTION (FIXES ERROR 1137)
-        # We use a dictionary keyed by Row ID to ensure each row is only updated once
+        # 2. MATCHING WITH DUPLICATE PROTECTION
         final_updates_dict = {}
 
         for _, g_row in df.iterrows():
@@ -59,7 +58,6 @@ def sync_to_smartsheet(df):
             if geotab_name in ss_rows_lookup:
                 row_id = ss_rows_lookup[geotab_name]
                 
-                # If we haven't added this row yet, create the update
                 if row_id not in final_updates_dict:
                     new_row = smartsheet.models.Row()
                     new_row.id = row_id
@@ -79,14 +77,12 @@ def sync_to_smartsheet(df):
                     new_row.cells.extend([c1, c2, c3])
                     final_updates_dict[row_id] = new_row
 
-        # Convert dictionary values back to a list for the API
         updated_rows = list(final_updates_dict.values())
 
         # 3. EXECUTION
         if updated_rows:
             result = smart.Sheets.update_rows(sheet_id, updated_rows)
             
-            # Flexible success check
             success = False
             if hasattr(result, 'message') and result.message == 'SUCCESS':
                 success = True
@@ -113,16 +109,34 @@ if api:
     
     # Data Fetching
     devices = api.get('Device')
-    raw_odo = api.get('StatusData', search={'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': len(devices)})
-    adj_odo = api.get('StatusData', search={'diagnosticSearch': {'id': 'DiagnosticOdometerAdjustmentId'}, 'resultsLimit': len(devices)})
-
-    # Processing Mileage
+    
+    # --- FIXED MILEAGE COLLECTION ---
+    # Instead of batch fetching which gives old data, we loop through each device
     mileage_dict = {}
-    for item in (raw_odo + adj_odo):
-        dev_id = item['device']['id']
-        miles = round(item['data'] / 1609.344, 0)
-        if dev_id not in mileage_dict or miles > mileage_dict[dev_id]:
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    for i, d in enumerate(devices):
+        dev_id = d['id']
+        status_text.text(f"Fetching mileage for: {d['name']}")
+        
+        # Pull the absolute most recent log for this specific device
+        curr_logs = api.get('StatusData', search={
+            'deviceSearch': {'id': dev_id},
+            'diagnosticSearch': {'id': 'DiagnosticOdometerId'},
+            'resultsLimit': 1
+        })
+        
+        if curr_logs and isinstance(curr_logs, list):
+            # Convert meters to miles
+            miles = round(curr_logs.get('data', 0) / 1609.344, 0)
             mileage_dict[dev_id] = miles
+        else:
+            mileage_dict[dev_id] = 0
+            
+        progress_bar.progress((i + 1) / len(devices))
+    
+    status_text.text("Mileage collection complete.")
 
     fleet_data = [{
         "Vehicle Name": d['name'],
