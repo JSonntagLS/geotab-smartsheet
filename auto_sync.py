@@ -2,10 +2,11 @@ import mygeotab
 import smartsheet
 import os
 from datetime import datetime, timedelta
+import json
 
 def get_sync_bot():
     try:
-        print("--- SERIAL-ANCHORED SYNC: ULTRASONIC CLEAN ---")
+        print("--- DEBUG PROTOCOL: RAW DATA INSPECTION ---")
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
         sheet_id = int(os.getenv("SMARTSHEET_ID"))
         sheet = smart.Sheets.get_sheet(sheet_id)
@@ -32,6 +33,9 @@ def get_sync_bot():
         monday_target = (datetime.now() - timedelta(days=7)).replace(hour=0, minute=0, second=0)
         updated_rows = []
 
+        # Debugging the first vehicle match
+        debug_count = 0
+
         for d in devices:
             g_serial = str(d.get('serialNumber', '')).strip().upper()
             g_name = str(d.get('name', '')).strip()
@@ -39,49 +43,56 @@ def get_sync_bot():
             if g_serial in ss_serials:
                 try:
                     curr_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'resultsLimit': 1})
-                    prev_logs = api.get('StatusData', search={'deviceSearch': {'id': d['id']}, 'diagnosticSearch': {'id': 'DiagnosticOdometerId'}, 'toDate': monday_target, 'resultsLimit': 1})
+                    
+                    # --- DEBUG SECTION ---
+                    if debug_count < 3:
+                        print(f"\n[DEBUG] Raw Geotab Response for {g_serial}:")
+                        print(f"Type: {type(curr_logs)}")
+                        print(f"Content: {curr_logs}")
+                        debug_count += 1
+                    # ---------------------
 
                     def extract_miles(logs):
-                        # Explicit check for list type to avoid 'get' error
-                        if isinstance(logs, list) and len(logs) > 0:
-                            data_val = logs.get('data')
-                            if data_val is not None:
-                                return int(round(data_val / 1609.344, 0))
-                        return "CHECK GPS"
+                        # Forcefully check every level of the response
+                        if not logs: return "CHECK GPS"
+                        
+                        try:
+                            # Attempt 1: Direct list access
+                            if isinstance(logs, list) and len(logs) > 0:
+                                val = logs
+                                if isinstance(val, dict):
+                                    return int(round(val.get('data', 0) / 1609.344, 0))
+                            # Attempt 2: If it's a weird object with a .data attribute
+                            return int(round(logs.data / 1609.344, 0))
+                        except:
+                            return "CHECK GPS"
 
                     curr_m = extract_miles(curr_logs)
-                    prev_m = extract_miles(prev_logs)
-                    if prev_m == "CHECK GPS": prev_m = curr_m
-
-                    # Build row correctly for the Smartsheet Python SDK
+                    
                     new_row = smartsheet.models.Row()
                     new_row.id = ss_serials[g_serial]
                     
-                    # Create cells individually to avoid __init__ errors
                     cells = []
-                    for cid, val in [(name_col, g_name), (last_week_col, prev_m), (curr_col, curr_m), (date_col, datetime.now().strftime("%Y-%m-%d"))]:
+                    for cid, val in [(name_col, g_name), (curr_col, curr_m), (date_col, datetime.now().strftime("%Y-%m-%d"))]:
                         new_cell = smartsheet.models.Cell()
                         new_cell.column_id = cid
                         new_cell.value = val
-                        new_cell.strict = False
                         cells.append(new_cell)
                     
                     new_row.cells = cells
                     updated_rows.append(new_row)
-                    print(f"READY: {g_serial} -> {g_name}")
 
                 except Exception as e:
-                    print(f"Skipping {g_serial} (Error: {e})")
+                    print(f"Skipping {g_serial} | Error: {str(e)}")
 
         if updated_rows:
-            # Send in chunks of 100 to stay safe with Smartsheet limits
-            result = smart.Sheets.update_rows(sheet_id, updated_rows)
-            print(f"SUCCESS: {len(updated_rows)} vehicles updated. {result.message}")
+            smart.Sheets.update_rows(sheet_id, updated_rows)
+            print(f"\n--- SYNC COMPLETE: Updated {len(updated_rows)} rows ---")
         else:
-            print("No matches found. Check that Column G headers actually say 'Serial'.")
+            print("\nNo data to update.")
 
     except Exception as e:
-        print(f"CRITICAL SYSTEM ERROR: {str(e)}")
+        print(f"CRITICAL ERROR: {str(e)}")
 
 if __name__ == "__main__":
     get_sync_bot()
