@@ -3,34 +3,45 @@ import pandas as pd
 import os
 from datetime import datetime
 
+def unwrap_data(obj):
+    """
+    Russian Nesting Doll logic: 
+    If it's a list, look inside. Repeat until we find a dictionary or None.
+    """
+    while isinstance(obj, list):
+        if len(obj) > 0:
+            obj = obj
+        else:
+            return None
+    return obj
+
 def harvest_data():
-    print(f"--- STARTING LIVE HARVEST: {datetime.now()} ---")
+    print(f"--- STARTING ROBUST HARVEST: {datetime.now()} ---")
     
     api = mygeotab.API(username=os.getenv("GEOTAB_USER"), password=os.getenv("GEOTAB_PASSWORD"), database=os.getenv("GEOTAB_DB"))
     api.authenticate()
 
-    # Pulling current devices
     devices = api.get('Device')
     output = []
 
     for d in devices:
-        # Simple, direct pull for the absolute latest record for this specific ID
+        # Get the most recent odometer log
         logs = api.get('StatusData', search={
             'deviceSearch': {'id': d['id']},
             'diagnosticSearch': {'id': 'DiagnosticOdometerId'},
             'resultsLimit': 1
         })
 
+        # Use the Unwrapper to find the record safely
+        record = unwrap_data(logs)
+        
         miles = 0
-        # Correctly accessing the first item in the list
-        if logs and len(logs) > 0:
-            record = logs # This gets the dictionary inside the list
+        if record and isinstance(record, dict):
             meters = record.get('data', 0)
             miles = round(meters / 1609.344, 0)
         
-        # Keep debug for Pacificas to verify the '0' is gone
         if "PACIFICA" in d.get('name', '').upper():
-            print(f"DEBUG: {d.get('name')} | Current Odometer: {miles}")
+            print(f"DEBUG: {d.get('name')} | Result: {miles}")
         
         output.append({
             "Vehicle Name": d.get('name'),
