@@ -65,7 +65,7 @@ def harvest_data():
             
             curr_miles = round(curr['val'] / 1609.344, 0) if curr else 0
             start_miles = round(start['val'] / 1609.344, 0) if start else 0
-            sync_date = curr['ts'][:10] if curr else "N/A" # Just YYYY-MM-DD
+            sync_date = curr['ts'].strftime('%Y-%m-%d') if curr else "N/A"
 
             # Build the update row
             new_row = smartsheet.models.Row()
