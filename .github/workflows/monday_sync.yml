@@ -21,7 +21,7 @@ jobs:
         run: pip install mygeotab smartsheet-python-sdk pandas
 
       - name: Run Sync Robot
-        run: python auto_sync.py
+        run: python get_ids.py
         env:
           GEOTAB_USER: ${{ secrets.GEOTAB_USER }}
           GEOTAB_PASSWORD: ${{ secrets.GEOTAB_PASSWORD }}
