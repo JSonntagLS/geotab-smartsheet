@@ -1,80 +1,75 @@
 import mygeotab
 import pandas as pd
 import os
-import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def harvest_data():
-    print(f"--- STARTING MILE-FOCUSED HARVEST: {datetime.now()} ---")
+    # 1. Set our search window: 7 days ago to cover weekends/parking
+    lookback_days = 7
+    start_date = (datetime.utcnow() - timedelta(days=lookback_days)).isoformat()
+    
+    print(f"--- STARTING 7-DAY WINDOW HARVEST (Since {start_date}) ---")
     
     api = mygeotab.API(username=os.getenv("GEOTAB_USER"), password=os.getenv("GEOTAB_PASSWORD"), database=os.getenv("GEOTAB_DB"))
     api.authenticate()
 
     devices = api.get('Device')
     
-    # We pull 500 records to ensure we don't miss the 'quiet' vehicles
-    # Pulling both Adjustment (Dashboard) and Raw Odometer
-    search_params = [
-        {'id': 'DiagnosticOdometerAdjustmentId'},
-        {'id': 'DiagnosticOdometerId'}
-    ]
+    # We'll search for both types of Odometer diagnostics within our time window
+    diagnostics = ['DiagnosticOdometerAdjustmentId', 'DiagnosticOdometerId']
     
-    all_odo_logs = []
-    for diag in search_params:
-        logs = api.get('StatusData', search={
-            'diagnosticSearch': diag,
-            'resultsLimit': 400 
-        })
-        all_odo_logs.extend(logs)
-
-    # Lookup dictionary to store the best available data per vehicle
-    # Priority: Adjustment ID > Raw ID > Nothing
     odo_lookup = {}
-    for log in all_odo_logs:
-        dev_id = log['device']['id']
-        val = log.get('data', 0)
-        diag_type = log['diagnostic']['id']
-        ts = log.get('dateTime')
+
+    for diag in diagnostics:
+        # We increase the resultsLimit because 76 vehicles x 7 days could be many logs
+        # but we only care about the latest one per device.
+        logs = api.get('StatusData', search={
+            'diagnosticSearch': {'id': diag},
+            'fromDate': start_date,
+            'resultsLimit': 1000 
+        })
         
-        # We want the MOST RECENT log. If we already have a log for this car, 
-        # only replace it if this new one is newer.
-        if dev_id not in odo_lookup or ts > odo_lookup[dev_id]['ts']:
-            odo_lookup[dev_id] = {'val': val, 'ts': ts, 'type': diag_type}
+        for log in logs:
+            dev_id = log['device']['id']
+            val = log.get('data', 0)
+            ts = log.get('dateTime')
+            
+            # Keep the newest log found across both diagnostic types
+            if dev_id not in odo_lookup or ts > odo_lookup[dev_id]['ts']:
+                odo_lookup[dev_id] = {
+                    'val': val, 
+                    'ts': ts, 
+                    'type': "Adjusted" if "Adjustment" in diag else "Raw"
+                }
 
     output = []
     for d in devices:
         dev_id = d.get('id')
         name = d.get('name', 'Unknown')
-        
         entry = odo_lookup.get(dev_id)
         
         if entry:
-            meters = entry['val']
-            # CONVERSION: Geotab returns meters. 
-            # 1 meter = 0.000621371 miles
-            miles = round(meters / 1609.344, 0)
+            miles = round(entry['val'] / 1609.344, 0)
             timestamp = entry['ts']
-            source = "Adjusted" if "Adjustment" in entry['type'] else "Raw"
+            source = entry['type']
         else:
-            miles = "MISSING"
-            timestamp = "N/A"
-            source = "NONE"
+            miles = "NO DATA"
+            timestamp = f"None in last {lookback_days} days"
+            source = "N/A"
 
-        # BUILD MODE DEBUGGING:
-        # Check if the number seems suspiciously low (like KM vs Miles)
-        print(f"[{source}] {name.ljust(18)} | {str(miles).rjust(7)} Miles | Last Sync: {timestamp}")
+        print(f"[{source.ljust(8)}] {name.ljust(20)} | {str(miles).rjust(8)} mi | {timestamp}")
         
         output.append({
             "Vehicle Name": name,
             "Serial": d.get('serialNumber'),
-            "Odometer_Miles": miles,
+            "Odometer": miles,
             "Source": source,
             "Last_Sync": timestamp
         })
 
     df = pd.DataFrame(output)
     df.to_csv("fleet_live.csv", index=False)
-    print(f"--- SUCCESS: {len(output)} Vehicles Processed ---")
+    print(f"--- SUCCESS: {len(output)} vehicles processed ---")
 
 if __name__ == "__main__":
     harvest_data()
