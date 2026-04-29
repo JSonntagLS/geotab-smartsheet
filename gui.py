@@ -3,7 +3,7 @@ import smartsheet
 import pandas as pd
 from datetime import datetime
 
-# 1. MUST BE FIRST: Page Configuration
+# 1. THIS MUST BE THE VERY FIRST STREAMLIT COMMAND
 st.set_page_config(page_title="Assets | LifeServe", layout="wide")
 
 # --- CONFIGURATION ---
