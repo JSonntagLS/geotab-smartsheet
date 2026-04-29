@@ -64,60 +64,68 @@ st.sidebar.header("Matrix Actions")
 if st.sidebar.button("🔍 Run Swap Analysis"):
     st.sidebar.info("Analyzing Fleet...")
     
-    # Clean the data: Convert to uppercase and strip spaces to prevent matching errors
+    # Clean data for matching
     df['Rotation Priority'] = df['Rotation Priority'].astype(str).str.upper().str.strip()
     df['Utilization Tier'] = df['Utilization Tier'].astype(str).str.upper().str.strip()
     
-    # Logic: Find 'URGENT' vehicles that aren't locked
-    # We use .fillna(False) to handle empty checkboxes
-    urgent_vehicles = df[(df['Rotation Priority'] == 'URGENT ROTATION') & (df['Vehicle Lock'] != True)]
-    underused_vehicles = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False) & (df['Vehicle Lock'] != True)]
+    # Filter for candidates (excluding locked vehicles)
+    urgent_vehicles = df[(df['Rotation Priority'] == 'URGENT ROTATION') & (df['Vehicle Lock'] != True)].copy()
+    underused_vehicles = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False) & (df['Vehicle Lock'] != True)].copy()
     
-    if not urgent_vehicles.empty and not underused_vehicles.empty:
+    if not urgent_vehicles.empty:
         st.subheader("💡 AI Recommended Swaps")
         
-        top_urgent = urgent_vehicles.iloc[0]
-        top_underused = underused_vehicles.iloc[0]
+        # This list will hold our batch of updates for the Sync button
+        pending_updates = []
+
+        # Loop through urgent vehicles and try to find a match
+        for i in range(min(len(urgent_vehicles), len(underused_vehicles))):
+            urgent = urgent_vehicles.iloc[i]
+            underused = underused_vehicles.iloc[i]
+            
+            suggestion = f"Swap with {underused['Vehicle Name']} ({underused['Current Location']})"
+            
+            # Display each recommendation
+            st.success(f"**Recommendation {i+1}:** Move **{urgent['Vehicle Name']}** to **{underused['Current Location']}**.")
+            st.write(f"Pairing {urgent['Utilization Tier']} with {underused['Utilization Tier']}.")
+            st.divider()
+
+            # Add to our sync list
+            pending_updates.append({
+                'row_id': urgent['row_id'],
+                'suggestion': suggestion
+            })
         
-        suggestion = f"Swap with {top_underused['Vehicle Name']} ({top_underused['Current Location']})"
-        
-        st.success(f"**Recommendation:** Move **{top_urgent['Vehicle Name']}** to **{top_underused['Current Location']}**.")
-        st.write(f"This swaps a {top_urgent['Utilization Tier']} vehicle with a {top_underused['Utilization Tier']} vehicle.")
-        
-        st.session_state['pending_swap_row'] = top_urgent['row_id']
-        st.session_state['pending_swap_text'] = suggestion
-        st.sidebar.success("Analysis Complete")
-    elif urgent_vehicles.empty:
-        st.sidebar.warning("No 'URGENT' vehicles found. Check your filters.")
-    elif underused_vehicles.empty:
-        st.sidebar.warning("Found URGENT vehicles, but no 'UNDERUSED' vehicles to swap them with.")
+        # Save all matches to session state so the Sync button can push them all at once
+        st.session_state['pending_updates_list'] = pending_updates
+        st.sidebar.success(f"Analysis Complete: {len(pending_updates)} matches found.")
+    else:
+        st.sidebar.warning("No 'URGENT' vehicles found.")
 
 # --- SYNC ENGINE ---
 if st.sidebar.button("🚀 Sync to Smartsheet"):
-    if 'pending_swap_row' in st.session_state:
-        row_id = st.session_state['pending_swap_row']
-        swap_text = st.session_state['pending_swap_text']
+    if 'pending_updates_list' in st.session_state:
         today = datetime.now().strftime("%Y-%m-%d")
+        rows_to_update = []
+
+        for update in st.session_state['pending_updates_list']:
+            new_row = ss_client.models.Row()
+            new_row.id = update['row_id']
+            
+            cell_swap = ss_client.models.Cell()
+            cell_swap.column_id = COL_ID_SUGGESTED_SWAP
+            cell_swap.value = update['suggestion']
+            
+            cell_date = ss_client.models.Cell()
+            cell_date.column_id = COL_ID_DATE_SWAP
+            cell_date.value = today
+            
+            new_row.cells.extend([cell_swap, cell_date])
+            rows_to_update.append(new_row)
         
-        # Create the update row object
-        new_row = ss_client.models.Row()
-        new_row.id = row_id
-        
-        # Build the cells using the IDs you provided
-        cell_swap = ss_client.models.Cell()
-        cell_swap.column_id = COL_ID_SUGGESTED_SWAP
-        cell_swap.value = swap_text
-        
-        cell_date = ss_client.models.Cell()
-        cell_date.column_id = COL_ID_DATE_SWAP
-        cell_date.value = today
-        
-        new_row.cells.append(cell_swap)
-        new_row.cells.append(cell_date)
-        
-        # Push to Smartsheet
-        ss_client.Sheets.update_rows(sheet_id, [new_row])
-        st.sidebar.success("Smartsheet Updated!")
-        st.cache_data.clear() # Refresh data
+        # Bulk update to Smartsheet (faster than one-by-one)
+        ss_client.Sheets.update_rows(sheet_id, rows_to_update)
+        st.sidebar.success(f"Synced {len(rows_to_update)} rows to Smartsheet!")
+        st.cache_data.clear() 
     else:
         st.sidebar.error("Run Analysis first!")
