@@ -35,16 +35,27 @@ def get_distance(loc1, loc2):
 # --- STYLE SETUP (Geotab Motif) ---
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    h1 { color: #002f6c; font-family: 'Arial', sans-serif; font-weight: 700; margin-bottom: 0px; }
-    h3 { color: #002f6c; font-family: 'Arial', sans-serif; border-bottom: 2px solid #002f6c; padding-bottom: 5px; }
+    .main { background-color: #ffffff; }
+    h1 { color: #002f6c; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-weight: 700; margin-bottom: 0px; }
+    h3 { color: #002f6c; font-family: 'Segoe UI', sans-serif; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px; font-size: 1.2rem; }
+    
+    /* Table Header Styling */
+    thead tr th {
+        background-color: #ffffff !important;
+        color: #666666 !important;
+        font-weight: 600 !important;
+        text-transform: none !important;
+        border-bottom: 2px solid #e0e0e0 !important;
+    }
+
+    /* Button Styling */
     .stButton>button { 
         background-color: #002f6c; color: white; border-radius: 4px; 
-        border: none; padding: 10px 24px; font-weight: bold;
+        border: none; padding: 10px 24px; font-weight: 600;
     }
     .stButton>button:hover { background-color: #004a99; color: white; border: none; }
     </style>
-    """, unsafe_allow_html=True) # FIXED: Changed 'index' to 'html'
+    """, unsafe_allow_html=True)
 
 # --- DATA FETCHING ---
 @st.cache_data(ttl=60)
@@ -80,10 +91,14 @@ st.divider()
 # --- MAIN DASHBOARD ---
 st.subheader("Live Fleet Status")
 
-def color_priority(val):
-    if val == "URGENT ROTATION": return 'background-color: #ffcccc'
-    if val == "Consider Rotating": return 'background-color: #fff4cc'
-    return ''
+def apply_geotab_styles(styler):
+    # Set text color to that specific Geotab blue for the primary Asset column
+    styler.set_properties(subset=['Vehicle Name'], **{'color': '#0070d2', 'font-weight': '600'})
+    # General row styling
+    styler.set_properties(**{'background-color': 'white', 'color': '#333333', 'border-bottom': '1px solid #eeeeee'})
+    # Priority Highlighting
+    styler.map(lambda val: 'background-color: #feebe2' if val == "URGENT ROTATION" else '', subset=['Rotation Priority'])
+    return styler
 
 display_cols = [
     "Vehicle Name", "Current Location", "Vehicle Description", 
@@ -91,6 +106,22 @@ display_cols = [
     "Weekly Trend", "Rotation Priority", "Utilization Tier",
     "Suggested Swap", "Date of Suggest Swap"
 ]
+available_cols = [c for c in display_cols if c in df.columns]
+
+if not df.empty:
+    # Applying the Geotab look via Pandas Styler
+    styled_df = df[available_cols].style.pipe(apply_geotab_styles)
+    
+    st.dataframe(
+        styled_df, 
+        use_container_width=True, 
+        hide_index=True,
+        column_config={
+            "Vehicle Name": st.column_config.TextColumn("Asset", width="large"),
+            "Monthly Miles Actual": st.column_config.NumberColumn("Odometer (mi)", format="%d"),
+        }
+    )
+    
 # Filter to columns that actually exist in the sheet
 available_cols = [c for c in display_cols if c in df.columns]
 
