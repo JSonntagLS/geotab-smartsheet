@@ -64,14 +64,18 @@ st.sidebar.header("Matrix Actions")
 if st.sidebar.button("🔍 Run Swap Analysis"):
     st.sidebar.info("Analyzing Fleet...")
     
-    # Logic: Find 'URGENT' vehicles that aren't locked
-    urgent_vehicles = df[(df['Rotation Priority'] == 'URGENT ROTATION') & (df['Vehicle Lock'] != True)]
-    underused_vehicles = df[df['Utilization Tier'].str.contains('Underused', na=False) & (df['Vehicle Lock'] != True)]
+    # Clean the data: Convert to uppercase and strip spaces to prevent matching errors
+    df['Rotation Priority'] = df['Rotation Priority'].astype(str).str.upper().str.strip()
+    df['Utilization Tier'] = df['Utilization Tier'].astype(str).str.upper().str.strip()
     
-    if not urgent_vehicles.empty:
+    # Logic: Find 'URGENT' vehicles that aren't locked
+    # We use .fillna(False) to handle empty checkboxes
+    urgent_vehicles = df[(df['Rotation Priority'] == 'URGENT ROTATION') & (df['Vehicle Lock'] != True)]
+    underused_vehicles = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False) & (df['Vehicle Lock'] != True)]
+    
+    if not urgent_vehicles.empty and not underused_vehicles.empty:
         st.subheader("💡 AI Recommended Swaps")
-        # For this test run, we match the top urgent with the top underused
-        # In a full run, we would iterate through all classes
+        
         top_urgent = urgent_vehicles.iloc[0]
         top_underused = underused_vehicles.iloc[0]
         
@@ -80,11 +84,13 @@ if st.sidebar.button("🔍 Run Swap Analysis"):
         st.success(f"**Recommendation:** Move **{top_urgent['Vehicle Name']}** to **{top_underused['Current Location']}**.")
         st.write(f"This swaps a {top_urgent['Utilization Tier']} vehicle with a {top_underused['Utilization Tier']} vehicle.")
         
-        # Store for sync
         st.session_state['pending_swap_row'] = top_urgent['row_id']
         st.session_state['pending_swap_text'] = suggestion
-    else:
-        st.sidebar.write("No urgent rotations needed!")
+        st.sidebar.success("Analysis Complete")
+    elif urgent_vehicles.empty:
+        st.sidebar.warning("No 'URGENT' vehicles found. Check your filters.")
+    elif underused_vehicles.empty:
+        st.sidebar.warning("Found URGENT vehicles, but no 'UNDERUSED' vehicles to swap them with.")
 
 # --- SYNC ENGINE ---
 if st.sidebar.button("🚀 Sync to Smartsheet"):
