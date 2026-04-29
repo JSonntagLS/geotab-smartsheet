@@ -134,9 +134,9 @@ if not df.empty:
             "Vehicle Name": st.column_config.TextColumn("Asset", width="medium"),
             "Current Location": st.column_config.TextColumn("Location", width="small"),
             "Vehicle Description": st.column_config.TextColumn("Desc", width="small"),
-            "Monthly Miles Actual": st.column_config.NumberColumn("Actual", width="small"),
-            "Monthly Projected": st.column_config.NumberColumn("Projected", width="small"),
-            "Weekly Trend": st.column_config.TextColumn("Trend", width="small"),
+            "Monthly Miles Actual": st.column_config.NumberColumn("Actual Monthly Miles", width="small", format="%.0f"),
+            "Monthly Projected": st.column_config.NumberColumn("Projected Monthly Miles", width="small", format="%.0f"),
+            "Weekly Trend": st.column_config.TextColumn("Weekly Trend", width="small"),
             "Rotation Priority": st.column_config.TextColumn("Status", width="small"),
             "Utilization Tier": st.column_config.TextColumn("Usage", width="small")
         }
