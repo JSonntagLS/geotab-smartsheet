@@ -21,9 +21,13 @@ DISTANCE_MATRIX = {
     ("Johnston, IA", "Sioux City, IA"): 185,
     ("Johnston, IA", "Cedar Falls, IA"): 115,
     ("Johnston, IA", "Mason City, IA"): 120,
+    ("Johnston, IA", "Pierre, SD"): 385,     # Added
+    ("Johnston, IA", "Pella, IA"): 55,       # Added
     ("Sioux City, IA", "Mitchell, SD"): 135,
     ("Sioux City, IA", "Yankton, SD"): 65,
+    ("Sioux City, IA", "Pella, IA"): 240,    # Added
     ("Cedar Falls, IA", "Mason City, IA"): 75,
+    ("Davenport, IA", "Pella, IA"): 135,     # Added
 }
 
 def get_distance(loc1, loc2):
