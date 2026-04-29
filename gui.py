@@ -14,10 +14,8 @@ access_token = st.secrets["smartsheet_token"]
 sheet_id = st.secrets["sheet_id"]
 ss_client = smartsheet.Smartsheet(access_token)
 
-# COMPREHENSIVE HUB-TO-HUB DISTANCE MATRIX
-# Includes all permutations for Iowa and South Dakota centers
+# COMPLETE DISTANCE MATRIX
 DISTANCE_MATRIX = {
-    # Johnston Hub Connections
     ("Johnston, IA", "Ames, IA"): 30,
     ("Johnston, IA", "Ankeny, IA"): 12,
     ("Johnston, IA", "Cedar Falls, IA"): 115,
@@ -34,8 +32,6 @@ DISTANCE_MATRIX = {
     ("Johnston, IA", "Mitchell, SD"): 275,
     ("Johnston, IA", "Pierre, SD"): 385,
     ("Johnston, IA", "Yankton, SD"): 190,
-
-    # Sioux City Hub Connections
     ("Sioux City, IA", "Aberdeen, SD"): 220,
     ("Sioux City, IA", "Mitchell, SD"): 135,
     ("Sioux City, IA", "Yankton, SD"): 65,
@@ -45,16 +41,12 @@ DISTANCE_MATRIX = {
     ("Sioux City, IA", "Cedar Falls, IA"): 235,
     ("Sioux City, IA", "Fort Dodge, IA"): 135,
     ("Sioux City, IA", "Davenport, IA"): 350,
-
-    # South Dakota Inter-Hubs
     ("Aberdeen, SD", "Mitchell, SD"): 145,
     ("Aberdeen, SD", "Pierre, SD"): 160,
     ("Aberdeen, SD", "Yankton, SD"): 230,
     ("Mitchell, SD", "Pierre, SD"): 105,
     ("Mitchell, SD", "Yankton, SD"): 70,
     ("Pierre, SD", "Yankton, SD"): 175,
-
-    # Eastern/Central Iowa Inter-Hubs
     ("Cedar Falls, IA", "Mason City, IA"): 75,
     ("Cedar Falls, IA", "Fort Dodge, IA"): 100,
     ("Cedar Falls, IA", "Waterloo, IA"): 8,
@@ -72,21 +64,18 @@ DISTANCE_MATRIX = {
 def get_distance(loc1, loc2):
     try:
         l1, l2 = str(loc1).strip(), str(loc2).strip()
-        if any(x.lower() in ["none", "", "nan"] for x in [l1, l2]):
-            return ""
-        if l1 == l2:
-            return "(0 miles)"
+        if any(x.lower() in ["none", "", "nan"] for x in [l1, l2]): return ""
+        if l1 == l2: return "(0 miles)"
         dist = DISTANCE_MATRIX.get((l1, l2)) or DISTANCE_MATRIX.get((l2, l1))
         return f"({dist} miles)" if dist is not None else ""
-    except:
-        return ""
+    except: return ""
 
-# --- STYLE SETUP (NO EMOJIS) ---
+# --- STYLE SETUP ---
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
     h1 { color: #002f6c; font-family: 'Segoe UI', sans-serif; font-weight: 700; margin-bottom: 0px; }
-    h3 { color: #002f6c; font-family: 'Segoe UI', sans-serif; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px; font-size: 1.2rem; }
+    h3 { color: #002f6c; font-family: 'Segoe UI', sans-serif; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px; font-size: 1.1rem; }
     thead tr th { background-color: #ffffff !important; color: #666666 !important; border-bottom: 2px solid #e0e0e0 !important; }
     .stButton>button { background-color: #002f6c; color: white; border-radius: 4px; border: none; font-weight: 600; }
     </style>
@@ -128,7 +117,7 @@ def apply_styles(styler):
     styler.map(lambda val: 'background-color: #feebe2' if str(val).upper().strip() == "URGENT ROTATION" else '', subset=['Rotation Priority'])
     return styler
 
-# Restored all columns including Monthly Projected and Weekly Trend
+# ENSURING ALL MILEAGE COLUMNS ARE PRESENT
 display_cols = [
     "Vehicle Name", "Current Location", "Vehicle Description", 
     "Monthly Miles Actual", "Monthly Projected", "Weekly Trend", 
@@ -144,16 +133,16 @@ if not df.empty:
         column_config={
             "Vehicle Name": st.column_config.TextColumn("Asset", width="medium"),
             "Current Location": st.column_config.TextColumn("Location", width="small"),
-            "Vehicle Description": st.column_config.TextColumn("Description", width="small"),
+            "Vehicle Description": st.column_config.TextColumn("Desc", width="small"),
             "Monthly Miles Actual": st.column_config.NumberColumn("Actual", width="small"),
             "Monthly Projected": st.column_config.NumberColumn("Projected", width="small"),
             "Weekly Trend": st.column_config.TextColumn("Trend", width="small"),
-            "Rotation Priority": st.column_config.TextColumn("Status", width="medium"),
-            "Utilization Tier": st.column_config.TextColumn("Usage", width="medium")
+            "Rotation Priority": st.column_config.TextColumn("Status", width="small"),
+            "Utilization Tier": st.column_config.TextColumn("Usage", width="small")
         }
     )
 
-# --- ANALYSIS ENGINE (NO EMOJIS) ---
+# --- ANALYSIS ENGINE ---
 if run_analysis:
     st.toast("Analyzing Fleet Trends...")
     df_analysis = df.copy()
@@ -186,7 +175,8 @@ if run_analysis:
                 "Asset Needing Rotation": st.column_config.TextColumn(width="medium"),
                 "Origin": st.column_config.TextColumn(width="small"),
                 "Destination": st.column_config.TextColumn(width="small"),
-                "Distance": st.column_config.TextColumn(width="small")
+                "Distance": st.column_config.TextColumn(width="small"),
+                "Swap Partner": st.column_config.TextColumn(width="medium")
             }
         )
         st.session_state['pending_updates_list'] = updates
