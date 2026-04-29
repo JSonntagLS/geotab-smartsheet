@@ -1,7 +1,7 @@
 name: Get Smartsheet Column IDs
 
 on:
-  workflow_dispatch: # Allows you to run this manually from the Actions tab
+  workflow_dispatch: 
 
 jobs:
   run-lookup:
@@ -19,8 +19,8 @@ jobs:
         run: |
           pip install smartsheet-python-sdk
 
-- name: Run Get IDs Script
+      - name: Run Get IDs Script
         env:
           SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
-          SHEET_ID: ${{ secrets.SMARTSHEET_ID }} # Map the secret to SHEET_ID
+          SHEET_ID: ${{ secrets.SMARTSHEET_ID }}
         run: python get_ids.py
