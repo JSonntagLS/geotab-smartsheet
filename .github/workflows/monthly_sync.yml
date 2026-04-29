@@ -33,7 +33,7 @@ jobs:
           SMARTSHEET_ID: ${{ secrets.SMARTSHEET_ID }}
           RUN_TRIGGER: ${{ github.event_name == 'schedule' && 'Scheduled' || 'Manual' }}
 
-- name: Save History to Repo
+      - name: Save History to Repo
         run: |
           git config --global user.name "Fleet-Robot"
           git config --global user.email "robot@github.com"
