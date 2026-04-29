@@ -143,23 +143,49 @@ if run_analysis:
         underused = underused[underused[lock_col] != True]
     
     if not urgent.empty and not underused.empty:
-        st.subheader("💡 AI Recommended Swaps")
+        st.subheader("AI Recommended Swaps")
         pending_updates = []
+        recommendations_for_table = []
 
         for i in range(min(len(urgent), len(underused))):
             veh_u = urgent.iloc[i]
             veh_low = underused.iloc[i]
             
-            # Safe location access
             loc_u = veh_u.get('Current Location', 'Unknown')
             loc_low = veh_low.get('Current Location', 'Unknown')
-            
             dist_text = get_distance(loc_u, loc_low)
             
             suggestion = f"Swap with {veh_low['Vehicle Name']} {dist_text}"
-            st.success(f"**Recommendation {i+1}:** Move **{veh_u['Vehicle Name']}** to **{loc_low}** {dist_text}.")
+            
+            # Build the table data
+            recommendations_for_table.append({
+                "Priority Asset": veh_u['Vehicle Name'],
+                "Current Site": loc_u,
+                "Target Site": loc_low,
+                "Distance": dist_text,
+                "Suggested Partner": veh_low['Vehicle Name']
+            })
             
             pending_updates.append({'row_id': veh_u['row_id'], 'suggestion': suggestion})
+        
+        # Display as a themed table
+        recs_df = pd.DataFrame(recommendations_for_table)
+        
+        def style_recs(styler):
+            styler.set_properties(subset=['Priority Asset'], **{'color': '#0070d2', 'font-weight': '600'})
+            styler.set_properties(**{'background-color': '#f0fff4', 'color': '#333333', 'border-bottom': '1px solid #eeeeee'})
+            return styler
+
+        st.dataframe(
+            recs_df.style.pipe(style_recs),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Priority Asset": st.column_config.TextColumn("Asset Needing Rotation", width="large"),
+                "Target Site": st.column_config.TextColumn("Move To"),
+                "Suggested Partner": st.column_config.TextColumn("Swap With", width="medium")
+            }
+        )
         
         st.session_state['pending_updates_list'] = pending_updates
     else:
