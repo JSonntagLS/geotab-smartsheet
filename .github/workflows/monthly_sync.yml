@@ -1,0 +1,42 @@
+name: Monthly Fleet Integrity Sync
+
+on:
+  schedule:
+    - cron: '0 12 * * 5' # 12:00 UTC (7:00 AM Central) every Friday
+  workflow_dispatch: # The "Play" button for manual runs
+
+jobs:
+  run-monthly-robot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Allows the robot to save the CSV back to GitHub
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install mygeotab smartsheet-python-sdk pandas
+
+      - name: Run Monthly Robot
+        run: python monthly_sync.py
+        env:
+          GEOTAB_USER: ${{ secrets.GEOTAB_USER }}
+          GEOTAB_PASSWORD: ${{ secrets.GEOTAB_PASSWORD }}
+          GEOTAB_DB: ${{ secrets.GEOTAB_DB }}
+          SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
+          SMARTSHEET_ID: ${{ secrets.SMARTSHEET_ID }}
+          RUN_TRIGGER: ${{ github.event_name == 'schedule' && 'Scheduled' || 'Manual' }}
+
+      - name: Save History to Repo
+        run: |
+          git config --global user.name "Fleet-Robot"
+          git config --global user.email "robot@github.com"
+          git add fleet_history_master.csv
+          git commit -m "Update Fleet History [Skip CI]" || echo "No changes to commit"
+          git push
