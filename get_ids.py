@@ -1,10 +1,16 @@
 import smartsheet
 import os
 
-# GitHub Actions will pass these from your secrets
-access_token = os.getenv("SMARTSHEET_TOKEN")
-# Change SHEET_ID to SMARTSHEET_ID to match your environment/secrets
-sheet_id = os.getenv("SMARTSHEET_ID") 
+# Use os.environ.get to pull from the GitHub Action environment
+access_token = os.environ.get('SMARTSHEET_TOKEN')
+sheet_id = os.environ.get('SHEET_ID')
+
+if not access_token or not sheet_id:
+    print("Error: Missing SMARTSHEET_TOKEN or SHEET_ID in GitHub Secrets.")
+    exit(1)
+
+smartsheet_client = smartsheet.Smartsheet(access_token)
+# ... rest of your code ...
 
 def get_column_ids():
     if not access_token or not sheet_id:
