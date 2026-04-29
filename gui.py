@@ -52,9 +52,9 @@ with col_title:
 # ... (rest of your logic for buttons and tables)
 
 with col_btn1:
-    run_analysis = st.button("🔍 Run Swap Analysis", use_container_width=True)
+    run_analysis = st.button("Run Swap Analysis", use_container_width=True)
 with col_btn2:
-    sync_data = st.button("🚀 Sync to Smartsheet", use_container_width=True)
+    sync_data = st.button("Sync to Smartsheet", use_container_width=True)
 
 st.divider()
 
