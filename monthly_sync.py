@@ -90,23 +90,25 @@ def harvest_monthly_data():
     else:
         df_new.to_csv(master_file, index=False)
 
-    # 3. SMARTSHEET UPDATE
+# 3. SMARTSHEET INTEGRATION & ID SNIFFER
     smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
     sheet_id = int(os.getenv("SMARTSHEET_ID"))
     sheet = smart.Sheets.get_sheet(sheet_id)
     
+    # --- THIS PART PRINTS THE IDs TO YOUR GITHUB LOG ---
+    print("--- COLUMN ID LIST ---")
+    for column in sheet.columns:
+        print(f"COLUMN NAME: {column.title} | ID: {column.id}")
+    print("----------------------")
+
+    # Map Serial Number to Row ID
     row_map = {str(next((c.value for c in r.cells if c.column_id == COL_SERIAL), "")).strip(): r.id for r in sheet.rows}
 
     for item in history_rows:
         if item['Serial'] in row_map:
             new_row = smartsheet.models.Row()
             new_row.id = row_map[item['Serial']]
-            new_row.cells.append({'column_id': COL_MONTHLY_ACTUAL, 'value': item['Monthly_Miles_Actual']})
-            smartsheet_updates.append(new_row)
-
-    if smartsheet_updates:
-        smart.Sheets.update_rows(sheet_id, smartsheet_updates)
-        print(f"SUCCESS: Updated Smartsheet with monthly normalized data.")
-
-if __name__ == "__main__":
-    harvest_monthly_data()
+            # We use a placeholder check here so the script doesn't crash before you have the ID
+            if COL_MONTHLY_ACTUAL != 0:
+                new_row.cells.append({'column_id': COL_MONTHLY_ACTUAL, 'value': item['Monthly_Miles_Actual']})
+                smartsheet_updates.append(new_row)
