@@ -41,7 +41,7 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #004a99; color: white; border: none; }
     </style>
-    """, unsafe_allow_index=True)
+    """, unsafe_allow_html=True) # Changed from 'index' to 'html'
 
 # 5. Header & Navigation
 col_title, col_btn1, col_btn2 = st.columns([3, 1, 1])
