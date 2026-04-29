@@ -17,17 +17,54 @@ ss_client = smartsheet.Smartsheet(access_token)
 
 # Approximate mileage between hubs
 DISTANCE_MATRIX = {
-    ("Johnston, IA", "Mitchell, SD"): 275,
-    ("Johnston, IA", "Sioux City, IA"): 185,
+   # Comprehensive Distance Matrix for all LifeServe Hub Permutations
+DISTANCE_MATRIX = {
+    # Iowa Hubs
+    ("Johnston, IA", "Ames, IA"): 30,
+    ("Johnston, IA", "Ankeny, IA"): 12,
     ("Johnston, IA", "Cedar Falls, IA"): 115,
+    ("Johnston, IA", "Davenport, IA"): 175,
+    ("Johnston, IA", "Des Moines, IA"): 10,
+    ("Johnston, IA", "Fort Dodge, IA"): 85,
+    ("Johnston, IA", "Marshalltown, IA"): 55,
     ("Johnston, IA", "Mason City, IA"): 120,
-    ("Johnston, IA", "Pierre, SD"): 385,     # Added
-    ("Johnston, IA", "Pella, IA"): 55,       # Added
+    ("Johnston, IA", "Pella, IA"): 55,
+    ("Johnston, IA", "Sioux City, IA"): 185,
+    ("Johnston, IA", "Urbandale, IA"): 5,
+    ("Johnston, IA", "Waterloo, IA"): 110,
+    
+    # South Dakota Hubs
+    ("Johnston, IA", "Aberdeen, SD"): 375,
+    ("Johnston, IA", "Mitchell, SD"): 275,
+    ("Johnston, IA", "Pierre, SD"): 385,
+    ("Johnston, IA", "Yankton, SD"): 190,
+    
+    # Regional Inter-Hub Connections
+    ("Sioux City, IA", "Aberdeen, SD"): 220,
     ("Sioux City, IA", "Mitchell, SD"): 135,
     ("Sioux City, IA", "Yankton, SD"): 65,
-    ("Sioux City, IA", "Pella, IA"): 240,    # Added
+    ("Sioux City, IA", "Pierre, SD"): 225,
+    ("Sioux City, IA", "Mason City, IA"): 185,
+    ("Sioux City, IA", "Pella, IA"): 240,
+    
     ("Cedar Falls, IA", "Mason City, IA"): 75,
-    ("Davenport, IA", "Pella, IA"): 135,     # Added
+    ("Cedar Falls, IA", "Fort Dodge, IA"): 100,
+    ("Cedar Falls, IA", "Waterloo, IA"): 8,
+    ("Cedar Falls, IA", "Pierre, SD"): 405,
+    
+    ("Mason City, IA", "Yankton, SD"): 200,
+    ("Mason City, IA", "Fort Dodge, IA"): 105,
+    
+    ("Davenport, IA", "Pella, IA"): 135,
+    ("Davenport, IA", "Des Moines, IA"): 170,
+    
+    ("Mitchell, SD", "Yankton, SD"): 70,
+    ("Mitchell, SD", "Pierre, SD"): 105,
+    ("Aberdeen, SD", "Pierre, SD"): 160,
+    
+    ("Ames, IA", "Ankeny, IA"): 20,
+    ("Ames, IA", "Des Moines, IA"): 35,
+}
 }
 
 def get_distance(loc1, loc2):
