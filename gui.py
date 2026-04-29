@@ -52,7 +52,8 @@ def color_priority(val):
     return ''
 
 if not df.empty:
-    styled_df = df[available_cols].style.applymap(color_priority, subset=['Rotation Priority'])
+    # Use .map() instead of .applymap() for compatibility with newer Pandas
+    styled_df = df[available_cols].style.map(color_priority, subset=['Rotation Priority'])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 else:
     st.warning("Data loaded, but requested columns were not found.")
