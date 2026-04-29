@@ -121,7 +121,8 @@ if st.sidebar.button("🚀 Sync to Smartsheet"):
 
         for update in st.session_state['pending_updates_list']:
             new_row = ss_client.models.Row()
-            new_row.id = update['row_id']
+            # Convert to int to prevent the ValueError
+            new_row.id = int(update['row_id']) 
             
             cell_swap = ss_client.models.Cell()
             cell_swap.column_id = COL_ID_SUGGESTED_SWAP
@@ -134,9 +135,12 @@ if st.sidebar.button("🚀 Sync to Smartsheet"):
             new_row.cells.extend([cell_swap, cell_date])
             rows_to_update.append(new_row)
         
-        # Bulk update to Smartsheet (faster than one-by-one)
-        ss_client.Sheets.update_rows(sheet_id, rows_to_update)
-        st.sidebar.success(f"Synced {len(rows_to_update)} rows to Smartsheet!")
-        st.cache_data.clear() 
+        try:
+            # Bulk update to Smartsheet
+            ss_client.Sheets.update_rows(sheet_id, rows_to_update)
+            st.sidebar.success(f"Synced {len(rows_to_update)} rows to Smartsheet!")
+            st.cache_data.clear() 
+        except Exception as e:
+            st.sidebar.error(f"Smartsheet Sync Error: {e}")
     else:
         st.sidebar.error("Run Analysis first!")
