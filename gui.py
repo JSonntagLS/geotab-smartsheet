@@ -1,11 +1,12 @@
 import streamlit as st
-import pandas as pd
 import smartsheet
-from datetime import datetime
+import pandas as pd
 
-# Initialize Smartsheet using existing secrets
-ss_client = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
-SHEET_ID = st.secrets["sheet_id"]
+# This pulls directly from your Streamlit App Secrets
+access_token = st.secrets["smartsheet_token"] 
+sheet_id = st.secrets["sheet_id"] 
+
+ss_client = smartsheet.Smartsheet(access_token)
 
 # Professional UI Layout
 st.title("🚐 LifeServe Fleet Rotation Command Center")
