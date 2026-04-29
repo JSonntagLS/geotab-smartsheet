@@ -19,9 +19,8 @@ jobs:
         run: |
           pip install smartsheet-python-sdk
 
-      - name: Run Get IDs Script
+- name: Run Get IDs Script
         env:
-          # This pulls from your GitHub Repository Secrets
           SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
+          SHEET_ID: ${{ secrets.SMARTSHEET_ID }} # Map the secret to SHEET_ID
         run: python get_ids.py
