@@ -1,10 +1,10 @@
 import streamlit as st
+# 1. THIS MUST BE THE ABSOLUTE FIRST STREAMLIT CALL
+st.set_page_config(page_title="Assets | LifeServe", layout="wide")
+
 import smartsheet
 import pandas as pd
 from datetime import datetime
-
-# 1. THIS MUST BE THE VERY FIRST STREAMLIT COMMAND IN THE SCRIPT
-st.set_page_config(page_title="Assets | LifeServe", layout="wide")
 
 # --- CONFIGURATION ---
 COL_ID_SUGGESTED_SWAP = 3624929309527940
