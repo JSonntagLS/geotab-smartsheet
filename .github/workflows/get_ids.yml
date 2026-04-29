@@ -1,0 +1,27 @@
+name: Get Smartsheet Column IDs
+
+on:
+  workflow_dispatch: # Allows you to run this manually from the Actions tab
+
+jobs:
+  run-lookup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install smartsheet-python-sdk
+
+      - name: Run Get IDs Script
+        env:
+          # This pulls from your GitHub Repository Secrets
+          SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+        run: python get_ids.py
