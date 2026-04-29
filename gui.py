@@ -3,33 +3,36 @@ import smartsheet
 import pandas as pd
 from datetime import datetime
 
-# 1. MUST BE FIRST - No exceptions
+# 1. PAGE CONFIG (MUST BE FIRST AND ONLY CALLED ONCE)
 st.set_page_config(page_title="Assets | LifeServe", layout="wide")
 
-# 2. Setup Smartsheet Client & Constants
+# --- CONFIGURATION ---
 COL_ID_SUGGESTED_SWAP = 3624929309527940
 COL_ID_DATE_SWAP = 8128528936898436
 
+# Access secrets
 access_token = st.secrets["smartsheet_token"]
 sheet_id = st.secrets["sheet_id"]
 ss_client = smartsheet.Smartsheet(access_token)
 
-# 3. Data Fetching Logic (Define this BEFORE styling)
-@st.cache_data(ttl=60)
-def fetch_smartsheet_data():
-    sheet = ss_client.Sheets.get_sheet(sheet_id)
-    columns = [col.title for col in sheet.columns]
-    rows = []
-    for row in sheet.rows:
-        cells = {columns[i]: cell.value for i, cell in enumerate(row.cells)}
-        cells['row_id'] = row.id 
-        rows.append(cells)
-    return pd.DataFrame(rows)
+# Approximate mileage between hubs
+DISTANCE_MATRIX = {
+    ("Johnston, IA", "Mitchell, SD"): 275,
+    ("Johnston, IA", "Sioux City, IA"): 185,
+    ("Johnston, IA", "Cedar Falls, IA"): 115,
+    ("Johnston, IA", "Mason City, IA"): 120,
+    ("Sioux City, IA", "Mitchell, SD"): 135,
+    ("Sioux City, IA", "Yankton, SD"): 65,
+    ("Cedar Falls, IA", "Mason City, IA"): 75,
+}
 
-# Pre-fetch the data so it's ready
-df = fetch_smartsheet_data()
+def get_distance(loc1, loc2):
+    # Ensure inputs are strings and stripped
+    l1, l2 = str(loc1).strip(), str(loc2).strip()
+    dist = DISTANCE_MATRIX.get((l1, l2)) or DISTANCE_MATRIX.get((l2, l1))
+    return f"({dist} miles)" if dist else ""
 
-# 4. NOW it is safe to run styling
+# --- STYLE SETUP (Geotab Motif) ---
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -41,15 +44,31 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #004a99; color: white; border: none; }
     </style>
-    """, unsafe_allow_html=True) # Changed from 'index' to 'html'
+    """, unsafe_allow_html=True) # FIXED: Changed 'index' to 'html'
 
-# 5. Header & Navigation
+# --- DATA FETCHING ---
+@st.cache_data(ttl=60)
+def fetch_smartsheet_data():
+    sheet = ss_client.Sheets.get_sheet(sheet_id)
+    columns = [col.title for col in sheet.columns]
+    rows = []
+    for row in sheet.rows:
+        cells = {columns[i]: cell.value for i, cell in enumerate(row.cells)}
+        cells['row_id'] = row.id 
+        rows.append(cells)
+    
+    df_raw = pd.DataFrame(rows)
+    # CLEANING: Strip spaces from column names to prevent KeyErrors
+    df_raw.columns = df_raw.columns.str.strip()
+    return df_raw
+
+df = fetch_smartsheet_data()
+
+# --- HEADER & TOP NAVIGATION ---
 col_title, col_btn1, col_btn2 = st.columns([3, 1, 1])
 with col_title:
     st.title("Assets")
     st.caption("Fleet Rotation Matrix | LifeServe Blood Center")
-
-# ... (rest of your logic for buttons and tables)
 
 with col_btn1:
     run_analysis = st.button("Run Swap Analysis", use_container_width=True)
@@ -72,41 +91,56 @@ display_cols = [
     "Weekly Trend", "Rotation Priority", "Utilization Tier",
     "Suggested Swap", "Date of Suggest Swap"
 ]
+# Filter to columns that actually exist in the sheet
 available_cols = [c for c in display_cols if c in df.columns]
 
 if not df.empty:
     styled_df = df[available_cols].style.map(color_priority, subset=['Rotation Priority'])
     st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
-# --- LOGIC ENGINES ---
+# --- ANALYSIS ENGINE ---
 if run_analysis:
     st.toast("Analyzing Fleet Trends...")
     
-    # Clean data
+    # Standardize data for matching
     df['Rotation Priority'] = df['Rotation Priority'].astype(str).str.upper().str.strip()
     df['Utilization Tier'] = df['Utilization Tier'].astype(str).str.upper().str.strip()
     
-    urgent = df[(df['Rotation Priority'] == 'URGENT ROTATION') & (df['Vehicle Lock'] != True)].copy()
-    underused = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False) & (df['Vehicle Lock'] != True)].copy()
+    # Check for Vehicle Lock column safely
+    lock_col = 'Vehicle Lock' if 'Vehicle Lock' in df.columns else None
     
-    if not urgent.empty:
+    urgent = df[df['Rotation Priority'] == 'URGENT ROTATION'].copy()
+    if lock_col:
+        urgent = urgent[urgent[lock_col] != True]
+        
+    underused = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False)].copy()
+    if lock_col:
+        underused = underused[underused[lock_col] != True]
+    
+    if not urgent.empty and not underused.empty:
         st.subheader("💡 AI Recommended Swaps")
         pending_updates = []
 
         for i in range(min(len(urgent), len(underused))):
             veh_u = urgent.iloc[i]
             veh_low = underused.iloc[i]
-            dist_text = get_distance(veh_u['Current Location'], veh_low['Current Location'])
+            
+            # Safe location access
+            loc_u = veh_u.get('Current Location', 'Unknown')
+            loc_low = veh_low.get('Current Location', 'Unknown')
+            
+            dist_text = get_distance(loc_u, loc_low)
             
             suggestion = f"Swap with {veh_low['Vehicle Name']} {dist_text}"
-            st.success(f"**Recommendation {i+1}:** Move **{veh_u['Vehicle Name']}** to **{veh_low['Current Location']}** {dist_text}.")
+            st.success(f"**Recommendation {i+1}:** Move **{veh_u['Vehicle Name']}** to **{loc_low}** {dist_text}.")
             
             pending_updates.append({'row_id': veh_u['row_id'], 'suggestion': suggestion})
         
         st.session_state['pending_updates_list'] = pending_updates
     else:
-        st.warning("No urgent rotations needed at this time.")
+        st.warning("No matches found. Ensure you have both 'URGENT' and 'UNDERUSED' vehicles available.")
 
+# --- SYNC ENGINE ---
 if sync_data:
     if 'pending_updates_list' in st.session_state:
         today = datetime.now().strftime("%Y-%m-%d")
@@ -116,7 +150,6 @@ if sync_data:
             new_row = ss_client.models.Row()
             new_row.id = int(update['row_id'])
             
-            # Add Cells
             res_cell = ss_client.models.Cell(column_id=COL_ID_SUGGESTED_SWAP, value=update['suggestion'])
             date_cell = ss_client.models.Cell(column_id=COL_ID_DATE_SWAP, value=today)
             new_row.cells.extend([res_cell, date_cell])
@@ -125,9 +158,9 @@ if sync_data:
         try:
             ss_client.Sheets.update_rows(sheet_id, rows_to_update)
             st.balloons()
-            st.success(f"Successfully synced {len(rows_to_update)} recommendations to Smartsheet!")
+            st.success(f"Successfully synced {len(rows_to_update)} rows!")
             st.cache_data.clear()
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Smartsheet Error: {e}")
     else:
-        st.info("Please run the Analysis first to generate recommendations.")
+        st.info("Run Analysis first.")
