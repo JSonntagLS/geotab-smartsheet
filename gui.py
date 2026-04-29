@@ -14,6 +14,22 @@ sheet_id = st.secrets["sheet_id"]
 
 ss_client = smartsheet.Smartsheet(access_token)
 
+# Approximate mileage between hubs
+DISTANCE_MATRIX = {
+    ("Johnston, IA", "Mitchell, SD"): 275,
+    ("Johnston, IA", "Sioux City, IA"): 185,
+    ("Johnston, IA", "Cedar Falls, IA"): 115,
+    ("Johnston, IA", "Mason City, IA"): 120,
+    ("Sioux City, IA", "Mitchell, SD"): 135,
+    ("Sioux City, IA", "Yankton, SD"): 65,
+    ("Cedar Falls, IA", "Mason City, IA"): 75,
+}
+
+def get_distance(loc1, loc2):
+    # Check both directions in the matrix
+    dist = DISTANCE_MATRIX.get((loc1, loc2)) or DISTANCE_MATRIX.get((loc2, loc1))
+    return f"({dist} miles)" if dist else ""
+
 # --- APP UI ---
 st.set_page_config(page_title="LifeServe Fleet Matrix", layout="wide")
 st.title("🚐 LifeServe Fleet Rotation Command Center")
@@ -64,39 +80,34 @@ st.sidebar.header("Matrix Actions")
 if st.sidebar.button("🔍 Run Swap Analysis"):
     st.sidebar.info("Analyzing Fleet...")
     
-    # Clean data for matching
     df['Rotation Priority'] = df['Rotation Priority'].astype(str).str.upper().str.strip()
     df['Utilization Tier'] = df['Utilization Tier'].astype(str).str.upper().str.strip()
     
-    # Filter for candidates (excluding locked vehicles)
     urgent_vehicles = df[(df['Rotation Priority'] == 'URGENT ROTATION') & (df['Vehicle Lock'] != True)].copy()
     underused_vehicles = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False) & (df['Vehicle Lock'] != True)].copy()
     
     if not urgent_vehicles.empty:
         st.subheader("💡 AI Recommended Swaps")
-        
-        # This list will hold our batch of updates for the Sync button
         pending_updates = []
 
-        # Loop through urgent vehicles and try to find a match
         for i in range(min(len(urgent_vehicles), len(underused_vehicles))):
             urgent = urgent_vehicles.iloc[i]
             underused = underused_vehicles.iloc[i]
             
-            suggestion = f"Swap with {underused['Vehicle Name']} ({underused['Current Location']})"
+            # Get distance between current location and target location
+            dist_text = get_distance(urgent['Current Location'], underused['Current Location'])
             
-            # Display each recommendation
-            st.success(f"**Recommendation {i+1}:** Move **{urgent['Vehicle Name']}** to **{underused['Current Location']}**.")
+            suggestion = f"Swap with {underused['Vehicle Name']} {dist_text}"
+            
+            st.success(f"**Recommendation {i+1}:** Move **{urgent['Vehicle Name']}** to **{underused['Current Location']}** {dist_text}.")
             st.write(f"Pairing {urgent['Utilization Tier']} with {underused['Utilization Tier']}.")
             st.divider()
 
-            # Add to our sync list
             pending_updates.append({
                 'row_id': urgent['row_id'],
                 'suggestion': suggestion
             })
         
-        # Save all matches to session state so the Sync button can push them all at once
         st.session_state['pending_updates_list'] = pending_updates
         st.sidebar.success(f"Analysis Complete: {len(pending_updates)} matches found.")
     else:
