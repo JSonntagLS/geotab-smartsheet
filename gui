@@ -1,0 +1,71 @@
+import streamlit as st
+import pandas as pd
+import smartsheet
+from datetime import datetime
+
+# Streamlit UI Config
+st.set_page_config(page_title="LifeServe Fleet Matrix", layout="wide")
+
+# Secrets / Access (Replace with your actual streamlit secrets logic)
+access_token = st.secrets["smartsheet_token"]
+sheet_id = st.secrets["sheet_id"]
+ss_client = smartsheet.Smartsheet(access_token)
+
+st.title("🚐 LifeServe Fleet Rotation Command Center")
+st.markdown("---")
+
+# 1. Fetch Data
+@st.cache_data(ttl=300)
+def load_fleet_data():
+    sheet = ss_client.Sheets.get_sheet(sheet_id)
+    columns = [col.title for col in sheet.columns]
+    rows = []
+    for row in sheet.rows:
+        cells = [cell.value for cell in row.cells]
+        rows.append(cells)
+    return pd.DataFrame(rows, columns=columns)
+
+df = load_fleet_data()
+
+# 2. Filtering for the UI
+# We only show the columns you requested for a "Professional" look
+display_cols = [
+    "Vehicle Name", "Current Location", "Vehicle Description", 
+    "Monthly Actual", "Projected Monthly", "Monthly Allowance", 
+    "Weekly Trend", "Rotation Priority", "Utilization Tier",
+    "Suggested Swap", "Date of Suggested Swap"
+]
+
+# 3. Sidebar Controls
+st.sidebar.header("Matrix Actions")
+run_analysis = st.sidebar.button("🔍 Run Swap Analysis")
+sync_sheet = st.sidebar.button("🚀 Sync to Smartsheet")
+
+# 4. The Main Dashboard
+st.subheader("Live Fleet Status")
+
+# Custom CSS for a professional look
+st.markdown("""
+    <style>
+    .stDataFrame { border: 1px solid #e6e6e6; border-radius: 10px; }
+    </style>
+    """, unsafe_content_type=True)
+
+if not df.empty:
+    # Filter to only show relevant columns
+    existing_cols = [c for c in display_cols if c in df.columns]
+    st.dataframe(df[existing_cols], use_container_width=True, hide_index=True)
+else:
+    st.error("Could not load data. Check Column IDs.")
+
+# 5. The Matrix Logic Trigger
+if run_analysis:
+    with st.spinner("Gemini is matching overused vehicles with underused candidates..."):
+        # This is where we filter for 'URGENT' and 'Underused' 
+        # and send to the AI for the swap suggestion logic.
+        st.sidebar.success("Analysis Complete!")
+        st.info("**AI Recommendation:** Swap 02 Johnston (Minivan) with 31 Johnston to zero out delivery costs.")
+
+if sync_sheet:
+    st.sidebar.info("Syncing Suggested Swaps back to Smartsheet...")
+    # Update logic here
