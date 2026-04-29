@@ -96,8 +96,8 @@ def apply_geotab_styles(styler):
     styler.set_properties(subset=['Vehicle Name'], **{'color': '#0070d2', 'font-weight': '600'})
     # General row styling
     styler.set_properties(**{'background-color': 'white', 'color': '#333333', 'border-bottom': '1px solid #eeeeee'})
-    # Priority Highlighting
-    styler.map(lambda val: 'background-color: #feebe2' if val == "URGENT ROTATION" else '', subset=['Rotation Priority'])
+    # Priority Highlighting (Geotab-style light red/pink)
+    styler.map(lambda val: 'background-color: #feebe2' if str(val).upper().strip() == "URGENT ROTATION" else '', subset=['Rotation Priority'])
     return styler
 
 display_cols = [
@@ -121,30 +121,24 @@ if not df.empty:
             "Monthly Miles Actual": st.column_config.NumberColumn("Odometer (mi)", format="%d"),
         }
     )
-    
-# Filter to columns that actually exist in the sheet
-available_cols = [c for c in display_cols if c in df.columns]
-
-if not df.empty:
-    styled_df = df[available_cols].style.map(color_priority, subset=['Rotation Priority'])
-    st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 # --- ANALYSIS ENGINE ---
 if run_analysis:
     st.toast("Analyzing Fleet Trends...")
     
     # Standardize data for matching
-    df['Rotation Priority'] = df['Rotation Priority'].astype(str).str.upper().str.strip()
-    df['Utilization Tier'] = df['Utilization Tier'].astype(str).str.upper().str.strip()
+    df_analysis = df.copy()
+    df_analysis['Rotation Priority'] = df_analysis['Rotation Priority'].astype(str).str.upper().str.strip()
+    df_analysis['Utilization Tier'] = df_analysis['Utilization Tier'].astype(str).str.upper().str.strip()
     
     # Check for Vehicle Lock column safely
-    lock_col = 'Vehicle Lock' if 'Vehicle Lock' in df.columns else None
+    lock_col = 'Vehicle Lock' if 'Vehicle Lock' in df_analysis.columns else None
     
-    urgent = df[df['Rotation Priority'] == 'URGENT ROTATION'].copy()
+    urgent = df_analysis[df_analysis['Rotation Priority'] == 'URGENT ROTATION'].copy()
     if lock_col:
         urgent = urgent[urgent[lock_col] != True]
         
-    underused = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False)].copy()
+    underused = df_analysis[df_analysis['Utilization Tier'].str.contains('UNDERUSED', na=False)].copy()
     if lock_col:
         underused = underused[underused[lock_col] != True]
     
