@@ -1,12 +1,12 @@
 import streamlit as st
-# 1. THIS MUST BE THE ABSOLUTE FIRST STREAMLIT CALL
-st.set_page_config(page_title="Assets | LifeServe", layout="wide")
-
 import smartsheet
 import pandas as pd
 from datetime import datetime
 
-# --- CONFIGURATION ---
+# 1. MUST BE FIRST - No exceptions
+st.set_page_config(page_title="Assets | LifeServe", layout="wide")
+
+# 2. Setup Smartsheet Client & Constants
 COL_ID_SUGGESTED_SWAP = 3624929309527940
 COL_ID_DATE_SWAP = 8128528936898436
 
@@ -14,21 +14,22 @@ access_token = st.secrets["smartsheet_token"]
 sheet_id = st.secrets["sheet_id"]
 ss_client = smartsheet.Smartsheet(access_token)
 
-DISTANCE_MATRIX = {
-    ("Johnston, IA", "Mitchell, SD"): 275,
-    ("Johnston, IA", "Sioux City, IA"): 185,
-    ("Johnston, IA", "Cedar Falls, IA"): 115,
-    ("Johnston, IA", "Mason City, IA"): 120,
-    ("Sioux City, IA", "Mitchell, SD"): 135,
-    ("Sioux City, IA", "Yankton, SD"): 65,
-    ("Cedar Falls, IA", "Mason City, IA"): 75,
-}
+# 3. Data Fetching Logic (Define this BEFORE styling)
+@st.cache_data(ttl=60)
+def fetch_smartsheet_data():
+    sheet = ss_client.Sheets.get_sheet(sheet_id)
+    columns = [col.title for col in sheet.columns]
+    rows = []
+    for row in sheet.rows:
+        cells = {columns[i]: cell.value for i, cell in enumerate(row.cells)}
+        cells['row_id'] = row.id 
+        rows.append(cells)
+    return pd.DataFrame(rows)
 
-def get_distance(loc1, loc2):
-    dist = DISTANCE_MATRIX.get((loc1, loc2)) or DISTANCE_MATRIX.get((loc2, loc1))
-    return f"({dist} miles)" if dist else ""
+# Pre-fetch the data so it's ready
+df = fetch_smartsheet_data()
 
-# --- STYLE SETUP (Geotab Motif) ---
+# 4. NOW it is safe to run styling
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -42,25 +43,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_index=True)
 
-# --- DATA FETCHING ---
-@st.cache_data(ttl=60)
-def fetch_smartsheet_data():
-    sheet = ss_client.Sheets.get_sheet(sheet_id)
-    columns = [col.title for col in sheet.columns]
-    rows = []
-    for row in sheet.rows:
-        cells = {columns[i]: cell.value for i, cell in enumerate(row.cells)}
-        cells['row_id'] = row.id 
-        rows.append(cells)
-    return pd.DataFrame(rows)
-
-df = fetch_smartsheet_data()
-
-# --- HEADER & TOP NAVIGATION ---
+# 5. Header & Navigation
 col_title, col_btn1, col_btn2 = st.columns([3, 1, 1])
 with col_title:
     st.title("Assets")
     st.caption("Fleet Rotation Matrix | LifeServe Blood Center")
+
+# ... (rest of your logic for buttons and tables)
 
 with col_btn1:
     run_analysis = st.button("🔍 Run Swap Analysis", use_container_width=True)
