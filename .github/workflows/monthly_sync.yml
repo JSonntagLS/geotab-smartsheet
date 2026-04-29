@@ -33,10 +33,12 @@ jobs:
           SMARTSHEET_ID: ${{ secrets.SMARTSHEET_ID }}
           RUN_TRIGGER: ${{ github.event_name == 'schedule' && 'Scheduled' || 'Manual' }}
 
-      - name: Save History to Repo
+- name: Save History to Repo
         run: |
           git config --global user.name "Fleet-Robot"
           git config --global user.email "robot@github.com"
+          # This ensures the file exists so git doesn't crash on the first run
+          touch fleet_history_master.csv 
           git add fleet_history_master.csv
           git commit -m "Update Fleet History [Skip CI]" || echo "No changes to commit"
           git push
