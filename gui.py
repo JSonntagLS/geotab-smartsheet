@@ -14,9 +14,10 @@ access_token = st.secrets["smartsheet_token"]
 sheet_id = st.secrets["sheet_id"]
 ss_client = smartsheet.Smartsheet(access_token)
 
-# Comprehensive Distance Matrix - Includes Cedar Falls to Pierre and others
+# COMPREHENSIVE HUB-TO-HUB DISTANCE MATRIX
+# Includes all permutations for Iowa and South Dakota centers
 DISTANCE_MATRIX = {
-    # Iowa Hubs
+    # Johnston Hub Connections
     ("Johnston, IA", "Ames, IA"): 30,
     ("Johnston, IA", "Ankeny, IA"): 12,
     ("Johnston, IA", "Cedar Falls, IA"): 115,
@@ -29,52 +30,65 @@ DISTANCE_MATRIX = {
     ("Johnston, IA", "Sioux City, IA"): 185,
     ("Johnston, IA", "Urbandale, IA"): 5,
     ("Johnston, IA", "Waterloo, IA"): 110,
-    
-    # South Dakota Hubs
     ("Johnston, IA", "Aberdeen, SD"): 375,
     ("Johnston, IA", "Mitchell, SD"): 275,
     ("Johnston, IA", "Pierre, SD"): 385,
     ("Johnston, IA", "Yankton, SD"): 190,
-    
-    # Cross-Region Permutations (Including Cedar Falls to Pierre)
-    ("Cedar Falls, IA", "Pierre, SD"): 405,
-    ("Yankton, SD", "Aberdeen, SD"): 230,
-    ("Mason City, IA", "Mitchell, SD"): 265,
-    ("Mason City, IA", "Aberdeen, SD"): 305,
-    ("Davenport, IA", "Fort Dodge, IA"): 215,
-    ("Davenport, IA", "Pella, IA"): 135,
+
+    # Sioux City Hub Connections
     ("Sioux City, IA", "Aberdeen, SD"): 220,
     ("Sioux City, IA", "Mitchell, SD"): 135,
     ("Sioux City, IA", "Yankton, SD"): 65,
     ("Sioux City, IA", "Pierre, SD"): 225,
+    ("Sioux City, IA", "Mason City, IA"): 185,
+    ("Sioux City, IA", "Pella, IA"): 240,
+    ("Sioux City, IA", "Cedar Falls, IA"): 235,
+    ("Sioux City, IA", "Fort Dodge, IA"): 135,
+    ("Sioux City, IA", "Davenport, IA"): 350,
+
+    # South Dakota Inter-Hubs
+    ("Aberdeen, SD", "Mitchell, SD"): 145,
+    ("Aberdeen, SD", "Pierre, SD"): 160,
+    ("Aberdeen, SD", "Yankton, SD"): 230,
+    ("Mitchell, SD", "Pierre, SD"): 105,
+    ("Mitchell, SD", "Yankton, SD"): 70,
+    ("Pierre, SD", "Yankton, SD"): 175,
+
+    # Eastern/Central Iowa Inter-Hubs
     ("Cedar Falls, IA", "Mason City, IA"): 75,
     ("Cedar Falls, IA", "Fort Dodge, IA"): 100,
+    ("Cedar Falls, IA", "Waterloo, IA"): 8,
+    ("Cedar Falls, IA", "Pierre, SD"): 405,
+    ("Cedar Falls, IA", "Pella, IA"): 110,
+    ("Davenport, IA", "Pella, IA"): 135,
+    ("Davenport, IA", "Fort Dodge, IA"): 215,
+    ("Mason City, IA", "Mitchell, SD"): 265,
+    ("Mason City, IA", "Aberdeen, SD"): 305,
+    ("Mason City, IA", "Yankton, SD"): 200,
+    ("Pella, IA", "Des Moines, IA"): 45,
+    ("Fort Dodge, IA", "Ames, IA"): 55,
 }
 
 def get_distance(loc1, loc2):
-    """Calculates distance, handles same-city, and ignores 'None' values."""
     try:
         l1, l2 = str(loc1).strip(), str(loc2).strip()
-        
-        # If Smartsheet has "None" or is blank, return empty string
         if any(x.lower() in ["none", "", "nan"] for x in [l1, l2]):
             return ""
-        
         if l1 == l2:
             return "(0 miles)"
-            
         dist = DISTANCE_MATRIX.get((l1, l2)) or DISTANCE_MATRIX.get((l2, l1))
         return f"({dist} miles)" if dist is not None else ""
     except:
         return ""
 
-# --- STYLE SETUP ---
+# --- STYLE SETUP (NO EMOJIS) ---
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
-    h1 { color: #002f6c; font-family: 'Segoe UI', sans-serif; font-weight: 700; }
+    h1 { color: #002f6c; font-family: 'Segoe UI', sans-serif; font-weight: 700; margin-bottom: 0px; }
+    h3 { color: #002f6c; font-family: 'Segoe UI', sans-serif; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px; font-size: 1.2rem; }
     thead tr th { background-color: #ffffff !important; color: #666666 !important; border-bottom: 2px solid #e0e0e0 !important; }
-    .stButton>button { background-color: #002f6c; color: white; border-radius: 4px; font-weight: 600; }
+    .stButton>button { background-color: #002f6c; color: white; border-radius: 4px; border: none; font-weight: 600; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -108,19 +122,38 @@ st.divider()
 # --- MAIN DASHBOARD ---
 st.subheader("Live Fleet Status")
 
-def apply_geotab_styles(styler):
+def apply_styles(styler):
     styler.set_properties(subset=['Vehicle Name'], **{'color': '#0070d2', 'font-weight': '600'})
     styler.set_properties(**{'background-color': 'white', 'color': '#333333', 'border-bottom': '1px solid #eeeeee'})
     styler.map(lambda val: 'background-color: #feebe2' if str(val).upper().strip() == "URGENT ROTATION" else '', subset=['Rotation Priority'])
     return styler
 
-display_cols = ["Vehicle Name", "Current Location", "Vehicle Description", "Monthly Miles Actual", "Rotation Priority", "Utilization Tier"]
+# Restored all columns including Monthly Projected and Weekly Trend
+display_cols = [
+    "Vehicle Name", "Current Location", "Vehicle Description", 
+    "Monthly Miles Actual", "Monthly Projected", "Weekly Trend", 
+    "Rotation Priority", "Utilization Tier"
+]
 available_cols = [c for c in display_cols if c in df.columns]
 
 if not df.empty:
-    st.dataframe(df[available_cols].style.pipe(apply_geotab_styles), use_container_width=True, hide_index=True)
+    st.dataframe(
+        df[available_cols].style.pipe(apply_styles),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Vehicle Name": st.column_config.TextColumn("Asset", width="medium"),
+            "Current Location": st.column_config.TextColumn("Location", width="small"),
+            "Vehicle Description": st.column_config.TextColumn("Description", width="small"),
+            "Monthly Miles Actual": st.column_config.NumberColumn("Actual", width="small"),
+            "Monthly Projected": st.column_config.NumberColumn("Projected", width="small"),
+            "Weekly Trend": st.column_config.TextColumn("Trend", width="small"),
+            "Rotation Priority": st.column_config.TextColumn("Status", width="medium"),
+            "Utilization Tier": st.column_config.TextColumn("Usage", width="medium")
+        }
+    )
 
-# --- ANALYSIS ENGINE ---
+# --- ANALYSIS ENGINE (NO EMOJIS) ---
 if run_analysis:
     st.toast("Analyzing Fleet Trends...")
     df_analysis = df.copy()
@@ -128,7 +161,7 @@ if run_analysis:
     underused = df_analysis[df_analysis['Utilization Tier'].astype(str).str.upper().str.contains('UNDERUSED', na=False)]
     
     if not urgent.empty and not underused.empty:
-        st.subheader("💡 AI Recommended Swaps")
+        st.subheader("Recommended Asset Swaps")
         recs = []
         updates = []
 
@@ -137,18 +170,28 @@ if run_analysis:
             dist = get_distance(v_u['Current Location'], v_l['Current Location'])
             
             recs.append({
-                "Priority Asset": v_u['Vehicle Name'],
-                "Current Site": v_u['Current Location'],
-                "Target Site": v_l['Current Location'],
+                "Asset Needing Rotation": v_u['Vehicle Name'],
+                "Origin": v_u['Current Location'],
+                "Destination": v_l['Current Location'],
                 "Distance": dist,
-                "Swap With": v_l['Vehicle Name']
+                "Swap Partner": v_l['Vehicle Name']
             })
             updates.append({'row_id': v_u['row_id'], 'suggestion': f"Swap with {v_l['Vehicle Name']} {dist}"})
         
-        st.dataframe(pd.DataFrame(recs), use_container_width=True, hide_index=True)
+        st.dataframe(
+            pd.DataFrame(recs), 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "Asset Needing Rotation": st.column_config.TextColumn(width="medium"),
+                "Origin": st.column_config.TextColumn(width="small"),
+                "Destination": st.column_config.TextColumn(width="small"),
+                "Distance": st.column_config.TextColumn(width="small")
+            }
+        )
         st.session_state['pending_updates_list'] = updates
     else:
-        st.warning("No matches found.")
+        st.warning("No rotation matches found.")
 
 # --- SYNC ENGINE ---
 if sync_data and 'pending_updates_list' in st.session_state:
@@ -162,6 +205,6 @@ if sync_data and 'pending_updates_list' in st.session_state:
     
     try:
         ss_client.Sheets.update_rows(sheet_id, rows_to_update)
-        st.success("Synced successfully!")
+        st.success("Smartsheet update complete.")
     except Exception as e:
         st.error(f"Sync failed: {e}")
