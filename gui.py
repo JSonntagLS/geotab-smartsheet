@@ -14,7 +14,7 @@ access_token = st.secrets["smartsheet_token"]
 sheet_id = st.secrets["sheet_id"]
 ss_client = smartsheet.Smartsheet(access_token)
 
-# Comprehensive Distance Matrix - Updated with missing routes from latest screenshots
+# Comprehensive Distance Matrix - Includes Cedar Falls to Pierre and others
 DISTANCE_MATRIX = {
     # Iowa Hubs
     ("Johnston, IA", "Ames, IA"): 30,
@@ -36,7 +36,8 @@ DISTANCE_MATRIX = {
     ("Johnston, IA", "Pierre, SD"): 385,
     ("Johnston, IA", "Yankton, SD"): 190,
     
-    # Cross-Region Permutations (Added from image_6e0691.png & image_6e0c66.png)
+    # Cross-Region Permutations (Including Cedar Falls to Pierre)
+    ("Cedar Falls, IA", "Pierre, SD"): 405,
     ("Yankton, SD", "Aberdeen, SD"): 230,
     ("Mason City, IA", "Mitchell, SD"): 265,
     ("Mason City, IA", "Aberdeen, SD"): 305,
@@ -45,6 +46,7 @@ DISTANCE_MATRIX = {
     ("Sioux City, IA", "Aberdeen, SD"): 220,
     ("Sioux City, IA", "Mitchell, SD"): 135,
     ("Sioux City, IA", "Yankton, SD"): 65,
+    ("Sioux City, IA", "Pierre, SD"): 225,
     ("Cedar Falls, IA", "Mason City, IA"): 75,
     ("Cedar Falls, IA", "Fort Dodge, IA"): 100,
 }
