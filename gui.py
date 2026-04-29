@@ -14,7 +14,7 @@ access_token = st.secrets["smartsheet_token"]
 sheet_id = st.secrets["sheet_id"]
 ss_client = smartsheet.Smartsheet(access_token)
 
-# Comprehensive Distance Matrix for all LifeServe Hub Permutations
+# Comprehensive Distance Matrix - Updated with missing routes from latest screenshots
 DISTANCE_MATRIX = {
     # Iowa Hubs
     ("Johnston, IA", "Ames, IA"): 30,
@@ -36,56 +36,43 @@ DISTANCE_MATRIX = {
     ("Johnston, IA", "Pierre, SD"): 385,
     ("Johnston, IA", "Yankton, SD"): 190,
     
-    # Regional Inter-Hub Connections
+    # Cross-Region Permutations (Added from image_6e0691.png & image_6e0c66.png)
+    ("Yankton, SD", "Aberdeen, SD"): 230,
+    ("Mason City, IA", "Mitchell, SD"): 265,
+    ("Mason City, IA", "Aberdeen, SD"): 305,
+    ("Davenport, IA", "Fort Dodge, IA"): 215,
+    ("Davenport, IA", "Pella, IA"): 135,
     ("Sioux City, IA", "Aberdeen, SD"): 220,
     ("Sioux City, IA", "Mitchell, SD"): 135,
     ("Sioux City, IA", "Yankton, SD"): 65,
-    ("Sioux City, IA", "Pierre, SD"): 225,
-    ("Sioux City, IA", "Mason City, IA"): 185,
-    ("Sioux City, IA", "Pella, IA"): 240,
-    
     ("Cedar Falls, IA", "Mason City, IA"): 75,
     ("Cedar Falls, IA", "Fort Dodge, IA"): 100,
-    ("Cedar Falls, IA", "Waterloo, IA"): 8,
-    ("Cedar Falls, IA", "Pierre, SD"): 405,
-    
-    ("Mason City, IA", "Yankton, SD"): 200,
-    ("Mason City, IA", "Fort Dodge, IA"): 105,
-    
-    ("Davenport, IA", "Pella, IA"): 135,
-    ("Davenport, IA", "Des Moines, IA"): 170,
-    
-    ("Mitchell, SD", "Yankton, SD"): 70,
-    ("Mitchell, SD", "Pierre, SD"): 105,
-    ("Aberdeen, SD", "Pierre, SD"): 160,
-    
-    ("Ames, IA", "Ankeny, IA"): 20,
-    ("Ames, IA", "Des Moines, IA"): 35,
 }
 
 def get_distance(loc1, loc2):
-    """Calculates distance between two hubs, handling permutations and same-city logic."""
-    l1, l2 = str(loc1).strip(), str(loc2).strip()
-    
-    if l1.lower() == "none" or l2.lower() == "none" or not l1 or not l2:
-        return ""
-    
-    if l1 == l2:
-        return "(0 miles)"
+    """Calculates distance, handles same-city, and ignores 'None' values."""
+    try:
+        l1, l2 = str(loc1).strip(), str(loc2).strip()
         
-    # Check permutations in the distance matrix
-    dist = DISTANCE_MATRIX.get((l1, l2)) or DISTANCE_MATRIX.get((l2, l1))
-    return f"({dist} miles)" if dist is not None else ""
+        # If Smartsheet has "None" or is blank, return empty string
+        if any(x.lower() in ["none", "", "nan"] for x in [l1, l2]):
+            return ""
+        
+        if l1 == l2:
+            return "(0 miles)"
+            
+        dist = DISTANCE_MATRIX.get((l1, l2)) or DISTANCE_MATRIX.get((l2, l1))
+        return f"({dist} miles)" if dist is not None else ""
+    except:
+        return ""
 
 # --- STYLE SETUP ---
 st.markdown("""
     <style>
     .main { background-color: #ffffff; }
-    h1 { color: #002f6c; font-family: 'Segoe UI', sans-serif; font-weight: 700; margin-bottom: 0px; }
-    h3 { color: #002f6c; font-family: 'Segoe UI', sans-serif; border-bottom: 1px solid #e0e0e0; padding-bottom: 10px; font-size: 1.2rem; }
+    h1 { color: #002f6c; font-family: 'Segoe UI', sans-serif; font-weight: 700; }
     thead tr th { background-color: #ffffff !important; color: #666666 !important; border-bottom: 2px solid #e0e0e0 !important; }
-    .stButton>button { background-color: #002f6c; color: white; border-radius: 4px; border: none; padding: 10px 24px; font-weight: 600; }
-    .stButton>button:hover { background-color: #004a99; color: white; border: none; }
+    .stButton>button { background-color: #002f6c; color: white; border-radius: 4px; font-weight: 600; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -105,7 +92,7 @@ def fetch_smartsheet_data():
 
 df = fetch_smartsheet_data()
 
-# --- HEADER & NAVIGATION ---
+# --- HEADER ---
 col_title, col_btn1, col_btn2 = st.columns([3, 1, 1])
 with col_title:
     st.title("Assets")
@@ -173,8 +160,6 @@ if sync_data and 'pending_updates_list' in st.session_state:
     
     try:
         ss_client.Sheets.update_rows(sheet_id, rows_to_update)
-        st.balloons()
-        st.success(f"Successfully synced {len(rows_to_update)} recommendations!")
-        st.cache_data.clear()
+        st.success("Synced successfully!")
     except Exception as e:
-        st.error(f"Smartsheet Sync Error: {e}")
+        st.error(f"Sync failed: {e}")
