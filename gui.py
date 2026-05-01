@@ -42,79 +42,82 @@ def get_distance_miles(loc1, loc2):
     return crow_miles * 1.2
 
 # --- THE SWAP ENGINE ---
+
+# THIS LINE IS THE FIX: It creates the button that the rest of the code is looking for.
+run_analysis = st.button("Run Fleet Rotation Analysis")
+
 if run_analysis:
     st.toast("Calculating Optimal Fleet Rotation...")
     
-    df_analysis = df.copy()
-    recipients = df_analysis[df_analysis['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
-    donors = df_analysis[df_analysis['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
+    # Check if 'df' exists (the data from Smartsheet)
+    if 'df' not in locals():
+        st.error("Data not found. Please ensure the Smartsheet data is loading correctly.")
+    else:
+        df_analysis = df.copy()
+        recipients = df_analysis[df_analysis['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
+        donors = df_analysis[df_analysis['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
 
-    possible_swaps = []
+        possible_swaps = []
 
-    for _, rec in recipients.iterrows():
-        for _, don in donors.iterrows():
-            # RULE 1: Must be same vehicle type
-            if rec['Vehicle Description'] != don['Vehicle Description']:
-                continue
+        for _, rec in recipients.iterrows():
+            for _, don in donors.iterrows():
+                if rec['Vehicle Description'] != don['Vehicle Description']:
+                    continue
 
-            # CALC DISTANCE (Now occurs BEFORE the check)
-            dist = get_distance_miles(rec['Current Location'], don['Current Location'])
-            
-            # RULE 2: Max Distance Filter (Controlled by slider)
-            if dist > max_dist:
-                continue
-            
-            # RULE 3: Calculate Benefit
-            rec_delta = rec['Monthly Projected'] - rec['Monthly Allowance']
-            don_delta = don['Monthly Projected'] - don['Monthly Allowance']
-            mileage_benefit = rec_delta - don_delta
-            
-            # RULE 4: Allowance Similarity
-            allowance_diff = abs(rec['Monthly Allowance'] - don['Monthly Allowance'])
-            similarity_bonus = 1000 / (allowance_diff + 1)
-            
-            # RULE 5: Steep Distance Penalty (Exponential to discourage long drives)
-            dist_penalty = (dist ** 1.5) * 0.5 
+                dist = get_distance_miles(rec['Current Location'], don['Current Location'])
+                
+                if dist > max_dist:
+                    continue
+                
+                rec_delta = rec['Monthly Projected'] - rec['Monthly Allowance']
+                don_delta = don['Monthly Projected'] - don['Monthly Allowance']
+                mileage_benefit = rec_delta - don_delta
+                
+                allowance_diff = abs(rec['Monthly Allowance'] - don['Monthly Allowance'])
+                similarity_bonus = 1000 / (allowance_diff + 1)
+                
+                dist_penalty = (dist ** 1.5) * 0.5 
 
-            # FINAL SCORE
-            score = (mileage_benefit * 0.7) + (similarity_bonus * 0.2) - (dist_penalty * 0.1)
-            
-            possible_swaps.append({
-                "score": score,
-                "rec_name": rec['Vehicle Name'],
-                "don_name": don['Vehicle Name'],
-                "rec_loc": rec['Current Location'],
-                "don_loc": don['Current Location'],
-                "distance": dist,
-                "rec_row": rec['row_id'],
-                "summary": f"Swap {rec['Vehicle Name']} (+{int(rec_delta)} mi) with {don['Vehicle Name']} ({int(don_delta)} mi)"
-            })
+                score = (mileage_benefit * 0.7) + (similarity_bonus * 0.2) - (dist_penalty * 0.1)
+                
+                possible_swaps.append({
+                    "score": score,
+                    "rec_name": rec['Vehicle Name'],
+                    "don_name": don['Vehicle Name'],
+                    "rec_loc": rec['Current Location'],
+                    "don_loc": don['Current Location'],
+                    "distance": dist,
+                    "rec_row": rec['row_id'],
+                    "summary": f"Swap {rec['Vehicle Name']} (+{int(rec_delta)} mi) with {don['Vehicle Name']} ({int(don_delta)} mi)"
+                })
 
-    # Sort and pick unique matches
-    sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
-    final_recs = []
-    used_vehicles = set()
+        sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
+        final_recs = []
+        used_vehicles = set()
 
-    for s in sorted_swaps:
-        if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
-            
-            # --- GEMINI REASONING CALL ---
-            prompt = f"""
-            Analyze this fleet swap:
-            Vehicle A: {s['rec_name']} at {s['rec_loc']} is over-utilizing its lease.
-            Vehicle B: {s['don_name']} at {s['don_loc']} is under-utilizing its lease.
-            Distance: {s['distance']:.1f} miles.
-            Provide a professional 1-sentence rationale for why this swap saves money on lease overages.
-            """
-            try:
-                response = model.generate_content(prompt)
-                rationale = response.text
-            except:
-                rationale = "Optimizes lease mileage distribution based on current utilization trends."
+        for s in sorted_swaps:
+            if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
+                prompt = f"""
+                Analyze this fleet swap:
+                Vehicle A: {s['rec_name']} at {s['rec_loc']} is over-utilizing its lease.
+                Vehicle B: {s['don_name']} at {s['don_loc']} is under-utilizing its lease.
+                Distance: {s['distance']:.1f} miles.
+                Provide a professional 1-sentence rationale for why this swap saves money on lease overages.
+                """
+                try:
+                    response = model.generate_content(prompt)
+                    rationale = response.text
+                except:
+                    rationale = "Optimizes lease mileage distribution based on current utilization trends."
 
-            s['ai_rationale'] = rationale
-            final_recs.append(s)
-            used_vehicles.add(s['rec_name'])
-            used_vehicles.add(s['don_name'])
+                s['ai_rationale'] = rationale
+                final_recs.append(s)
+                used_vehicles.add(s['rec_name'])
+                used_vehicles.add(s['don_name'])
 
-    # Final Recs are ready for display...
+        # Display results
+        if final_recs:
+            st.write("### Recommended Swaps")
+            st.table(pd.DataFrame(final_recs)[["summary", "distance", "ai_rationale"]])
+        else:
+            st.info("No viable swaps found within the current distance and vehicle constraints.")
