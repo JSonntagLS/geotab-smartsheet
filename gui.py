@@ -161,8 +161,11 @@ if run_analysis:
                 final_recs = []
                 used_vehicles = set()
 
-                for s in sorted_swaps:
-                        # Revised Prompt and Logic for Lease Lifecycle
+for s in sorted_swaps:
+                    # Check if either vehicle in this potential swap is already being used in a better-ranked swap
+                    if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
+                        
+                        # --- LEASE LIFECYCLE LOGIC ---
                         l_miles_left = s['l_data']['m']
                         l_months_left = s['l_data']['mo']
                         h_pacing = s['over_pacing']
@@ -175,19 +178,20 @@ if run_analysis:
                         )
                         
                         try:
-                            # Using a more direct call structure to avoid the 404 resource path error
-                            response = model.generate_content(
-                                prompt,
-                                generation_config={"tag_loss_weight": 0.0} # Optional: ensures clean text
-                            )
+                            response = model.generate_content(prompt)
                             s['Lease Lifecycle Projection'] = response.text.strip()
                         except Exception as e:
-                            # Fallback to a manual calculation if the API remains unreachable
+                            # Fallback to manual calculation
                             projected_total = h_pacing * l_months_left
                             if projected_total < l_miles_left:
-                                s['Lease Lifecycle Projection'] = f"Manual Calc: Swap is viable. Est. use ({projected_total}) is under remaining cap ({l_miles_left})."
+                                s['Lease Lifecycle Projection'] = f"Swap viable. Est. total ({projected_total}) under cap ({l_miles_left})."
                             else:
-                                s['Lease Lifecycle Projection'] = f"Manual Calc: Caution. Est. use ({projected_total}) may exceed cap ({l_miles_left})."
+                                s['Lease Lifecycle Projection'] = f"Caution. Est. total ({projected_total}) may exceed cap ({l_miles_left})."
+
+                        # CRITICAL: Add the swap to our final list and mark vehicles as used
+                        final_recs.append(s)
+                        used_vehicles.add(s['high_name'])
+                        used_vehicles.add(s['low_name'])
 
                 if final_recs:
                     st.success(f"Analysis Complete. Found {len(final_recs)} rotations.")
