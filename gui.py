@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import math
 import google.generativeai as genai
+import re
 
 # --- PAGE CONFIG ---
 st.set_page_config(layout="wide")
@@ -12,10 +13,23 @@ st.set_page_config(layout="wide")
 genai.configure(api_key=st.secrets["gemini_api_key"], transport='rest')
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- SIDEBAR ---
-max_dist = st.sidebar.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200)
+# --- MAPPINGS ---
+col_map = {
+    "projected": "Projected Monthly Usage",
+    "allowance": "Monthly Allowance",
+    "priority": "Rotation Priority",
+    "tier": "Utilization Tier",
+    "actual": "Monthly Miles Actual",
+    "trend": "Weekly Trend",
+    "name": "Vehicle Name",
+    "loc": "Current Location",
+    "desc": "Vehicle Description",
+    "start": "Lease Start Date",
+    "length": "Lease Length",
+    "contract": "Total Contract Miles",
+    "odo": "Current Odometer"
+}
 
-# --- COORDINATE-BASED DISTANCE ---
 CITY_COORDS = {
     "Johnston, IA": (41.6730, -93.6977), "Ames, IA": (42.0308, -93.6319),
     "Ankeny, IA": (41.7297, -93.6058), "Cedar Falls, IA": (42.5349, -92.4455),
@@ -28,6 +42,7 @@ CITY_COORDS = {
     "Yankton, SD": (42.8711, -97.3973)
 }
 
+# --- HELPERS ---
 def get_distance_miles(loc1, loc2):
     if loc1 == loc2: return 0
     c1, c2 = CITY_COORDS.get(loc1), CITY_COORDS.get(loc2)
@@ -39,6 +54,32 @@ def get_distance_miles(loc1, loc2):
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)) * 1.2
 
+def calculate_runway(row):
+    try:
+        def force_num(val):
+            if val is None: return 0.0
+            cleaned = re.sub(r'[^0-9.]', '', str(val))
+            return float(cleaned) if cleaned else 0.0
+
+        total_contract = force_num(row[col_map["contract"]])
+        current_odo = force_num(row[col_map["odo"]])
+        miles_remaining = total_contract - current_odo
+        
+        start_date = pd.to_datetime(row[col_map["start"]], errors='coerce')
+        raw_len = force_num(row[col_map["length"]])
+        months_total = int(raw_len) if raw_len > 0 else 36
+        
+        if pd.isnat(start_date):
+            return int(miles_remaining), 12 
+            
+        end_date = start_date + pd.offsets.DateOffset(months=months_total)
+        today = datetime.now()
+        months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
+        
+        return int(miles_remaining), max(1, int(months_remaining))
+    except:
+        return 0, 1
+
 # --- DATA LOADING ---
 try:
     smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
@@ -49,36 +90,18 @@ try:
     df = pd.DataFrame(rows, columns=columns)
     df.columns = df.columns.str.strip() 
 
-# --- DATA INSPECTOR (DEBUG ONLY) ---
-st.write("### Data Integrity Check")
-test_veh = "01 JOHNSTON PM 2026 CHRYSLER PACIFICA"
-if test_veh in df[col_map["name"]].values:
-    sample_row = df[df[col_map["name"]] == test_veh].iloc[0]
-    st.json({
-        "Contract Miles Raw": f"'{sample_row[col_map['contract']]}'",
-        "Odometer Raw": f"'{sample_row[col_map['odo']]}'",
-        "Start Date Raw": f"'{sample_row[col_map['start']]}'",
-        "Contract Type": str(type(sample_row[col_map['contract']])),
-        "Odo Type": str(type(sample_row[col_map['odo']]))
-    })
-else:
-    st.warning("Could not find the test vehicle for debugging.")
-    
-    col_map = {
-        "projected": "Projected Monthly Usage",
-        "allowance": "Monthly Allowance",
-        "priority": "Rotation Priority",
-        "tier": "Utilization Tier",
-        "actual": "Monthly Miles Actual",
-        "trend": "Weekly Trend",
-        "name": "Vehicle Name",
-        "loc": "Current Location",
-        "desc": "Vehicle Description",
-        "start": "Lease Start Date",
-        "length": "Lease Length",
-        "contract": "Total Contract Miles",
-        "odo": "Current Odometer"
-    }
+    # --- DATA INSPECTOR ---
+    st.write("### Data Integrity Check")
+    test_veh = "01 JOHNSTON PM 2026 CHRYSLER PACIFICA"
+    if test_veh in df[col_map["name"]].values:
+        sample_row = df[df[col_map["name"]] == test_veh].iloc[0]
+        st.json({
+            "Contract Miles Raw": f"'{sample_row[col_map['contract']]}'",
+            "Odometer Raw": f"'{sample_row[col_map['odo']]}'",
+            "Start Date Raw": f"'{sample_row[col_map['start']]}'",
+            "Contract Type": str(type(sample_row[col_map['contract']])),
+            "Odo Type": str(type(sample_row[col_map['odo']]))
+        })
 
     df_display = df[[
         col_map["name"], col_map["loc"], col_map["allowance"], 
@@ -88,46 +111,8 @@ else:
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
-# --- HELPER: LEASE RUNWAY ---
-def calculate_runway(row):
-    try:
-        def to_float(val):
-            if val is None or str(val).strip() == "": return 0.0
-            if isinstance(val, str):
-                val = val.replace(',', '').strip()
-            try:
-                return float(val)
-            except:
-                return 0.0
-
-        # Extract values using the map
-        total_contract = to_float(row.get(col_map["contract"]))
-        current_odo = to_float(row.get(col_map["odo"]))
-        
-        # Calculate miles left
-        miles_remaining = total_contract - current_odo
-        
-        # Date Handling
-        raw_start = row.get(col_map["start"])
-        start_date = pd.to_datetime(raw_start, errors='coerce')
-        
-        # Monthly Length
-        raw_len = row.get(col_map["length"])
-        months_total = int(to_float(raw_len)) if to_float(raw_len) > 0 else 36
-        
-        if pd.isnat(start_date):
-            return int(miles_remaining), 12 # Fallback to 1 year left
-            
-        end_date = start_date + pd.offsets.DateOffset(months=months_total)
-        today = datetime.now()
-        
-        # Calculate months remaining
-        months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
-        
-        # Ensure we don't return 0 for months or it breaks division logic in AI
-        return int(miles_remaining), max(1, int(months_remaining))
-    except Exception as e:
-        return 0, 1
+# --- SIDEBAR ---
+max_dist = st.sidebar.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200)
 
 # --- ACTION ---
 run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
@@ -138,7 +123,6 @@ if run_analysis:
     else:
         with st.spinner("Analyzing trajectories..."):
             try:
-                # Use .get() to avoid KeyErrors
                 high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT', na=False, case=False)]
                 low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
 
@@ -151,7 +135,6 @@ if run_analysis:
                         dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
                         if dist > max_dist: continue
                         
-                        # Convert to numeric safely
                         h_proj = pd.to_numeric(high_v[col_map["projected"]], errors='coerce') or 0
                         h_allow = pd.to_numeric(high_v[col_map["allowance"]], errors='coerce') or 0
                         l_proj = pd.to_numeric(low_v[col_map["projected"]], errors='coerce') or 0
@@ -161,13 +144,11 @@ if run_analysis:
                         low_delta = float(l_proj - l_allow)
                         score = ((high_delta - low_delta) * 0.7) - ((dist ** 1.5) * 0.1)
                         
-                        # Lifecycle Data
                         h_miles, h_months = calculate_runway(high_v)
                         l_miles, l_months = calculate_runway(low_v)
                         
-                        # Only show warning if BOTH miles and months are 0 (true failure)
-                        if h_miles <= 0 and h_months <= 1:
-                            st.warning(f"Check Smartsheet data for {high_v[col_map['name']]}: Missing Lease Miles/Dates.")
+                        if h_miles <= 0:
+                            st.warning(f"Check Smartsheet for {high_v[col_map['name']]}: Contract or Odo missing.")
 
                         possible_swaps.append({
                             "score": score,
@@ -186,15 +167,13 @@ if run_analysis:
 
                 for s in sorted_swaps:
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
-                        # Only send to AI if we have real runway data
                         if s['h_data']['m'] > 0:
                             prompt = (
-                                f"Analyze this vehicle swap for LifeServe Blood Center: "
+                                f"Analyze this vehicle swap: "
                                 f"Asset {s['high_name']} has {s['h_data']['m']} miles left on lease with {s['h_data']['mo']} months remaining. "
                                 f"It is over-pacing by {s['over_pacing']} miles/month. "
                                 f"Asset {s['low_name']} has {s['l_data']['m']} miles left with {s['l_data']['mo']} months remaining. "
-                                f"Will this swap allow {s['high_name']} to finish the lease under its 100k limit? "
-                                f"Provide a brief, professional projection of the end-of-lease state."
+                                f"Provide a brief, professional projection of whether this swap fixes the over-pacing issue long-term."
                             )
                             try:
                                 response = model.generate_content(prompt)
@@ -202,14 +181,14 @@ if run_analysis:
                             except:
                                 s['Lease Lifecycle Projection'] = "AI Analysis failed."
                         else:
-                            s['Lease Lifecycle Projection'] = "Insufficient lease data for projection."
+                            s['Lease Lifecycle Projection'] = "Insufficient lease data."
 
                         final_recs.append(s)
                         used_vehicles.add(s['high_name'])
                         used_vehicles.add(s['low_name'])
 
                 if final_recs:
-                    st.success(f"Analysis Complete: {len(final_recs)} recommended rotations.")
+                    st.success(f"Analysis Complete.")
                     ui_df = pd.DataFrame(final_recs).rename(columns={
                         "high_name": "Over-Paced Vehicle",
                         "low_name": "Under-Used Vehicle",
@@ -217,16 +196,11 @@ if run_analysis:
                         "wasted_miles": "Monthly Miles Wasted",
                         "swap_dist": "Swap Distance"
                     })
-
-                    st.table(ui_df[[
-                        "Over-Paced Vehicle", "Under-Used Vehicle", 
-                        "Monthly Miles Over Allowance", "Monthly Miles Wasted", 
-                        "Swap Distance", "Lease Lifecycle Projection"
-                    ]])
+                    st.table(ui_df[["Over-Paced Vehicle", "Under-Used Vehicle", "Monthly Miles Over Allowance", "Swap Distance", "Lease Lifecycle Projection"]])
                 else:
                     st.info("No viable rotations found.")
             except Exception as e:
-                st.error(f"Error in calculation: {e}")
+                st.error(f"Calculation Error: {e}")
 
 st.divider()
 st.write("### Current Fleet Status")
