@@ -47,11 +47,8 @@ try:
     columns = [col.title for col in sheet.columns]
     rows = [[cell.value for cell in row.cells] for row in sheet.rows]
     df = pd.DataFrame(rows, columns=columns)
-    
-    # 1. CLEANING: Strip whitespace from headers
     df.columns = df.columns.str.strip() 
 
-    # 2. EXACT MAPPING: Matches the specific headers from your error report
     col_map = {
         "projected": "Projected Monthly Usage",
         "allowance": "Monthly Allowance",
@@ -61,79 +58,77 @@ try:
         "trend": "Weekly Trend",
         "name": "Vehicle Name",
         "loc": "Current Location",
-        "desc": "Vehicle Description"
+        "desc": "Vehicle Description",
+        "start": "Lease Start Date",
+        "length": "Lease Length",
+        "contract": "Total Contract Miles",
+        "odo": "Current Odometer"
     }
 
-    # Internal ID mapping
-    df['row_id_internal'] = [row.id for row in sheet.rows]
-
-    # 3. DISPLAY FILTERING: Strictly ordered
     df_display = df[[
-        col_map["name"], 
-        col_map["loc"], 
-        col_map["allowance"], 
-        col_map["projected"], 
-        col_map["actual"], 
-        col_map["trend"],
-        col_map["priority"], 
-        col_map["tier"]
+        col_map["name"], col_map["loc"], col_map["allowance"], 
+        col_map["projected"], col_map["actual"], col_map["priority"], col_map["tier"]
     ]]
 
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
-# --- ACTION BUTTON STYLE ---
-st.markdown("""
-    <style>
-    div.stButton > button:first-child {
-        background-color: #0066cc;
-        color: white;
-        border-radius: 5px;
-        height: 3em;
-        width: 100%;
-        font-weight: bold;
-        border: none;
-    }
-    </style>""", unsafe_allow_html=True)
+# --- HELPER: LEASE RUNWAY ---
+def calculate_runway(row):
+    try:
+        total_contract = float(row[col_map["contract"]] or 100000)
+        current_odo = float(row[col_map["odo"]] or 0)
+        miles_remaining = total_contract - current_odo
+        
+        start_date = pd.to_datetime(row[col_map["start"]])
+        months_duration = int(row[col_map["length"]] or 36)
+        end_date = start_date + pd.offsets.DateOffset(months=months_duration)
+        
+        today = datetime.now()
+        months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
+        
+        return miles_remaining, max(1, months_remaining)
+    except:
+        return 0, 1
 
+# --- ACTION ---
 run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
 
 if run_analysis:
     if 'df' not in locals():
         st.error("Data not found.")
     else:
-        with st.spinner("Calculating lease impact and rotation logic..."):
+        with st.spinner("Analyzing lease trajectories..."):
             try:
-                # 1. Define the two groups
                 high_usage_assets = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
                 low_usage_assets = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
 
                 possible_swaps = []
                 for _, high_v in high_usage_assets.iterrows():
                     for _, low_v in low_usage_assets.iterrows():
-                        # Only compare identical vehicle types
                         if high_v[col_map["desc"]] != low_v[col_map["desc"]]:
                             continue
 
                         dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
-                        if dist > max_dist:
-                            continue
+                        if dist > max_dist: continue
                         
-                        # Calculation Logic: (Monthly Projected - Monthly Allowance)
                         high_delta = float(high_v[col_map["projected"]] or 0) - float(high_v[col_map["allowance"]] or 0)
                         low_delta = float(low_v[col_map["projected"]] or 0) - float(low_v[col_map["allowance"]] or 0)
-                        
                         score = ((high_delta - low_delta) * 0.7) - ((dist ** 1.5) * 0.1)
+                        
+                        # Lifecycle Data
+                        h_miles, h_months = calculate_runway(high_v)
+                        l_miles, l_months = calculate_runway(low_v)
                         
                         possible_swaps.append({
                             "score": score,
                             "high_name": high_v[col_map["name"]],
-                            "high_loc": high_v[col_map["loc"]],
                             "low_name": low_v[col_map["name"]],
-                            "low_loc": low_v[col_map["loc"]],
                             "over_pacing": int(high_delta),
                             "wasted_miles": int(abs(low_delta)),
-                            "swap_dist": f"{dist:.1f} miles"
+                            "swap_dist": f"{dist:.1f} miles",
+                            "h_data": {"m": h_miles, "mo": h_months},
+                            "l_data": {"m": l_miles, "mo": l_months}
                         })
 
                 sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
@@ -142,19 +137,18 @@ if run_analysis:
 
                 for s in sorted_swaps:
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
-                        # 2. THE 'WHY' PROMPT: Forcing the AI to explain the mileage waste/overage clearly
                         prompt = (
-                            f"Explain the logic for this vehicle swap to a team lead: "
-                            f"Vehicle {s['high_name']} ({s['high_loc']}) is currently on pace to go {s['over_pacing']} miles over its lease allowance this month. "
-                            f"Meanwhile, {s['low_name']} ({s['low_loc']}) is wasting {s['wasted_miles']} miles of its paid-for allowance by sitting idle. "
-                            f"Explain why moving the high-usage driver to the {s['low_loc']} vehicle solves both problems."
+                            f"Strategic Analysis for LifeServe Blood Center: "
+                            f"Vehicle {s['high_name']} has {s['h_data']['m']} miles left for {s['h_data']['mo']} months, but is over-pacing by {s['over_pacing']} mi/month. "
+                            f"Vehicle {s['low_name']} has {s['l_data']['m']} miles left for {s['l_data']['mo']} months, but is wasting {s['wasted_miles']} mi/month. "
+                            f"If we swap them, is this a permanent solution to hit 100k miles exactly at lease-end, or a temporary fix? Explain the trajectory."
                         )
                         
                         try:
                             response = model.generate_content(prompt)
-                            s['The "Why" (Lease Impact Analysis)'] = response.text.strip()
+                            s['Lease Lifecycle Projection'] = response.text.strip()
                         except:
-                            s['The "Why" (Lease Impact Analysis)'] = f"Moves overage load of {s['over_pacing']} miles to an asset wasting {s['wasted_miles']} miles of allowance."
+                            s['Lease Lifecycle Projection'] = "Trajectory analysis unavailable."
 
                         final_recs.append(s)
                         used_vehicles.add(s['high_name'])
@@ -162,8 +156,6 @@ if run_analysis:
 
                 if final_recs:
                     st.success(f"Analysis Complete: {len(final_recs)} recommended rotations.")
-                    
-                    # 3. Final, descriptive headers that won't change
                     ui_df = pd.DataFrame(final_recs).rename(columns={
                         "high_name": "Over-Paced Vehicle",
                         "low_name": "Under-Used Vehicle",
@@ -173,22 +165,16 @@ if run_analysis:
                     })
 
                     st.table(ui_df[[
-                        "Over-Paced Vehicle", 
-                        "Under-Used Vehicle", 
-                        "Monthly Miles Over Allowance", 
-                        "Monthly Miles Wasted", 
-                        "Swap Distance", 
-                        'The "Why" (Lease Impact Analysis)'
+                        "Over-Paced Vehicle", "Under-Used Vehicle", 
+                        "Monthly Miles Over Allowance", "Monthly Miles Wasted", 
+                        "Swap Distance", "Lease Lifecycle Projection"
                     ]])
                 else:
-                    st.info("No viable rotations found based on current Smartsheet priority levels.")
-                            
+                    st.info("No viable rotations found.")
             except Exception as e:
                 st.error(f"Error: {e}")
 
 st.divider()
-
-# --- BOTTOM SECTION: FLEET STATUS ---
 st.write("### Current Fleet Status")
 if 'df_display' in locals():
     st.dataframe(df_display, use_container_width=True, hide_index=True)
