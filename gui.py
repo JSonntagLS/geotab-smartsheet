@@ -56,10 +56,15 @@ def get_distance_miles(loc1, loc2):
 
 def calculate_runway(row):
     try:
-        def force_num(val):
-            if val is None: return 0.0
+        def force_num(val, fallback=0.0):
+            if val is None or str(val).strip() == "" or str(val).lower() == "nan": 
+                return fallback
             cleaned = re.sub(r'[^0-9.]', '', str(val))
-            return float(cleaned) if cleaned else 0.0
+            return float(cleaned) if cleaned else fallback
+        
+        # Then use it like this:
+        total_contract = force_num(row[col_map["contract"]], fallback=100000.0)
+        current_odo = force_num(row[col_map["odo"]], fallback=25000.0)
 
         total_contract = force_num(row[col_map["contract"]])
         current_odo = force_num(row[col_map["odo"]])
