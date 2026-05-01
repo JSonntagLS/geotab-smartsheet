@@ -102,16 +102,16 @@ if run_analysis:
     if 'df' not in locals():
         st.error("Data not found.")
     else:
-        with st.spinner("Generating strategic rotation recommendations..."):
+        with st.spinner("Calculating lease impact and rotation logic..."):
             try:
-                # Identify assets based on utilization markers
-                high_mileage_assets = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
-                low_mileage_assets = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
+                # 1. Define the two groups
+                high_usage_assets = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
+                low_usage_assets = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
 
                 possible_swaps = []
-                for _, high_v in high_mileage_assets.iterrows():
-                    for _, low_v in low_mileage_assets.iterrows():
-                        # Only swap identical vehicle types (e.g., Pacifica for Pacifica)
+                for _, high_v in high_usage_assets.iterrows():
+                    for _, low_v in low_usage_assets.iterrows():
+                        # Only compare identical vehicle types
                         if high_v[col_map["desc"]] != low_v[col_map["desc"]]:
                             continue
 
@@ -119,7 +119,7 @@ if run_analysis:
                         if dist > max_dist:
                             continue
                         
-                        # Math: Calculate the spread between current pacing and the lease limit
+                        # Calculation Logic: (Monthly Projected - Monthly Allowance)
                         high_delta = float(high_v[col_map["projected"]] or 0) - float(high_v[col_map["allowance"]] or 0)
                         low_delta = float(low_v[col_map["projected"]] or 0) - float(low_v[col_map["allowance"]] or 0)
                         
@@ -131,8 +131,8 @@ if run_analysis:
                             "high_loc": high_v[col_map["loc"]],
                             "low_name": low_v[col_map["name"]],
                             "low_loc": low_v[col_map["loc"]],
-                            "overage_val": int(high_delta),
-                            "buffer_val": int(abs(low_delta)),
+                            "over_pacing": int(high_delta),
+                            "wasted_miles": int(abs(low_delta)),
                             "swap_dist": f"{dist:.1f} miles"
                         })
 
@@ -142,52 +142,49 @@ if run_analysis:
 
                 for s in sorted_swaps:
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
-                        # HIGH-QUALITY AI PROMPT
-                        # This forces the AI to think about the financial and logistical impact
+                        # 2. THE 'WHY' PROMPT: Forcing the AI to explain the mileage waste/overage clearly
                         prompt = (
-                            f"You are a Senior Fleet Manager for LifeServe Blood Center. "
-                            f"Justify the following vehicle swap to executive leadership: "
-                            f"Vehicle {s['high_name']} in {s['high_loc']} is currently pacing {s['overage_val']} miles per month OVER its lease limit. "
-                            f"Vehicle {s['low_name']} in {s['low_loc']} is underutilized with {s['buffer_val']} miles of monthly buffer remaining. "
-                            f"The sites are {s['swap_dist']} apart. "
-                            f"Explain in one professional sentence why this swap is necessary to avoid end-of-lease penalties while maintaining operations."
+                            f"Explain the logic for this vehicle swap to a team lead: "
+                            f"Vehicle {s['high_name']} ({s['high_loc']}) is currently on pace to go {s['over_pacing']} miles over its lease allowance this month. "
+                            f"Meanwhile, {s['low_name']} ({s['low_loc']}) is wasting {s['wasted_miles']} miles of its paid-for allowance by sitting idle. "
+                            f"Explain why moving the high-usage driver to the {s['low_loc']} vehicle solves both problems."
                         )
                         
                         try:
                             response = model.generate_content(prompt)
-                            s['Management Recommendation'] = response.text.strip()
+                            s['The "Why" (Lease Impact Analysis)'] = response.text.strip()
                         except:
-                            s['Management Recommendation'] = f"Immediate rotation required: Transfers high-usage load from {s['high_loc']} to {s['low_loc']} to mitigate lease overage penalties."
+                            s['The "Why" (Lease Impact Analysis)'] = f"Moves overage load of {s['over_pacing']} miles to an asset wasting {s['wasted_miles']} miles of allowance."
 
                         final_recs.append(s)
                         used_vehicles.add(s['high_name'])
                         used_vehicles.add(s['low_name'])
 
                 if final_recs:
-                    st.success(f"Strategic Analysis Complete: {len(final_recs)} rotations recommended.")
+                    st.success(f"Analysis Complete: {len(final_recs)} recommended rotations.")
                     
-                    # Presenting with professional, descriptive headers
+                    # 3. Final, descriptive headers that won't change
                     ui_df = pd.DataFrame(final_recs).rename(columns={
-                        "high_name": "High Usage Asset (Risk)",
-                        "low_name": "Low Usage Asset (Buffer)",
-                        "overage_val": "Monthly Overage Risk (Miles)",
-                        "buffer_val": "Monthly Unused Buffer (Miles)",
+                        "high_name": "Over-Paced Vehicle",
+                        "low_name": "Under-Used Vehicle",
+                        "over_pacing": "Monthly Miles Over Allowance",
+                        "wasted_miles": "Monthly Miles Wasted",
                         "swap_dist": "Swap Distance"
                     })
 
                     st.table(ui_df[[
-                        "High Usage Asset (Risk)", 
-                        "Low Usage Asset (Buffer)", 
-                        "Monthly Overage Risk (Miles)", 
-                        "Monthly Unused Buffer (Miles)", 
+                        "Over-Paced Vehicle", 
+                        "Under-Used Vehicle", 
+                        "Monthly Miles Over Allowance", 
+                        "Monthly Miles Wasted", 
                         "Swap Distance", 
-                        "Management Recommendation"
+                        'The "Why" (Lease Impact Analysis)'
                     ]])
                 else:
-                    st.info("No strategic rotations found. No vehicles currently meet the 'Urgent' or 'Underused' criteria for this vehicle type.")
+                    st.info("No viable rotations found based on current Smartsheet priority levels.")
                             
             except Exception as e:
-                st.error(f"System Error during analysis: {e}")
+                st.error(f"Error: {e}")
 
 st.divider()
 
