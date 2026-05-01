@@ -113,8 +113,15 @@ if run_analysis:
     if 'df' not in locals():
         st.error("Data not found.")
     else:
-        with st.spinner("Analyzing lease trajectories..."):
+        with st.spinner("Analyzing trajectories..."):
             try:
+                # 1. Diagnostic: Check if columns actually exist
+                missing_cols = [v for k, v in col_map.items() if v not in df.columns]
+                if missing_cols:
+                    st.error(f"Missing columns in Smartsheet: {missing_cols}")
+                    st.stop()
+
+                # 2. Filtering
                 high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT', na=False, case=False)]
                 low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
 
@@ -127,14 +134,23 @@ if run_analysis:
                         dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
                         if dist > max_dist: continue
                         
-                        high_delta = float(high_v[col_map["projected"]] or 0) - float(high_v[col_map["allowance"]] or 0)
-                        low_delta = float(low_v[col_map["projected"]] or 0) - float(low_v[col_map["allowance"]] or 0)
+                        # Calculation Logic
+                        high_delta = float(pd.to_numeric(high_v[col_map["projected"]], errors='coerce') or 0) - \
+                                     float(pd.to_numeric(high_v[col_map["allowance"]], errors='coerce') or 0)
+                        
+                        low_delta = float(pd.to_numeric(low_v[col_map["projected"]], errors='coerce') or 0) - \
+                                    float(pd.to_numeric(low_v[col_map["allowance"]], errors='coerce') or 0)
+                        
                         score = ((high_delta - low_delta) * 0.7) - ((dist ** 1.5) * 0.1)
                         
                         # Lifecycle Data
                         h_miles, h_months = calculate_runway(high_v)
                         l_miles, l_months = calculate_runway(low_v)
                         
+                        # DEBUG: If runway returns 0, let's see why
+                        if h_miles == 0 or l_miles == 0:
+                            st.warning(f"Data Issue: {high_v[col_map['name']]} or {low_v[col_map['name']]} has invalid lease data.")
+
                         possible_swaps.append({
                             "score": score,
                             "high_name": high_v[col_map["name"]],
