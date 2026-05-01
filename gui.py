@@ -161,7 +161,7 @@ if run_analysis:
                 final_recs = []
                 used_vehicles = set()
 
-for s in sorted_swaps:
+                for s in sorted_swaps:
                     # Check if either vehicle in this potential swap is already being used in a better-ranked swap
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
                         
