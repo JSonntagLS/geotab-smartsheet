@@ -212,12 +212,20 @@ if run_analysis:
                                     f"Expect to review this asset again in about 6-8 months as the cap nears."
                                 )
                             else:
-                                # This is just buying time
+                                # Calculate exactly how much time you're buying
+                                # We use max(1, ...) to avoid dividing by zero if pacing is 0
                                 months_until_over = int(l_miles_left / max(1, h_pacing_monthly))
-                                s['Lease Lifecycle Projection'] = (
-                                    f"QUICK FIX ONLY: This only buys about {months_until_over} months of runway. "
-                                    f"You are swapping into an asset that will also hit its limit before the lease ends."
-                                )
+                                
+                                if months_until_over == 0:
+                                    s['Lease Lifecycle Projection'] = (
+                                        f"CRITICAL/QUICK FIX: Asset B is nearly at its limit ({l_miles_left} mi left). "
+                                        f"This swap buys less than 1 month of runway. Seek a different asset."
+                                    )
+                                else:
+                                    s['Lease Lifecycle Projection'] = (
+                                        f"QUICK FIX ONLY: This only buys about {months_until_over} months of runway. "
+                                        f"The replacement asset will hit its limit before the lease ends."
+                                    )
 
                         # CRITICAL: Add the swap to our final list and mark vehicles as used
                         final_recs.append(s)
