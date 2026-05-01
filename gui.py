@@ -40,25 +40,39 @@ def get_distance_miles(loc1, loc2):
     return crow_miles * 1.2
 
 # --- DATA LOADING SECTION ---
-# This part must run every time the app loads to define 'df'
 try:
-    # --- INSERT YOUR SMARTSHEET CONNECTION CODE HERE ---
-    # Example: 
-    # smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
-    # sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
-    # df = (Your logic to convert sheet to DataFrame)
+    # 1. Connect to Smartsheet
+    # Replace 'YOUR_ACCESS_TOKEN' with your actual token from Smartsheet
+    smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
     
-    # Placeholder check to prevent crash if df isn't defined yet
-    if 'df' in locals():
-        st.write("### Fleet Data Overview")
+    # 2. Get the Sheet
+    # Replace 'YOUR_SHEET_ID' with your actual numerical Sheet ID
+    sheet_id = st.secrets["sheet_id"]
+    sheet = smart.Sheets.get_sheet(sheet_id)
+    
+    # 3. Convert to DataFrame
+    columns = [col.title for col in sheet.columns]
+    rows = []
+    for row in sheet.rows:
+        cells = []
+        for cell in row.cells:
+            cells.append(cell.value)
+        rows.append(cells)
+    
+    # This creates the 'df' variable the rest of the app is looking for
+    df = pd.DataFrame(rows, columns=columns)
+    
+    # Add a row_id column for Smartsheet tracking
+    df['row_id'] = [row.id for row in sheet.rows]
+
+    if not df.empty:
+        st.write("### Current Fleet Status")
         st.dataframe(df)
     else:
-        st.warning("Smartsheet data not yet loaded. Ensure your Smartsheet connection code is added above this line.")
+        st.warning("The Smartsheet is empty.")
+
 except Exception as e:
-    st.error(f"Error loading data: {e}")
-
-st.divider()
-
+    st.error(f"Error loading Smartsheet: {e}")
 # --- THE SWAP ENGINE ---
 run_analysis = st.button("Run Fleet Rotation Analysis")
 
