@@ -65,9 +65,16 @@ def force_num(val, fallback=0.0):
 
 def calculate_runway(row):
     try:
-        total_contract = force_num(row.get(col_map["contract"]), fallback=100000.0)
+        # Fallback to 100k if contract miles are missing or zero
+        raw_contract = force_num(row.get(col_map["contract"]))
+        total_contract = raw_contract if raw_contract > 0 else 100000.0
+        
         current_odo = force_num(row.get(col_map["odo"]), fallback=0.0)
+        
+        # Prevent 0 cap by ensuring we have a positive remaining balance
         miles_remaining = total_contract - current_odo
+        if miles_remaining <= 0:
+            miles_remaining = 5000 # Safety buffer for calculation
         
         start_date = pd.to_datetime(row.get(col_map["start"]), errors='coerce')
         raw_len = force_num(row.get(col_map["length"]), fallback=36.0)
@@ -78,11 +85,13 @@ def calculate_runway(row):
             
         end_date = start_date + pd.offsets.DateOffset(months=months_total)
         today = datetime.now()
+        
+        # Calculate months remaining
         months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
         
         return int(miles_remaining), max(1, int(months_remaining))
     except:
-        return 0, 1
+        return 5000, 12 # Absolute fallback
 
 # --- DATA LOADING ---
 try:
