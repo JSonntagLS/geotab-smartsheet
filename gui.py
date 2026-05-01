@@ -102,15 +102,16 @@ if run_analysis:
     if 'df' not in locals():
         st.error("Data not found.")
     else:
-        with st.spinner("Processing analysis..."):
+        with st.spinner("Analyzing fleet data and generating rationales..."):
             try:
-                # Use mapped names for filtering
+                # Filter for High Usage (Recipients) and Low Usage (Donors)
                 recipients = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
                 donors = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
 
                 possible_swaps = []
                 for _, rec in recipients.iterrows():
                     for _, don in donors.iterrows():
+                        # Ensure we are swapping like-for-like vehicles
                         if rec[col_map["desc"]] != don[col_map["desc"]]:
                             continue
 
@@ -118,42 +119,68 @@ if run_analysis:
                         if dist > max_dist:
                             continue
                         
-                        # Use mapped names and convert to float for math
+                        # Calculate Deltas
                         rec_delta = float(rec[col_map["projected"]] or 0) - float(rec[col_map["allowance"]] or 0)
                         don_delta = float(don[col_map["projected"]] or 0) - float(don[col_map["allowance"]] or 0)
                         
+                        # Score based on mileage gap and physical distance
                         score = ((rec_delta - don_delta) * 0.7) - ((dist ** 1.5) * 0.1)
                         
                         possible_swaps.append({
                             "score": score,
-                            "rec_name": rec[col_map["name"]],
-                            "don_name": don[col_map["name"]],
-                            "distance": dist,
-                            "summary": f"Swap {rec[col_map['name']]} (+{int(rec_delta)} mi) with {don[col_map['name']]} ({int(don_delta)} mi)"
+                            "high_vehicle": rec[col_map["name"]],
+                            "low_vehicle": don[col_map["name"]],
+                            "miles_over": int(rec_delta),
+                            "miles_under": int(abs(don_delta)),
+                            "distance_swap": f"{dist:.1f} miles",
+                            "rec_delta": rec_delta,
+                            "don_delta": don_delta
                         })
 
+                # Sort by the best impact
                 sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
                 final_recs = []
                 used_vehicles = set()
 
                 for s in sorted_swaps:
-                    if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
-                        prompt = f"Rationale for swap: {s['summary']} over {s['distance']:.1f} miles."
+                    if s['high_vehicle'] not in used_vehicles and s['low_vehicle'] not in used_vehicles:
+                        # Improved AI Prompt for better variety in rationales
+                        prompt = (
+                            f"Context: We are swapping two fleet vehicles to balance lease mileage. "
+                            f"Vehicle A ({s['high_vehicle']}) is projected to be {s['miles_over']} miles OVER its lease. "
+                            f"Vehicle B ({s['low_vehicle']}) is projected to be {s['miles_under']} miles UNDER its lease. "
+                            f"They are {s['distance_swap']} apart. "
+                            f"Provide a 1-sentence professional justification for this swap."
+                        )
+                        
                         try:
                             response = model.generate_content(prompt)
-                            s['ai_rationale'] = response.text
+                            s['AI Rationale'] = response.text.strip()
                         except:
-                            s['ai_rationale'] = "Optimizes lease distribution."
+                            s['AI Rationale'] = f"Reduces {s['miles_over']} mile overage by utilizing underused asset."
 
                         final_recs.append(s)
-                        used_vehicles.add(s['rec_name'])
-                        used_vehicles.add(s['don_name'])
+                        used_vehicles.add(s['high_vehicle'])
+                        used_vehicles.add(s['low_vehicle'])
 
                 if final_recs:
-                    st.success(f"Analysis Complete: {len(final_recs)} swaps identified.")
-                    st.table(pd.DataFrame(final_recs)[["summary", "distance", "ai_rationale"]])
+                    st.success(f"Analysis Complete: {len(final_recs)} optimal swaps identified.")
+                    
+                    # Create a clean DataFrame for the UI
+                    results_df = pd.DataFrame(final_recs)
+                    
+                    # Rename columns for the "Layperson" view
+                    ui_df = results_df.rename(columns={
+                        "high_vehicle": "High Usage Vehicle",
+                        "low_vehicle": "Low Usage Vehicle",
+                        "miles_over": "Projected Overage",
+                        "distance_swap": "Distance Between Vehicles"
+                    })
+
+                    # Display only the helpful columns
+                    st.table(ui_df[["High Usage Vehicle", "Low Usage Vehicle", "Projected Overage", "Distance Between Vehicles", "AI Rationale"]])
                 else:
-                    st.info("No viable swaps found.")
+                    st.info("No viable swaps found based on current filters.")
                             
             except Exception as e:
                 st.error(f"An error occurred during analysis: {e}")
