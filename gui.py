@@ -76,32 +76,40 @@ except Exception as e:
 # --- HELPER: LEASE RUNWAY ---
 def calculate_runway(row):
     try:
-        # Helper to strip commas and convert to numbers safely
-        def clean_num(val):
+        def to_float(val):
+            if val is None or str(val).strip() == "": return 0.0
             if isinstance(val, str):
                 val = val.replace(',', '').strip()
             try:
-                return float(val) if val else 0
+                return float(val)
             except:
-                return 0
+                return 0.0
 
-        total_contract = clean_num(row[col_map["contract"]])
-        current_odo = clean_num(row[col_map["odo"]])
+        # Extract values using the map
+        total_contract = to_float(row.get(col_map["contract"]))
+        current_odo = to_float(row.get(col_map["odo"]))
+        
+        # Calculate miles left
         miles_remaining = total_contract - current_odo
         
-        # Safe Date Conversion
-        start_date = pd.to_datetime(row[col_map["start"]], errors='coerce')
-        months_duration = int(row[col_map["length"]] or 36)
+        # Date Handling
+        raw_start = row.get(col_map["start"])
+        start_date = pd.to_datetime(raw_start, errors='coerce')
+        
+        # Monthly Length
+        raw_len = row.get(col_map["length"])
+        months_total = int(to_float(raw_len)) if to_float(raw_len) > 0 else 36
         
         if pd.isnat(start_date):
-            return int(miles_remaining), 12 # Default fallback
+            return int(miles_remaining), 12 # Fallback to 1 year left
             
-        end_date = start_date + pd.offsets.DateOffset(months=months_duration)
-        
-        # Calculate months remaining from today
+        end_date = start_date + pd.offsets.DateOffset(months=months_total)
         today = datetime.now()
+        
+        # Calculate months remaining
         months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
         
+        # Ensure we don't return 0 for months or it breaks division logic in AI
         return int(miles_remaining), max(1, int(months_remaining))
     except Exception as e:
         return 0, 1
@@ -115,13 +123,7 @@ if run_analysis:
     else:
         with st.spinner("Analyzing trajectories..."):
             try:
-                # 1. Diagnostic: Check if columns actually exist
-                missing_cols = [v for k, v in col_map.items() if v not in df.columns]
-                if missing_cols:
-                    st.error(f"Missing columns in Smartsheet: {missing_cols}")
-                    st.stop()
-
-                # 2. Filtering
+                # Use .get() to avoid KeyErrors
                 high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT', na=False, case=False)]
                 low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
 
@@ -134,22 +136,23 @@ if run_analysis:
                         dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
                         if dist > max_dist: continue
                         
-                        # Calculation Logic
-                        high_delta = float(pd.to_numeric(high_v[col_map["projected"]], errors='coerce') or 0) - \
-                                     float(pd.to_numeric(high_v[col_map["allowance"]], errors='coerce') or 0)
+                        # Convert to numeric safely
+                        h_proj = pd.to_numeric(high_v[col_map["projected"]], errors='coerce') or 0
+                        h_allow = pd.to_numeric(high_v[col_map["allowance"]], errors='coerce') or 0
+                        l_proj = pd.to_numeric(low_v[col_map["projected"]], errors='coerce') or 0
+                        l_allow = pd.to_numeric(low_v[col_map["allowance"]], errors='coerce') or 0
                         
-                        low_delta = float(pd.to_numeric(low_v[col_map["projected"]], errors='coerce') or 0) - \
-                                    float(pd.to_numeric(low_v[col_map["allowance"]], errors='coerce') or 0)
-                        
+                        high_delta = float(h_proj - h_allow)
+                        low_delta = float(l_proj - l_allow)
                         score = ((high_delta - low_delta) * 0.7) - ((dist ** 1.5) * 0.1)
                         
                         # Lifecycle Data
                         h_miles, h_months = calculate_runway(high_v)
                         l_miles, l_months = calculate_runway(low_v)
                         
-                        # DEBUG: If runway returns 0, let's see why
-                        if h_miles == 0 or l_miles == 0:
-                            st.warning(f"Data Issue: {high_v[col_map['name']]} or {low_v[col_map['name']]} has invalid lease data.")
+                        # Only show warning if BOTH miles and months are 0 (true failure)
+                        if h_miles <= 0 and h_months <= 1:
+                            st.warning(f"Check Smartsheet data for {high_v[col_map['name']]}: Missing Lease Miles/Dates.")
 
                         possible_swaps.append({
                             "score": score,
@@ -168,18 +171,23 @@ if run_analysis:
 
                 for s in sorted_swaps:
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
-                        prompt = (
-                            f"Strategic Analysis for LifeServe Blood Center: "
-                            f"Vehicle {s['high_name']} has {s['h_data']['m']} miles left for {s['h_data']['mo']} months, but is over-pacing by {s['over_pacing']} mi/month. "
-                            f"Vehicle {s['low_name']} has {s['l_data']['m']} miles left for {s['l_data']['mo']} months, but is wasting {s['wasted_miles']} mi/month. "
-                            f"If we swap them, is this a permanent solution to hit 100k miles exactly at lease-end, or a temporary fix? Explain the trajectory."
-                        )
-                        
-                        try:
-                            response = model.generate_content(prompt)
-                            s['Lease Lifecycle Projection'] = response.text.strip()
-                        except:
-                            s['Lease Lifecycle Projection'] = "Trajectory analysis unavailable."
+                        # Only send to AI if we have real runway data
+                        if s['h_data']['m'] > 0:
+                            prompt = (
+                                f"Analyze this vehicle swap for LifeServe Blood Center: "
+                                f"Asset {s['high_name']} has {s['h_data']['m']} miles left on lease with {s['h_data']['mo']} months remaining. "
+                                f"It is over-pacing by {s['over_pacing']} miles/month. "
+                                f"Asset {s['low_name']} has {s['l_data']['m']} miles left with {s['l_data']['mo']} months remaining. "
+                                f"Will this swap allow {s['high_name']} to finish the lease under its 100k limit? "
+                                f"Provide a brief, professional projection of the end-of-lease state."
+                            )
+                            try:
+                                response = model.generate_content(prompt)
+                                s['Lease Lifecycle Projection'] = response.text.strip()
+                            except:
+                                s['Lease Lifecycle Projection'] = "AI Analysis failed."
+                        else:
+                            s['Lease Lifecycle Projection'] = "Insufficient lease data for projection."
 
                         final_recs.append(s)
                         used_vehicles.add(s['high_name'])
@@ -203,7 +211,7 @@ if run_analysis:
                 else:
                     st.info("No viable rotations found.")
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error in calculation: {e}")
 
 st.divider()
 st.write("### Current Fleet Status")
