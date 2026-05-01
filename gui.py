@@ -115,8 +115,8 @@ if run_analysis:
     else:
         with st.spinner("Analyzing lease trajectories..."):
             try:
-                high_usage_assets = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
-                low_usage_assets = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
+                high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT', na=False, case=False)]
+                low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
 
                 possible_swaps = []
                 for _, high_v in high_usage_assets.iterrows():
