@@ -11,7 +11,7 @@ st.set_page_config(layout="wide")
 
 # --- AI SETUP ---
 genai.configure(api_key=st.secrets["gemini_api_key"])
-model = genai.GenerativeModel('models/gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # --- MAPPINGS ---
 col_map = {
