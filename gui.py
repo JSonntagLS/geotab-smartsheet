@@ -6,7 +6,6 @@ import math
 import google.generativeai as genai
 
 # --- PAGE CONFIG ---
-# This forces the app to use the full width of your browser
 st.set_page_config(layout="wide")
 
 # --- AI SETUP ---
@@ -48,97 +47,110 @@ try:
     columns = [col.title for col in sheet.columns]
     rows = [[cell.value for cell in row.cells] for row in sheet.rows]
     df = pd.DataFrame(rows, columns=columns)
+    df.columns = df.columns.str.strip() # Clean column names
     
-    # ADDED: Cleanup column names to remove hidden spaces/newlines that cause KeyErrors
-    df.columns = df.columns.str.strip()
-    
-    # Store Row IDs before we drop the column for the display
+    # Internal ID mapping for potential Smartsheet updates
     df['row_id_internal'] = [row.id for row in sheet.rows]
 
-    # --- COLUMN REMOVAL ---
-    cols_to_drop = [
-        "Serial", "Last Monday Start", "Last Week's Usage", 
-        "Lease Start Date", "Total Contract Miles", "Lease Length", 
-        "Suggested Swap", "Date of Suggested Swap", "Excess Rate", 
-        "Estimated Penalty"
+    # ONLY FETCH THESE FOR DISPLAY
+    display_cols = [
+        "Vehicle Name", "Vehicle Description", "Current Location", 
+        "Monthly Allowance", "Monthly Projected", "Rotation Priority", "Utilization Tier"
     ]
-    # Only drop if the column actually exists to avoid new errors
-    df_display = df.drop(columns=[c for c in cols_to_drop if c in df.columns])
-
-    st.write("### Current Fleet Status")
-    # use_container_width=True forces it to expand across the page
-    st.dataframe(df_display, use_container_width=True)
+    # Filter to only existing columns from that list
+    df_display = df[[c for c in display_cols if c in df.columns]]
 
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
-st.divider()
+# --- TOP SECTION: ACTION BUTTON ---
+# Blue styling for the primary action button
+st.markdown("""
+    <style>
+    div.stButton > button:first-child {
+        background-color: #0066cc;
+        color: white;
+        border-radius: 5px;
+        height: 3em;
+        width: 100%;
+        font-weight: bold;
+    }
+    </style>""", unsafe_allow_html=True)
 
-# --- THE SWAP ENGINE ---
-if st.button("Run Fleet Rotation Analysis"):
+run_analysis = st.button("🚀 RUN FLEET ROTATION ANALYSIS")
+
+if run_analysis:
     if 'df' not in locals():
         st.error("Data not found.")
     else:
-        st.toast("Calculating Optimal Fleet Rotation...")
-        
-        # We use the full 'df' here so we have all columns for math, but strip names again to be safe
-        df_math = df.copy()
-        
-        try:
-            recipients = df_math[df_math['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
-            donors = df_math[df_math['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
+        with st.spinner("Calculating optimal rotations..."):
+            try:
+                # Math logic uses the full 'df'
+                recipients = df[df['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
+                donors = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
 
-            possible_swaps = []
-            for _, rec in recipients.iterrows():
-                for _, don in donors.iterrows():
-                    if rec['Vehicle Description'] != don['Vehicle Description']:
-                        continue
+                possible_swaps = []
+                for _, rec in recipients.iterrows():
+                    for _, don in donors.iterrows():
+                        if rec['Vehicle Description'] != don['Vehicle Description']:
+                            continue
 
-                    dist = get_distance_miles(rec['Current Location'], don['Current Location'])
-                    if dist > max_dist:
-                        continue
+                        dist = get_distance_miles(rec['Current Location'], don['Current Location'])
+                        if dist > max_dist:
+                            continue
+                        
+                        # Calculating mileage differences
+                        rec_delta = rec['Monthly Projected'] - rec['Monthly Allowance']
+                        don_delta = don['Monthly Projected'] - don['Monthly Allowance']
+                        
+                        mileage_benefit = rec_delta - don_delta
+                        allowance_diff = abs(rec['Monthly Allowance'] - don['Monthly Allowance'])
+                        similarity_bonus = 1000 / (allowance_diff + 1)
+                        dist_penalty = (dist ** 1.5) * 0.5 
+
+                        score = (mileage_benefit * 0.7) + (similarity_bonus * 0.2) - (dist_penalty * 0.1)
+                        
+                        possible_swaps.append({
+                            "score": score,
+                            "rec_name": rec['Vehicle Name'],
+                            "don_name": don['Vehicle Name'],
+                            "distance": dist,
+                            "summary": f"Swap {rec['Vehicle Name']} (+{int(rec_delta)} mi) with {don['Vehicle Name']} ({int(don_delta)} mi)"
+                        })
+
+                sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
+                final_recs = []
+                used_vehicles = set()
+
+                for s in sorted_swaps:
+                    if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
+                        prompt = f"Rationale for swap: {s['summary']} over {s['distance']:.1f} miles."
+                        try:
+                            response = model.generate_content(prompt)
+                            s['ai_rationale'] = response.text
+                        except:
+                            s['ai_rationale'] = "Optimizes lease distribution."
+
+                        final_recs.append(s)
+                        used_vehicles.add(s['rec_name'])
+                        used_vehicles.add(s['don_name'])
+
+                if final_recs:
+                    st.success(f"Found {len(final_recs)} optimized matches!")
+                    st.write("### Recommended Swaps")
+                    st.table(pd.DataFrame(final_recs)[["summary", "distance", "ai_rationale"]])
                     
-                    # Math block
-                    rec_delta = rec['Monthly Projected'] - rec['Monthly Allowance']
-                    don_delta = don['Monthly Projected'] - don['Monthly Allowance']
+                    # NOTE: Automatic Smartsheet uploading isn't active yet.
+                    st.info("Analysis complete. To sync these back to Smartsheet, we'll need to enable 'Write' access.")
+                else:
+                    st.info("No viable swaps found with current constraints.")
                     
-                    mileage_benefit = rec_delta - don_delta
-                    allowance_diff = abs(rec['Monthly Allowance'] - don['Monthly Allowance'])
-                    similarity_bonus = 1000 / (allowance_diff + 1)
-                    dist_penalty = (dist ** 1.5) * 0.5 
+            except KeyError as e:
+                st.error(f"Missing Column: The system can't find '{e}'. Check Smartsheet header names for typos.")
 
-                    score = (mileage_benefit * 0.7) + (similarity_bonus * 0.2) - (dist_penalty * 0.1)
-                    
-                    possible_swaps.append({
-                        "score": score,
-                        "rec_name": rec['Vehicle Name'],
-                        "don_name": don['Vehicle Name'],
-                        "distance": dist,
-                        "summary": f"Swap {rec['Vehicle Name']} (+{int(rec_delta)} mi) with {don['Vehicle Name']} ({int(don_delta)} mi)"
-                    })
+st.divider()
 
-            sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
-            final_recs = []
-            used_vehicles = set()
-
-            for s in sorted_swaps:
-                if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
-                    prompt = f"Rationale for swap: {s['summary']} over {s['distance']:.1f} miles."
-                    try:
-                        response = model.generate_content(prompt)
-                        s['ai_rationale'] = response.text
-                    except:
-                        s['ai_rationale'] = "Optimizes lease distribution."
-
-                    final_recs.append(s)
-                    used_vehicles.add(s['rec_name'])
-                    used_vehicles.add(s['don_name'])
-
-            if final_recs:
-                st.write("### Recommended Swaps")
-                st.table(pd.DataFrame(final_recs)[["summary", "distance", "ai_rationale"]])
-            else:
-                st.info("No viable swaps found.")
-                
-        except KeyError as e:
-            st.error(f"Column Name Error: The app couldn't find the column named {e}. Please check your Smartsheet column headers.")
+# --- BOTTOM SECTION: FLEET STATUS ---
+st.write("### Current Fleet Status")
+if 'df_display' in locals():
+    st.dataframe(df_display, use_container_width=True)
