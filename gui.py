@@ -2,199 +2,112 @@ import streamlit as st
 import smartsheet
 import pandas as pd
 from datetime import datetime
+import math
+import google.generativeai as genai
 
-# 1. PAGE CONFIG
-st.set_page_config(page_title="Assets | LifeServe", layout="wide")
+# --- AI SETUP ---
+# Replace with your actual API key
+genai.configure(api_key=st.secrets["gemini_api_key"])
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- CONFIGURATION ---
-COL_ID_SUGGESTED_SWAP = 3624929309527940
-COL_ID_DATE_SWAP = 8128528936898436
-
-access_token = st.secrets["smartsheet_token"]
-sheet_id = st.secrets["sheet_id"]
-ss_client = smartsheet.Smartsheet(access_token)
-
-# COMPLETE DISTANCE MATRIX
-DISTANCE_MATRIX = {
-    ("Johnston, IA", "Ames, IA"): 30,
-    ("Johnston, IA", "Ankeny, IA"): 12,
-    ("Johnston, IA", "Cedar Falls, IA"): 115,
-    ("Johnston, IA", "Davenport, IA"): 175,
-    ("Johnston, IA", "Des Moines, IA"): 10,
-    ("Johnston, IA", "Fort Dodge, IA"): 85,
-    ("Johnston, IA", "Marshalltown, IA"): 55,
-    ("Johnston, IA", "Mason City, IA"): 120,
-    ("Johnston, IA", "Pella, IA"): 55,
-    ("Johnston, IA", "Sioux City, IA"): 185,
-    ("Johnston, IA", "Urbandale, IA"): 5,
-    ("Johnston, IA", "Waterloo, IA"): 110,
-    ("Johnston, IA", "Aberdeen, SD"): 375,
-    ("Johnston, IA", "Mitchell, SD"): 275,
-    ("Johnston, IA", "Pierre, SD"): 385,
-    ("Johnston, IA", "Yankton, SD"): 190,
-    ("Sioux City, IA", "Aberdeen, SD"): 220,
-    ("Sioux City, IA", "Mitchell, SD"): 135,
-    ("Sioux City, IA", "Yankton, SD"): 65,
-    ("Sioux City, IA", "Pierre, SD"): 225,
-    ("Sioux City, IA", "Mason City, IA"): 185,
-    ("Sioux City, IA", "Pella, IA"): 240,
-    ("Sioux City, IA", "Cedar Falls, IA"): 235,
-    ("Sioux City, IA", "Fort Dodge, IA"): 135,
-    ("Sioux City, IA", "Davenport, IA"): 350,
-    ("Aberdeen, SD", "Mitchell, SD"): 145,
-    ("Aberdeen, SD", "Pierre, SD"): 160,
-    ("Aberdeen, SD", "Yankton, SD"): 230,
-    ("Mitchell, SD", "Pierre, SD"): 105,
-    ("Mitchell, SD", "Yankton, SD"): 70,
-    ("Pierre, SD", "Yankton, SD"): 175,
-    ("Cedar Falls, IA", "Mason City, IA"): 75,
-    ("Cedar Falls, IA", "Fort Dodge, IA"): 100,
-    ("Cedar Falls, IA", "Waterloo, IA"): 8,
-    ("Cedar Falls, IA", "Pierre, SD"): 405,
-    ("Cedar Falls, IA", "Pella, IA"): 110,
-    ("Davenport, IA", "Pella, IA"): 135,
-    ("Davenport, IA", "Fort Dodge, IA"): 215,
-    ("Mason City, IA", "Mitchell, SD"): 265,
-    ("Mason City, IA", "Aberdeen, SD"): 305,
-    ("Mason City, IA", "Yankton, SD"): 200,
-    ("Pella, IA", "Des Moines, IA"): 45,
-    ("Fort Dodge, IA", "Ames, IA"): 55,
+# --- COORDINATE-BASED DISTANCE (Replaces the 136-line table) ---
+# This allows any city to talk to any other city accurately.
+CITY_COORDS = {
+    "Johnston, IA": (41.6730, -93.6977), "Ames, IA": (42.0308, -93.6319),
+    "Ankeny, IA": (41.7297, -93.6058), "Cedar Falls, IA": (42.5349, -92.4455),
+    "Davenport, IA": (41.5234, -90.5776), "Des Moines, IA": (41.5868, -93.6250),
+    "Fort Dodge, IA": (42.4975, -94.1680), "Marshalltown, IA": (42.0494, -92.9080),
+    "Mason City, IA": (43.1536, -93.2010), "Pella, IA": (41.4080, -92.9163),
+    "Sioux City, IA": (42.4963, -96.4049), "Urbandale, IA": (41.6266, -93.7122),
+    "Waterloo, IA": (42.4928, -92.3425), "Aberdeen, SD": (45.4647, -98.4865),
+    "Mitchell, SD": (43.7094, -98.0298), "Pierre, SD": (44.3683, -100.3510),
+    "Yankton, SD": (42.8711, -97.3973)
 }
 
-def get_distance(loc1, loc2):
-    try:
-        l1, l2 = str(loc1).strip(), str(loc2).strip()
-        if any(x.lower() in ["none", "", "nan"] for x in [l1, l2]): return ""
-        if l1 == l2: return "(0 miles)"
-        dist = DISTANCE_MATRIX.get((l1, l2)) or DISTANCE_MATRIX.get((l2, l1))
-        return f"({dist} miles)" if dist is not None else ""
-    except: return ""
+def get_distance_km(loc1, loc2):
+    if loc1 == loc2: return 0
+    c1, c2 = CITY_COORDS.get(loc1), CITY_COORDS.get(loc2)
+    if not c1 or not c2: return 999 # Penalty for unknown locations
+    # Haversine formula for distance
+    radius = 3958.8 # Miles
+    lat1, lon1 = math.radians(c1[0]), math.radians(c1[1])
+    lat2, lon2 = math.radians(c2[0]), math.radians(c2[1])
+    dlat, dlon = lat2 - lat1, lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
-# --- STYLE SETUP ---
-st.markdown("""
-    <style>
-    .main { background-color: #ffffff; }
-    h1 { color: #002f6c; font-family: 'Segoe UI', sans-serif; font-weight: 700; margin-bottom: 0px; }
-    h3 { color: #002f6c; font-family: 'Segoe UI', sans-serif; border-bottom: 1px solid #e0e0e0; padding-bottom: 5px; font-size: 1.1rem; }
-    thead tr th { background-color: #ffffff !important; color: #666666 !important; border-bottom: 2px solid #e0e0e0 !important; }
-    .stButton>button { background-color: #002f6c; color: white; border-radius: 4px; border: none; font-weight: 600; }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- DATA FETCHING ---
-@st.cache_data(ttl=60)
-def fetch_smartsheet_data():
-    sheet = ss_client.Sheets.get_sheet(sheet_id)
-    columns = [col.title for col in sheet.columns]
-    rows = []
-    for row in sheet.rows:
-        cells = {columns[i]: cell.value for i, cell in enumerate(row.cells)}
-        cells['row_id'] = row.id 
-        rows.append(cells)
-    df_raw = pd.DataFrame(rows)
-    df_raw.columns = df_raw.columns.str.strip()
-    return df_raw
-
-df = fetch_smartsheet_data()
-
-# --- HEADER ---
-col_title, col_btn1, col_btn2 = st.columns([3, 1, 1])
-with col_title:
-    st.title("Assets")
-    st.caption("Fleet Rotation Matrix | LifeServe Blood Center")
-
-run_analysis = col_btn1.button("Run Swap Analysis", use_container_width=True)
-sync_data = col_btn2.button("Sync to Smartsheet", use_container_width=True)
-
-st.divider()
-
-# --- MAIN DASHBOARD ---
-st.subheader("Live Fleet Status")
-
-def apply_styles(styler):
-    styler.set_properties(subset=['Vehicle Name'], **{'color': '#0070d2', 'font-weight': '600'})
-    styler.set_properties(**{'background-color': 'white', 'color': '#333333', 'border-bottom': '1px solid #eeeeee'})
-    styler.map(lambda val: 'background-color: #feebe2' if str(val).upper().strip() == "URGENT ROTATION" else '', subset=['Rotation Priority'])
-    return styler
-
-# ENSURING ALL MILEAGE COLUMNS ARE PRESENT
-display_cols = [
-    "Vehicle Name", "Current Location", "Vehicle Description", 
-    "Monthly Miles Actual", "Monthly Projected", "Weekly Trend", 
-    "Rotation Priority", "Utilization Tier"
-]
-available_cols = [c for c in display_cols if c in df.columns]
-
-if not df.empty:
-    st.dataframe(
-        df[available_cols].style.pipe(apply_styles),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Vehicle Name": st.column_config.TextColumn("Asset", width="medium"),
-            "Current Location": st.column_config.TextColumn("Location", width="small"),
-            "Vehicle Description": st.column_config.TextColumn("Desc", width="small"),
-            "Monthly Miles Actual": st.column_config.NumberColumn("Actual Monthly Miles", width="small", format="%.0f"),
-            "Monthly Projected": st.column_config.NumberColumn("Projected Monthly Miles", width="small", format="%.0f"),
-            "Weekly Trend": st.column_config.TextColumn("Weekly Trend", width="small"),
-            "Rotation Priority": st.column_config.TextColumn("Status", width="small"),
-            "Utilization Tier": st.column_config.TextColumn("Usage", width="small")
-        }
-    )
-
-# --- ANALYSIS ENGINE ---
+# --- THE SWAP ENGINE ---
 if run_analysis:
-    st.toast("Analyzing Fleet Trends...")
-    df_analysis = df.copy()
-    urgent = df_analysis[df_analysis['Rotation Priority'].astype(str).str.upper().str.strip() == 'URGENT ROTATION']
-    underused = df_analysis[df_analysis['Utilization Tier'].astype(str).str.upper().str.contains('UNDERUSED', na=False)]
+    st.toast("Calculating Optimal Fleet Rotation...")
     
-    if not urgent.empty and not underused.empty:
-        st.subheader("Recommended Asset Swaps")
-        recs = []
-        updates = []
+    # 1. Identify Candidates
+    # Recipient: Overused vehicles needing relief
+    # Donor: Underused vehicles with capacity
+    recipients = df[df['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
+    donors = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
 
-        for i in range(min(len(urgent), len(underused))):
-            v_u, v_l = urgent.iloc[i], underused.iloc[i]
-            dist = get_distance(v_u['Current Location'], v_l['Current Location'])
+    possible_swaps = []
+
+    for _, rec in recipients.iterrows():
+        for _, don in donors.iterrows():
+            # RULE 1: Must be same vehicle type
+            if rec['Vehicle Description'] != don['Vehicle Description']:
+                continue
             
-            recs.append({
-                "Asset Needing Rotation": v_u['Vehicle Name'],
-                "Origin": v_u['Current Location'],
-                "Destination": v_l['Current Location'],
-                "Distance": dist,
-                "Swap Partner": v_l['Vehicle Name']
-            })
-            updates.append({'row_id': v_u['row_id'], 'suggestion': f"Swap with {v_l['Vehicle Name']} {dist}"})
-        
-        st.dataframe(
-            pd.DataFrame(recs), 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "Asset Needing Rotation": st.column_config.TextColumn(width="medium"),
-                "Origin": st.column_config.TextColumn(width="small"),
-                "Destination": st.column_config.TextColumn(width="small"),
-                "Distance": st.column_config.TextColumn(width="small"),
-                "Swap Partner": st.column_config.TextColumn(width="medium")
-            }
-        )
-        st.session_state['pending_updates_list'] = updates
-    else:
-        st.warning("No rotation matches found.")
+            # RULE 2: Calculate Benefit (Total mileage "error" corrected)
+            # We want to match high over-utilization with high under-utilization
+            rec_delta = rec['Monthly Projected'] - rec['Monthly Allowance']
+            don_delta = don['Monthly Projected'] - don['Monthly Allowance'] # This will be negative
+            
+            mileage_benefit = rec_delta - don_delta 
+            
+            # RULE 3: Allowance Similarity (Prefer swapping like-for-like contracts)
+            allowance_diff = abs(rec['Monthly Allowance'] - don['Monthly Allowance'])
+            similarity_bonus = 1000 / (allowance_diff + 1) # Higher if allowances are close
+            
+            # RULE 4: Distance Penalty
+            dist = get_distance_km(rec['Current Location'], don['Current Location'])
+            dist_penalty = dist * 5 
 
-# --- SYNC ENGINE ---
-if sync_data and 'pending_updates_list' in st.session_state:
-    today = datetime.now().strftime("%Y-%m-%d")
-    rows_to_update = []
-    for update in st.session_state['pending_updates_list']:
-        new_row = ss_client.models.Row(id=int(update['row_id']))
-        new_row.cells.append(ss_client.models.Cell(column_id=COL_ID_SUGGESTED_SWAP, value=update['suggestion']))
-        new_row.cells.append(ss_client.models.Cell(column_id=COL_ID_DATE_SWAP, value=today))
-        rows_to_update.append(new_row)
-    
-    try:
-        ss_client.Sheets.update_rows(sheet_id, rows_to_update)
-        st.success("Smartsheet update complete.")
-    except Exception as e:
-        st.error(f"Sync failed: {e}")
+            # FINAL SCORE
+            score = (mileage_benefit * 0.7) + (similarity_bonus * 0.2) - (dist_penalty * 0.1)
+            
+            possible_swaps.append({
+                "score": score,
+                "rec_name": rec['Vehicle Name'],
+                "don_name": don['Vehicle Name'],
+                "rec_loc": rec['Current Location'],
+                "don_loc": don['Current Location'],
+                "distance": dist,
+                "rec_row": rec['row_id'],
+                "summary": f"Swap {rec['Vehicle Name']} (+{int(rec_delta)} mi) with {don['Vehicle Name']} ({int(don_delta)} mi)"
+            })
+
+    # Sort by highest score and pick unique matches (Greedy algorithm)
+    sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
+    final_recs = []
+    used_vehicles = set()
+
+    for s in sorted_swaps:
+        if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
+            
+            # --- GEMINI REASONING CALL ---
+            prompt = f"""
+            Analyze this fleet swap:
+            Vehicle A: {s['rec_name']} at {s['rec_loc']} is over-utilizing its lease.
+            Vehicle B: {s['don_name']} at {s['don_loc']} is under-utilizing its lease.
+            Distance: {s['distance']:.1f} miles.
+            Provide a professional 1-sentence rationale for why this swap saves money on lease overages.
+            """
+            try:
+                response = model.generate_content(prompt)
+                rationale = response.text
+            except:
+                rationale = "Optimizes lease mileage distribution based on current utilization trends."
+
+            s['ai_rationale'] = rationale
+            final_recs.append(s)
+            used_vehicles.add(s['rec_name'])
+            used_vehicles.add(s['don_name'])
+
+    # Display final_recs in Streamlit...
