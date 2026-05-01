@@ -47,36 +47,47 @@ try:
     columns = [col.title for col in sheet.columns]
     rows = [[cell.value for cell in row.cells] for row in sheet.rows]
     df = pd.DataFrame(rows, columns=columns)
-    df.columns = df.columns.str.strip() 
     
-    # Internal mapping for potential Smartsheet updates
+    # 1. CLEANING: Strip whitespace from headers
+    df.columns = df.columns.str.strip() 
+
+    # 2. FUZZY MAPPING: This fixes the "Missing Column" error by finding the best match
+    def find_col(target):
+        for c in df.columns:
+            if target.lower() in c.lower():
+                return c
+        return None
+
+    # Map your required columns to whatever they are actually named in Smartsheet
+    col_map = {
+        "projected": find_col("Monthly Projected"),
+        "allowance": find_col("Monthly Allowance"),
+        "priority": find_col("Rotation Priority"),
+        "tier": find_col("Utilization Tier"),
+        "actual": find_col("Monthly Miles Actual"),
+        "trend": find_col("Weekly Trend"),
+        "name": find_col("Vehicle Name"),
+        "loc": find_col("Current Location"),
+        "desc": find_col("Vehicle Description")
+    }
+
+    # Internal ID mapping for potential Smartsheet updates
     df['row_id_internal'] = [row.id for row in sheet.rows]
 
-    # FETCH RELEVANT COLUMNS
-    display_cols = [
-        "Vehicle Name", "Current Location", "Monthly Allowance", 
-        "Monthly Projected", "Monthly Miles Actual", "Weekly Trend",
-        "Rotation Priority", "Utilization Tier"
-    ]
-    df_display = df[[c for c in display_cols if c in df.columns]]
+    # 3. DISPLAY FILTERING
+    # Only show the specific columns you requested
+    display_list = [col_map["name"], col_map["loc"], col_map["allowance"], 
+                    col_map["projected"], col_map["actual"], col_map["trend"],
+                    col_map["priority"], col_map["tier"]]
+    
+    # Filter out any None values if a column truly doesn't exist
+    df_display = df[[c for c in display_list if c is not None]]
 
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
-# --- TOP SECTION: ACTION BUTTON ---
-st.markdown("""
-    <style>
-    div.stButton > button:first-child {
-        background-color: #0066cc;
-        color: white;
-        border-radius: 5px;
-        height: 3em;
-        width: 100%;
-        font-weight: bold;
-        border: none;
-    }
-    </style>""", unsafe_allow_html=True)
-
+# --- ACTION BUTTON ---
+# (Keep your CSS block here)
 run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
 
 if run_analysis:
@@ -84,41 +95,41 @@ if run_analysis:
         st.error("Data not found.")
     else:
         with st.spinner("Processing analysis..."):
-            try:
-                # Column check to prevent KeyError
-                required = ['Rotation Priority', 'Utilization Tier', 'Monthly Projected', 'Monthly Allowance']
-                missing = [r for r in required if r not in df.columns]
-                
-                if missing:
-                    st.error(f"Missing columns in Smartsheet: {', '.join(missing)}")
-                else:
-                    recipients = df[df['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
-                    donors = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
+            # Check if critical math columns were found
+            if not col_map["projected"] or not col_map["allowance"]:
+                st.error(f"Could not find 'Monthly Projected' or 'Monthly Allowance' in your sheet. Headers found: {list(df.columns)}")
+            else:
+                try:
+                    # Filter using the mapped names
+                    recipients = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
+                    donors = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
 
                     possible_swaps = []
                     for _, rec in recipients.iterrows():
                         for _, don in donors.iterrows():
-                            if rec['Vehicle Description'] != don['Vehicle Description']:
+                            if rec[col_map["desc"]] != don[col_map["desc"]]:
                                 continue
 
-                            dist = get_distance_miles(rec['Current Location'], don['Current Location'])
+                            dist = get_distance_miles(rec[col_map["loc"]], don[col_map["loc"]])
                             if dist > max_dist:
                                 continue
                             
-                            rec_delta = rec['Monthly Projected'] - rec['Monthly Allowance']
-                            don_delta = don['Monthly Projected'] - don['Monthly Allowance']
+                            # Math using mapped names
+                            rec_delta = float(rec[col_map["projected"]] or 0) - float(rec[col_map["allowance"]] or 0)
+                            don_delta = float(don[col_map["projected"]] or 0) - float(don[col_map["allowance"]] or 0)
                             
                             score = ((rec_delta - don_delta) * 0.7) - ((dist ** 1.5) * 0.1)
                             
                             possible_swaps.append({
                                 "score": score,
-                                "rec_name": rec['Vehicle Name'],
-                                "don_name": don['Vehicle Name'],
+                                "rec_name": rec[col_map["name"]],
+                                "don_name": don[col_map["name"]],
                                 "distance": dist,
-                                "summary": f"Swap {rec['Vehicle Name']} (+{int(rec_delta)} mi) with {don['Vehicle Name']} ({int(don_delta)} mi)"
+                                "summary": f"Swap {rec[col_map['name']]} (+{int(rec_delta)} mi) with {don[col_map['name']]} ({int(don_delta)} mi)"
                             })
 
                     sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
+                    # ... rest of your display/AI logic ...
                     final_recs = []
                     used_vehicles = set()
 
