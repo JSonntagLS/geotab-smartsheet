@@ -10,8 +10,8 @@ import re
 st.set_page_config(layout="wide")
 
 # --- AI SETUP ---
-genai.configure(api_key=st.secrets["gemini_api_key"], transport='rest')
-model = genai.GenerativeModel('gemini-1.5-flash')
+genai.configure(api_key=st.secrets["gemini_api_key"])
+model = genai.GenerativeModel('models/gemini-1.5-flash')
 
 # --- MAPPINGS ---
 col_map = {
