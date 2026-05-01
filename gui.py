@@ -64,34 +64,33 @@ def force_num(val, fallback=0.0):
         return fallback
 
 def calculate_runway(row):
+    # This updated version looks for the data more aggressively 
     try:
-        # Fallback to 100k if contract miles are missing or zero
+        # 1. Get Contract Miles (Look for 100k as default for LifeServe)
         raw_contract = force_num(row.get(col_map["contract"]))
-        total_contract = raw_contract if raw_contract > 0 else 100000.0
+        total_contract = raw_contract if raw_contract > 1000 else 100000.0
         
+        # 2. Get Odometer
         current_odo = force_num(row.get(col_map["odo"]), fallback=0.0)
         
-        # Prevent 0 cap by ensuring we have a positive remaining balance
+        # 3. Calculate remaining
         miles_remaining = total_contract - current_odo
-        if miles_remaining <= 0:
-            miles_remaining = 5000 # Safety buffer for calculation
         
+        # 4. Get Dates
         start_date = pd.to_datetime(row.get(col_map["start"]), errors='coerce')
         raw_len = force_num(row.get(col_map["length"]), fallback=36.0)
-        months_total = int(raw_len)
         
         if pd.isnat(start_date):
-            return int(miles_remaining), 12 
+            return int(miles_remaining), 12
             
-        end_date = start_date + pd.offsets.DateOffset(months=months_total)
+        end_date = start_date + pd.offsets.DateOffset(months=int(raw_len))
         today = datetime.now()
-        
-        # Calculate months remaining
         months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
         
         return int(miles_remaining), max(1, int(months_remaining))
-    except:
-        return 5000, 12 # Absolute fallback
+    except Exception as e:
+        # If it fails, we return a huge number so it doesn't trigger the "Critical" warning by mistake
+        return 50000, 12
 
 # --- DATA LOADING ---
 try:
