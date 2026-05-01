@@ -187,15 +187,37 @@ if run_analysis:
                         )
                         
                         try:
+                            # Attempting AI Analysis
                             response = model.generate_content(prompt)
                             s['Lease Lifecycle Projection'] = response.text.strip()
-                        except Exception as e:
-                            # Fallback to manual calculation
-                            projected_total = h_pacing * l_months_left
-                            if projected_total < l_miles_left:
-                                s['Lease Lifecycle Projection'] = f"Swap viable. Est. total ({projected_total}) under cap ({l_miles_left})."
+                        except Exception:
+                            # --- STRATEGIC MANUAL FALLBACK ---
+                            l_miles_left = s['l_data']['m']
+                            l_months_left = s['l_data']['mo']
+                            h_pacing_monthly = s['over_pacing']
+                            
+                            # Estimate total miles if this swap lasts until lease end
+                            projected_total_needed = h_pacing_monthly * l_months_left
+                            
+                            if projected_total_needed < l_miles_left:
+                                # This swap clears the rest of the lease
+                                s['Lease Lifecycle Projection'] = (
+                                    f"PERMANENT FIX: Vehicle B has plenty of runway ({l_miles_left} mi). "
+                                    f"This swap should carry the asset to lease end without further intervention."
+                                )
+                            elif projected_total_needed < (l_miles_left * 1.2):
+                                # It's close—might need a tweak in the final months
+                                s['Lease Lifecycle Projection'] = (
+                                    f"MID-TERM FIX: This solves the immediate over-pacing but is tight. "
+                                    f"Expect to review this asset again in about 6-8 months as the cap nears."
+                                )
                             else:
-                                s['Lease Lifecycle Projection'] = f"Caution. Est. total ({projected_total}) may exceed cap ({l_miles_left})."
+                                # This is just buying time
+                                months_until_over = int(l_miles_left / max(1, h_pacing_monthly))
+                                s['Lease Lifecycle Projection'] = (
+                                    f"QUICK FIX ONLY: This only buys about {months_until_over} months of runway. "
+                                    f"You are swapping into an asset that will also hit its limit before the lease ends."
+                                )
 
                         # CRITICAL: Add the swap to our final list and mark vehicles as used
                         final_recs.append(s)
