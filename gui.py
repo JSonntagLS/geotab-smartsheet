@@ -178,9 +178,9 @@ if run_analysis:
                         "high_name": "Over-Paced Vehicle",
                         "low_name": "Under-Used Vehicle",
                         "over_pacing": "Monthly Miles Over",
-                        "wasted_miles": "Monthly Miles Wasted",
                         "swap_dist": "Swap Distance"
                     })
+                    st.table(ui_df[["Over-Paced Vehicle", "Under-Used Vehicle", "Monthly Miles Over Allowance", "Swap Distance", "Lease Lifecycle Projection"]])
                     # Column Order Restored
                     st.table(ui_df[[
                         "Over-Paced Vehicle", 
