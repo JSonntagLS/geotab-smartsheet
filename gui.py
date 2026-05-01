@@ -112,17 +112,23 @@ if run_analysis:
         with st.spinner("Analyzing trajectories..."):
             try:
                 # Loosened filtering to capture more potential swaps
-                high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
-                low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED|LOW', na=False, case=False)]
+                # Expanded filters to be more inclusive
+                high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH|OVER', na=False, case=False)]
+                low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED|LOW|UNDER', na=False, case=False)]
                 
-                # Debugging: Show count in the app if no rotations found
+                # DIAGNOSTIC MONITOR
                 if high_usage_assets.empty or low_usage_assets.empty:
-                    st.warning(f"Filter Check: Found {len(high_usage_assets)} Urgent and {len(low_usage_assets)} Underused assets.")
+                    st.warning(f"Filter Check: Found {len(high_usage_assets)} 'Urgent' and {len(low_usage_assets)} 'Underused' vehicles.")
+                    if not high_usage_assets.empty: st.write("Urgent Models detected:", high_usage_assets[col_map["desc"]].unique())
+                    if not low_usage_assets.empty: st.write("Underused Models detected:", low_usage_assets[col_map["desc"]].unique())
 
                 possible_swaps = []
                 for _, high_v in high_usage_assets.iterrows():
                     for _, low_v in low_usage_assets.iterrows():
-                        if high_v[col_map["desc"]] != low_v[col_map["desc"]]:
+                        h_desc = str(high_v[col_map["desc"]]).strip().lower()
+                        l_desc = str(low_v[col_map["desc"]]).strip().lower()
+
+                        if h_desc != l_desc:
                             continue
 
                         dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
@@ -184,8 +190,14 @@ if run_analysis:
                                 s['Lease Lifecycle Projection'] = f"Manual Calc: Caution. Est. use ({projected_total}) may exceed cap ({l_miles_left})."
 
                 if final_recs:
-                    st.success(f"Analysis Complete.")
-                    ui_df = pd.DataFrame(final_recs).rename(columns={
+                    st.success(f"Analysis Complete. Found {len(final_recs)} rotations.")
+                    ui_df = pd.DataFrame(final_recs)
+                    
+                    # Ensure the column exists before renaming/displaying
+                    if 'Lease Lifecycle Projection' not in ui_df.columns:
+                        ui_df['Lease Lifecycle Projection'] = "Data Pending"
+                
+                    ui_df = ui_df.rename(columns={
                         "high_name": "Over-Paced Vehicle",
                         "low_name": "Under-Used Vehicle",
                         "over_pacing": "Monthly Miles Over",
@@ -193,17 +205,10 @@ if run_analysis:
                         "swap_dist": "Swap Distance"
                     })
                     
-                    # Ensure the AI column exists even if the loop didn't add it
-                    if 'Lease Lifecycle Projection' not in ui_df.columns:
-                        ui_df['Lease Lifecycle Projection'] = "No Analysis Performed"
-
                     st.table(ui_df[[
-                        "Over-Paced Vehicle", 
-                        "Under-Used Vehicle", 
-                        "Monthly Miles Over", 
-                        "Monthly Miles Wasted", 
-                        "Swap Distance", 
-                        "Lease Lifecycle Projection"
+                        "Over-Paced Vehicle", "Under-Used Vehicle", 
+                        "Monthly Miles Over", "Monthly Miles Wasted", 
+                        "Swap Distance", "Lease Lifecycle Projection"
                     ]])
                     
                 else:
