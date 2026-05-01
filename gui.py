@@ -6,11 +6,10 @@ import math
 import google.generativeai as genai
 
 # --- AI SETUP ---
-# transport='rest' is added to prevent the 'constant loading' hang in Streamlit Cloud
 genai.configure(api_key=st.secrets["gemini_api_key"], transport='rest')
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# Move slider to the top so it's available globally in the sidebar
+# --- SIDEBAR ---
 max_dist = st.sidebar.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200)
 
 # --- COORDINATE-BASED DISTANCE ---
@@ -31,28 +30,44 @@ def get_distance_miles(loc1, loc2):
     c1, c2 = CITY_COORDS.get(loc1), CITY_COORDS.get(loc2)
     if not c1 or not c2: return 999 
     
-    radius = 3958.8 # Miles
+    radius = 3958.8 
     lat1, lon1 = math.radians(c1[0]), math.radians(c1[1])
     lat2, lon2 = math.radians(c2[0]), math.radians(c2[1])
     dlat, dlon = lat2 - lat1, lon2 - lon1
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     crow_miles = radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     
-    # 1.2 multiplier to simulate actual road driving distance
     return crow_miles * 1.2
 
-# --- THE SWAP ENGINE ---
+# --- DATA LOADING SECTION ---
+# This part must run every time the app loads to define 'df'
+try:
+    # --- INSERT YOUR SMARTSHEET CONNECTION CODE HERE ---
+    # Example: 
+    # smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+    # sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
+    # df = (Your logic to convert sheet to DataFrame)
+    
+    # Placeholder check to prevent crash if df isn't defined yet
+    if 'df' in locals():
+        st.write("### Fleet Data Overview")
+        st.dataframe(df)
+    else:
+        st.warning("Smartsheet data not yet loaded. Ensure your Smartsheet connection code is added above this line.")
+except Exception as e:
+    st.error(f"Error loading data: {e}")
 
-# THIS LINE IS THE FIX: It creates the button that the rest of the code is looking for.
+st.divider()
+
+# --- THE SWAP ENGINE ---
 run_analysis = st.button("Run Fleet Rotation Analysis")
 
 if run_analysis:
-    st.toast("Calculating Optimal Fleet Rotation...")
-    
-    # Check if 'df' exists (the data from Smartsheet)
     if 'df' not in locals():
         st.error("Data not found. Please ensure the Smartsheet data is loading correctly.")
     else:
+        st.toast("Calculating Optimal Fleet Rotation...")
+        
         df_analysis = df.copy()
         recipients = df_analysis[df_analysis['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
         donors = df_analysis[df_analysis['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
@@ -98,11 +113,9 @@ if run_analysis:
         for s in sorted_swaps:
             if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
                 prompt = f"""
-                Analyze this fleet swap:
-                Vehicle A: {s['rec_name']} at {s['rec_loc']} is over-utilizing its lease.
-                Vehicle B: {s['don_name']} at {s['don_loc']} is under-utilizing its lease.
-                Distance: {s['distance']:.1f} miles.
-                Provide a professional 1-sentence rationale for why this swap saves money on lease overages.
+                Analyze fleet swap: {s['rec_name']} ({s['rec_loc']}) with {s['don_name']} ({s['don_loc']}). 
+                Distance: {s['distance']:.1f} miles. 
+                Write a 1-sentence rationale on lease savings.
                 """
                 try:
                     response = model.generate_content(prompt)
@@ -115,9 +128,8 @@ if run_analysis:
                 used_vehicles.add(s['rec_name'])
                 used_vehicles.add(s['don_name'])
 
-        # Display results
         if final_recs:
             st.write("### Recommended Swaps")
             st.table(pd.DataFrame(final_recs)[["summary", "distance", "ai_rationale"]])
         else:
-            st.info("No viable swaps found within the current distance and vehicle constraints.")
+            st.info("No viable swaps found within current constraints.")
