@@ -51,36 +51,38 @@ try:
     # 1. CLEANING: Strip whitespace from headers
     df.columns = df.columns.str.strip() 
 
-    # 2. FUZZY MAPPING
-    def find_col(target):
-        for c in df.columns:
-            if target.lower() in c.lower():
-                return c
-        return None
-
+# 2. EXACT MAPPING: Updated to match your specific Smartsheet headers
     col_map = {
-        "projected": find_col("Monthly Projected"),
-        "allowance": find_col("Monthly Allowance"),
-        "priority": find_col("Rotation Priority"),
-        "tier": find_col("Utilization Tier"),
-        "actual": find_col("Monthly Miles Actual"),
-        "trend": find_col("Weekly Trend"),
-        "name": find_col("Vehicle Name"),
-        "loc": find_col("Current Location"),
-        "desc": find_col("Vehicle Description")
+        "projected": "Projected Monthly Usage",
+        "allowance": "Monthly Allowance",
+        "priority": "Rotation Priority",
+        "tier": "Utilization Tier",
+        "actual": "Monthly Miles Actual",
+        "trend": "Weekly Trend",
+        "name": "Vehicle Name",
+        "loc": "Current Location",
+        "desc": "Vehicle Description"
     }
 
+    # Verify all columns exist to prevent the error
+    for key, col_name in col_map.items():
+        if col_name not in df.columns:
+            st.error(f"Critical Column Missing: '{col_name}'. Please check Smartsheet.")
+
+    # Internal ID mapping
     df['row_id_internal'] = [row.id for row in sheet.rows]
 
-    # 3. DISPLAY FILTERING
-    display_list = [col_map["name"], col_map["loc"], col_map["allowance"], 
-                    col_map["projected"], col_map["actual"], col_map["trend"],
-                    col_map["priority"], col_map["tier"]]
-    
-    df_display = df[[c for c in display_list if c is not None]]
-
-except Exception as e:
-    st.error(f"Error loading Smartsheet: {e}")
+    # 3. DISPLAY FILTERING: Strictly ordered as requested
+    df_display = df[[
+        col_map["name"], 
+        col_map["loc"], 
+        col_map["allowance"], 
+        col_map["projected"], 
+        col_map["actual"], 
+        col_map["trend"],
+        col_map["priority"], 
+        col_map["tier"]
+    ]]
 
 # --- ACTION BUTTON STYLE ---
 st.markdown("""
