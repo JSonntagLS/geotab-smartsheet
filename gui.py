@@ -49,6 +49,21 @@ try:
     df = pd.DataFrame(rows, columns=columns)
     df.columns = df.columns.str.strip() 
 
+# --- DATA INSPECTOR (DEBUG ONLY) ---
+st.write("### Data Integrity Check")
+test_veh = "01 JOHNSTON PM 2026 CHRYSLER PACIFICA"
+if test_veh in df[col_map["name"]].values:
+    sample_row = df[df[col_map["name"]] == test_veh].iloc[0]
+    st.json({
+        "Contract Miles Raw": f"'{sample_row[col_map['contract']]}'",
+        "Odometer Raw": f"'{sample_row[col_map['odo']]}'",
+        "Start Date Raw": f"'{sample_row[col_map['start']]}'",
+        "Contract Type": str(type(sample_row[col_map['contract']])),
+        "Odo Type": str(type(sample_row[col_map['odo']]))
+    })
+else:
+    st.warning("Could not find the test vehicle for debugging.")
+    
     col_map = {
         "projected": "Projected Monthly Usage",
         "allowance": "Monthly Allowance",
