@@ -51,14 +51,13 @@ try:
     # 1. CLEANING: Strip whitespace from headers
     df.columns = df.columns.str.strip() 
 
-    # 2. FUZZY MAPPING: This fixes the "Missing Column" error by finding the best match
+    # 2. FUZZY MAPPING
     def find_col(target):
         for c in df.columns:
             if target.lower() in c.lower():
                 return c
         return None
 
-    # Map your required columns to whatever they are actually named in Smartsheet
     col_map = {
         "projected": find_col("Monthly Projected"),
         "allowance": find_col("Monthly Allowance"),
@@ -71,23 +70,32 @@ try:
         "desc": find_col("Vehicle Description")
     }
 
-    # Internal ID mapping for potential Smartsheet updates
     df['row_id_internal'] = [row.id for row in sheet.rows]
 
     # 3. DISPLAY FILTERING
-    # Only show the specific columns you requested
     display_list = [col_map["name"], col_map["loc"], col_map["allowance"], 
                     col_map["projected"], col_map["actual"], col_map["trend"],
                     col_map["priority"], col_map["tier"]]
     
-    # Filter out any None values if a column truly doesn't exist
     df_display = df[[c for c in display_list if c is not None]]
 
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
-# --- ACTION BUTTON ---
-# (Keep your CSS block here)
+# --- ACTION BUTTON STYLE ---
+st.markdown("""
+    <style>
+    div.stButton > button:first-child {
+        background-color: #0066cc;
+        color: white;
+        border-radius: 5px;
+        height: 3em;
+        width: 100%;
+        font-weight: bold;
+        border: none;
+    }
+    </style>""", unsafe_allow_html=True)
+
 run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
 
 if run_analysis:
@@ -95,12 +103,10 @@ if run_analysis:
         st.error("Data not found.")
     else:
         with st.spinner("Processing analysis..."):
-            # Check if critical math columns were found
             if not col_map["projected"] or not col_map["allowance"]:
-                st.error(f"Could not find 'Monthly Projected' or 'Monthly Allowance' in your sheet. Headers found: {list(df.columns)}")
+                st.error(f"Could not find required math columns. Headers: {list(df.columns)}")
             else:
                 try:
-                    # Filter using the mapped names
                     recipients = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
                     donors = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
 
@@ -114,7 +120,6 @@ if run_analysis:
                             if dist > max_dist:
                                 continue
                             
-                            # Math using mapped names
                             rec_delta = float(rec[col_map["projected"]] or 0) - float(rec[col_map["allowance"]] or 0)
                             don_delta = float(don[col_map["projected"]] or 0) - float(don[col_map["allowance"]] or 0)
                             
@@ -129,7 +134,6 @@ if run_analysis:
                             })
 
                     sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
-                    # ... rest of your display/AI logic ...
                     final_recs = []
                     used_vehicles = set()
 
@@ -151,14 +155,13 @@ if run_analysis:
                         st.table(pd.DataFrame(final_recs)[["summary", "distance", "ai_rationale"]])
                     else:
                         st.info("No viable swaps found.")
-                    
-            except Exception as e:
-                st.error(f"An error occurred during analysis: {e}")
+                            
+                except Exception as e:
+                    st.error(f"An error occurred during analysis: {e}")
 
 st.divider()
 
 # --- BOTTOM SECTION: FLEET STATUS ---
 st.write("### Current Fleet Status")
 if 'df_display' in locals():
-    # use_container_width handles the even spacing across the screen
     st.dataframe(df_display, use_container_width=True, hide_index=True)
