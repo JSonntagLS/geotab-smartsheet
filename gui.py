@@ -54,15 +54,17 @@ def get_distance_miles(loc1, loc2):
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)) * 1.2
 
+def force_num(val, fallback=0.0):
+    if val is None or str(val).strip().lower() in ["", "nan", "none"]: 
+        return fallback
+    cleaned = re.sub(r'[^0-9.]', '', str(val))
+    try:
+        return float(cleaned)
+    except:
+        return fallback
+
 def calculate_runway(row):
     try:
-        def force_num(val, fallback=0.0):
-            if val is None or str(val).strip().lower() in ["", "nan", "none"]: 
-                return fallback
-            cleaned = re.sub(r'[^0-9.]', '', str(val))
-            return float(cleaned) if cleaned else fallback
-
-        # Use 100k and 25k as "Safe" defaults so the button doesn't break if Smartsheet is glitchy
         total_contract = force_num(row.get(col_map["contract"]), fallback=100000.0)
         current_odo = force_num(row.get(col_map["odo"]), fallback=0.0)
         miles_remaining = total_contract - current_odo
@@ -86,23 +88,14 @@ def calculate_runway(row):
 try:
     smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
     sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
-    
-    # Extract headers and clean them aggressively
     columns = [col.title.strip() for col in sheet.columns]
     rows = [[cell.value for cell in row.cells] for row in sheet.rows]
     df = pd.DataFrame(rows, columns=columns)
-
-    # Diagnostic check: Are our keys actually in the dataframe?
-    missing = [v for v in col_map.values() if v not in df.columns]
-    if missing:
-        st.error(f"Heads up: These columns aren't being found: {missing}")
-        st.write("Available columns in your sheet:", list(df.columns))
 
     df_display = df[[
         col_map["name"], col_map["loc"], col_map["allowance"], 
         col_map["projected"], col_map["actual"], col_map["priority"], col_map["tier"]
     ]]
-
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
@@ -118,7 +111,6 @@ if run_analysis:
     else:
         with st.spinner("Analyzing trajectories..."):
             try:
-                # Filtering logic
                 high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT', na=False, case=False)]
                 low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
 
@@ -131,15 +123,10 @@ if run_analysis:
                         dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
                         if dist > max_dist: continue
                         
-                        # Use force_num for deltas too
-                        def quick_num(v):
-                            cleaned = re.sub(r'[^0-9.]', '', str(v)) if v else "0"
-                            return float(cleaned) if cleaned else 0.0
-
-                        h_proj = quick_num(high_v[col_map["projected"]])
-                        h_allow = quick_num(high_v[col_map["allowance"]])
-                        l_proj = quick_num(low_v[col_map["projected"]])
-                        l_allow = quick_num(low_v[col_map["allowance"]])
+                        h_proj = force_num(high_v[col_map["projected"]])
+                        h_allow = force_num(high_v[col_map["allowance"]])
+                        l_proj = force_num(low_v[col_map["projected"]])
+                        l_allow = force_num(low_v[col_map["allowance"]])
                         
                         high_delta = h_proj - h_allow
                         low_delta = l_proj - l_allow
@@ -148,7 +135,6 @@ if run_analysis:
                         h_miles, h_months = calculate_runway(high_v)
                         l_miles, l_months = calculate_runway(low_v)
 
-                        # If the value is 0, we'll still add it to the list but note the data gap
                         possible_swaps.append({
                             "score": score,
                             "high_name": high_v[col_map["name"]],
@@ -166,17 +152,21 @@ if run_analysis:
 
                 for s in sorted_swaps:
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
+                        # Improved Prompt Logic
                         prompt = (
-                            f"Strategic Analysis for LifeServe Blood Center: "
-                            f"Vehicle {s['high_name']} has {s['h_data']['m']} miles left for {s['h_data']['mo']} months, but is over-pacing by {s['over_pacing']} mi/month. "
-                            f"Vehicle {s['low_name']} has {s['l_data']['m']} miles left for {s['l_data']['mo']} months, but is wasting {s['wasted_miles']} mi/month. "
-                            f"Is this swap a permanent fix to hit the contract limit exactly? Explain briefly."
+                            f"Context: LifeServe Blood Center Fleet Management. "
+                            f"Proposed Rotation: Swap {s['high_name']} with {s['low_name']}. "
+                            f"Asset A ({s['high_name']}): {s['h_data']['m']} miles left, {s['h_data']['mo']} months on lease. Currently over-pacing by {s['over_pacing']} miles/month. "
+                            f"Asset B ({s['low_name']}): {s['l_data']['m']} miles left, {s['l_data']['mo']} months on lease. Currently under-utilizing by {s['wasted_miles']} miles/month. "
+                            f"Question: Will this swap prevent overage penalties? Give a 2-sentence professional summary."
                         )
+                        
                         try:
                             response = model.generate_content(prompt)
-                            s['Lease Lifecycle Projection'] = response.text.strip()
-                        except:
-                            s['Lease Lifecycle Projection'] = "Analysis unavailable."
+                            # Ensure we actually got a response
+                            s['Lease Lifecycle Projection'] = response.text.strip() if response.text else "AI returned empty response."
+                        except Exception as ai_err:
+                            s['Lease Lifecycle Projection'] = f"AI Error: {str(ai_err)[:50]}"
 
                         final_recs.append(s)
                         used_vehicles.add(s['high_name'])
@@ -187,12 +177,21 @@ if run_analysis:
                     ui_df = pd.DataFrame(final_recs).rename(columns={
                         "high_name": "Over-Paced Vehicle",
                         "low_name": "Under-Used Vehicle",
-                        "over_pacing": "Monthly Miles Over Allowance",
+                        "over_pacing": "Monthly Miles Over",
+                        "wasted_miles": "Monthly Miles Wasted",
                         "swap_dist": "Swap Distance"
                     })
-                    st.table(ui_df[["Over-Paced Vehicle", "Under-Used Vehicle", "Monthly Miles Over Allowance", "Swap Distance", "Lease Lifecycle Projection"]])
+                    # Column Order Restored
+                    st.table(ui_df[[
+                        "Over-Paced Vehicle", 
+                        "Under-Used Vehicle", 
+                        "Monthly Miles Over", 
+                        "Monthly Miles Wasted", 
+                        "Swap Distance", 
+                        "Lease Lifecycle Projection"
+                    ]])
                 else:
-                    st.info("No viable rotations found matching the criteria.")
+                    st.info("No viable rotations found.")
             except Exception as e:
                 st.error(f"Rotation Logic Error: {e}")
 
