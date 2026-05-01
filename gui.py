@@ -151,26 +151,32 @@ if run_analysis:
                 used_vehicles = set()
 
                 for s in sorted_swaps:
-                    if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
-                        # Improved Prompt Logic
+                        # Revised Prompt and Logic for Lease Lifecycle
+                        l_miles_left = s['l_data']['m']
+                        l_months_left = s['l_data']['mo']
+                        h_pacing = s['over_pacing']
+
                         prompt = (
-                            f"Context: LifeServe Blood Center Fleet Management. "
-                            f"Proposed Rotation: Swap {s['high_name']} with {s['low_name']}. "
-                            f"Asset A ({s['high_name']}): {s['h_data']['m']} miles left, {s['h_data']['mo']} months on lease. Currently over-pacing by {s['over_pacing']} miles/month. "
-                            f"Asset B ({s['low_name']}): {s['l_data']['m']} miles left, {s['l_data']['mo']} months on lease. Currently under-utilizing by {s['wasted_miles']} miles/month. "
-                            f"Question: Will this swap prevent overage penalties? Give a 2-sentence professional summary."
+                            f"Vehicle A is over-pacing by {h_pacing} miles/month. "
+                            f"Vehicle B has {l_miles_left} miles remaining and {l_months_left} months left on lease. "
+                            f"If we swap them, will Vehicle B likely stay under its contract limit? "
+                            f"Answer in 1-2 professional sentences."
                         )
                         
                         try:
-                            response = model.generate_content(prompt)
-                            # Ensure we actually got a response
-                            s['Lease Lifecycle Projection'] = response.text.strip() if response.text else "AI returned empty response."
-                        except Exception as ai_err:
-                            s['Lease Lifecycle Projection'] = f"AI Error: {str(ai_err)[:50]}"
-
-                        final_recs.append(s)
-                        used_vehicles.add(s['high_name'])
-                        used_vehicles.add(s['low_name'])
+                            # Using a more direct call structure to avoid the 404 resource path error
+                            response = model.generate_content(
+                                prompt,
+                                generation_config={"tag_loss_weight": 0.0} # Optional: ensures clean text
+                            )
+                            s['Lease Lifecycle Projection'] = response.text.strip()
+                        except Exception as e:
+                            # Fallback to a manual calculation if the API remains unreachable
+                            projected_total = h_pacing * l_months_left
+                            if projected_total < l_miles_left:
+                                s['Lease Lifecycle Projection'] = f"Manual Calc: Swap is viable. Est. use ({projected_total}) is under remaining cap ({l_miles_left})."
+                            else:
+                                s['Lease Lifecycle Projection'] = f"Manual Calc: Caution. Est. use ({projected_total}) may exceed cap ({l_miles_left})."
 
                 if final_recs:
                     st.success(f"Analysis Complete.")
