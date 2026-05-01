@@ -6,12 +6,14 @@ import math
 import google.generativeai as genai
 
 # --- AI SETUP ---
-# Replace with your actual API key
-genai.configure(api_key=st.secrets["gemini_api_key"])
+# transport='rest' is added to prevent the 'constant loading' hang in Streamlit Cloud
+genai.configure(api_key=st.secrets["gemini_api_key"], transport='rest')
 model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- COORDINATE-BASED DISTANCE (Replaces the 136-line table) ---
-# This allows any city to talk to any other city accurately.
+# Move slider to the top so it's available globally in the sidebar
+max_dist = st.sidebar.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200)
+
+# --- COORDINATE-BASED DISTANCE ---
 CITY_COORDS = {
     "Johnston, IA": (41.6730, -93.6977), "Ames, IA": (42.0308, -93.6319),
     "Ankeny, IA": (41.7297, -93.6058), "Cedar Falls, IA": (42.5349, -92.4455),
@@ -24,27 +26,28 @@ CITY_COORDS = {
     "Yankton, SD": (42.8711, -97.3973)
 }
 
-def get_distance_km(loc1, loc2):
+def get_distance_miles(loc1, loc2):
     if loc1 == loc2: return 0
     c1, c2 = CITY_COORDS.get(loc1), CITY_COORDS.get(loc2)
-    if not c1 or not c2: return 999 # Penalty for unknown locations
-    # Haversine formula for distance
+    if not c1 or not c2: return 999 
+    
     radius = 3958.8 # Miles
     lat1, lon1 = math.radians(c1[0]), math.radians(c1[1])
     lat2, lon2 = math.radians(c2[0]), math.radians(c2[1])
     dlat, dlon = lat2 - lat1, lon2 - lon1
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
-    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    crow_miles = radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    
+    # 1.2 multiplier to simulate actual road driving distance
+    return crow_miles * 1.2
 
 # --- THE SWAP ENGINE ---
 if run_analysis:
     st.toast("Calculating Optimal Fleet Rotation...")
     
-    # 1. Identify Candidates
-    # Recipient: Overused vehicles needing relief
-    # Donor: Underused vehicles with capacity
-    recipients = df[df['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
-    donors = df[df['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
+    df_analysis = df.copy()
+    recipients = df_analysis[df_analysis['Rotation Priority'].str.contains('URGENT', na=False, case=False)]
+    donors = df_analysis[df_analysis['Utilization Tier'].str.contains('UNDERUSED', na=False, case=False)]
 
     possible_swaps = []
 
@@ -53,20 +56,24 @@ if run_analysis:
             # RULE 1: Must be same vehicle type
             if rec['Vehicle Description'] != don['Vehicle Description']:
                 continue
+
+            # CALC DISTANCE (Now occurs BEFORE the check)
+            dist = get_distance_miles(rec['Current Location'], don['Current Location'])
             
-            # RULE 2: Calculate Benefit (Total mileage "error" corrected)
-            # We want to match high over-utilization with high under-utilization
+            # RULE 2: Max Distance Filter (Controlled by slider)
+            if dist > max_dist:
+                continue
+            
+            # RULE 3: Calculate Benefit
             rec_delta = rec['Monthly Projected'] - rec['Monthly Allowance']
-            don_delta = don['Monthly Projected'] - don['Monthly Allowance'] # This will be negative
+            don_delta = don['Monthly Projected'] - don['Monthly Allowance']
+            mileage_benefit = rec_delta - don_delta
             
-            mileage_benefit = rec_delta - don_delta 
-            
-            # RULE 3: Allowance Similarity (Prefer swapping like-for-like contracts)
+            # RULE 4: Allowance Similarity
             allowance_diff = abs(rec['Monthly Allowance'] - don['Monthly Allowance'])
-            similarity_bonus = 1000 / (allowance_diff + 1) # Higher if allowances are close
+            similarity_bonus = 1000 / (allowance_diff + 1)
             
-            # RULE 4: Distance Penalty
-            dist = get_distance_km(rec['Current Location'], don['Current Location'])
+            # RULE 5: Steep Distance Penalty (Exponential to discourage long drives)
             dist_penalty = (dist ** 1.5) * 0.5 
 
             # FINAL SCORE
@@ -83,7 +90,7 @@ if run_analysis:
                 "summary": f"Swap {rec['Vehicle Name']} (+{int(rec_delta)} mi) with {don['Vehicle Name']} ({int(don_delta)} mi)"
             })
 
-    # Sort by highest score and pick unique matches (Greedy algorithm)
+    # Sort and pick unique matches
     sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
     final_recs = []
     used_vehicles = set()
@@ -110,4 +117,4 @@ if run_analysis:
             used_vehicles.add(s['rec_name'])
             used_vehicles.add(s['don_name'])
 
-    # Display final_recs in Streamlit...
+    # Final Recs are ready for display...
