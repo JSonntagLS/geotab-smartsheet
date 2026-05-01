@@ -111,8 +111,13 @@ if run_analysis:
     else:
         with st.spinner("Analyzing trajectories..."):
             try:
-                high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT', na=False, case=False)]
-                low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
+                # Loosened filtering to capture more potential swaps
+                high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
+                low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED|LOW', na=False, case=False)]
+                
+                # Debugging: Show count in the app if no rotations found
+                if high_usage_assets.empty or low_usage_assets.empty:
+                    st.warning(f"Filter Check: Found {len(high_usage_assets)} Urgent and {len(low_usage_assets)} Underused assets.")
 
                 possible_swaps = []
                 for _, high_v in high_usage_assets.iterrows():
@@ -180,7 +185,6 @@ if run_analysis:
 
                 if final_recs:
                     st.success(f"Analysis Complete.")
-                    # Rename keys to professional UI headers
                     ui_df = pd.DataFrame(final_recs).rename(columns={
                         "high_name": "Over-Paced Vehicle",
                         "low_name": "Under-Used Vehicle",
@@ -189,7 +193,10 @@ if run_analysis:
                         "swap_dist": "Swap Distance"
                     })
                     
-                    # Ensure the list below matches the renamed columns exactly
+                    # Ensure the AI column exists even if the loop didn't add it
+                    if 'Lease Lifecycle Projection' not in ui_df.columns:
+                        ui_df['Lease Lifecycle Projection'] = "No Analysis Performed"
+
                     st.table(ui_df[[
                         "Over-Paced Vehicle", 
                         "Under-Used Vehicle", 
@@ -198,6 +205,7 @@ if run_analysis:
                         "Swap Distance", 
                         "Lease Lifecycle Projection"
                     ]])
+                    
                 else:
                     st.info("No viable rotations found.")
             except Exception as e:
