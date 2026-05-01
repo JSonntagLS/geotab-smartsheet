@@ -67,7 +67,7 @@ if run_analysis:
             
             # RULE 4: Distance Penalty
             dist = get_distance_km(rec['Current Location'], don['Current Location'])
-            dist_penalty = dist * 5 
+            dist_penalty = (dist ** 1.5) * 0.5 
 
             # FINAL SCORE
             score = (mileage_benefit * 0.7) + (similarity_bonus * 0.2) - (dist_penalty * 0.1)
