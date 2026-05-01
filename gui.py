@@ -51,7 +51,7 @@ try:
     # 1. CLEANING: Strip whitespace from headers
     df.columns = df.columns.str.strip() 
 
-# 2. EXACT MAPPING: Updated to match your specific Smartsheet headers
+    # 2. EXACT MAPPING: Matches the specific headers from your error report
     col_map = {
         "projected": "Projected Monthly Usage",
         "allowance": "Monthly Allowance",
@@ -64,15 +64,10 @@ try:
         "desc": "Vehicle Description"
     }
 
-    # Verify all columns exist to prevent the error
-    for key, col_name in col_map.items():
-        if col_name not in df.columns:
-            st.error(f"Critical Column Missing: '{col_name}'. Please check Smartsheet.")
-
     # Internal ID mapping
     df['row_id_internal'] = [row.id for row in sheet.rows]
 
-    # 3. DISPLAY FILTERING: Strictly ordered as requested
+    # 3. DISPLAY FILTERING: Strictly ordered
     df_display = df[[
         col_map["name"], 
         col_map["loc"], 
@@ -83,6 +78,9 @@ try:
         col_map["priority"], 
         col_map["tier"]
     ]]
+
+except Exception as e:
+    st.error(f"Error loading Smartsheet: {e}")
 
 # --- ACTION BUTTON STYLE ---
 st.markdown("""
@@ -105,61 +103,60 @@ if run_analysis:
         st.error("Data not found.")
     else:
         with st.spinner("Processing analysis..."):
-            if not col_map["projected"] or not col_map["allowance"]:
-                st.error(f"Could not find required math columns. Headers: {list(df.columns)}")
-            else:
-                try:
-                    recipients = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
-                    donors = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
+            try:
+                # Use mapped names for filtering
+                recipients = df[df[col_map["priority"]].str.contains('URGENT', na=False, case=False)]
+                donors = df[df[col_map["tier"]].str.contains('UNDERUSED', na=False, case=False)]
 
-                    possible_swaps = []
-                    for _, rec in recipients.iterrows():
-                        for _, don in donors.iterrows():
-                            if rec[col_map["desc"]] != don[col_map["desc"]]:
-                                continue
+                possible_swaps = []
+                for _, rec in recipients.iterrows():
+                    for _, don in donors.iterrows():
+                        if rec[col_map["desc"]] != don[col_map["desc"]]:
+                            continue
 
-                            dist = get_distance_miles(rec[col_map["loc"]], don[col_map["loc"]])
-                            if dist > max_dist:
-                                continue
+                        dist = get_distance_miles(rec[col_map["loc"]], don[col_map["loc"]])
+                        if dist > max_dist:
+                            continue
+                        
+                        # Use mapped names and convert to float for math
+                        rec_delta = float(rec[col_map["projected"]] or 0) - float(rec[col_map["allowance"]] or 0)
+                        don_delta = float(don[col_map["projected"]] or 0) - float(don[col_map["allowance"]] or 0)
+                        
+                        score = ((rec_delta - don_delta) * 0.7) - ((dist ** 1.5) * 0.1)
+                        
+                        possible_swaps.append({
+                            "score": score,
+                            "rec_name": rec[col_map["name"]],
+                            "don_name": don[col_map["name"]],
+                            "distance": dist,
+                            "summary": f"Swap {rec[col_map['name']]} (+{int(rec_delta)} mi) with {don[col_map['name']]} ({int(don_delta)} mi)"
+                        })
+
+                sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
+                final_recs = []
+                used_vehicles = set()
+
+                for s in sorted_swaps:
+                    if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
+                        prompt = f"Rationale for swap: {s['summary']} over {s['distance']:.1f} miles."
+                        try:
+                            response = model.generate_content(prompt)
+                            s['ai_rationale'] = response.text
+                        except:
+                            s['ai_rationale'] = "Optimizes lease distribution."
+
+                        final_recs.append(s)
+                        used_vehicles.add(s['rec_name'])
+                        used_vehicles.add(s['don_name'])
+
+                if final_recs:
+                    st.success(f"Analysis Complete: {len(final_recs)} swaps identified.")
+                    st.table(pd.DataFrame(final_recs)[["summary", "distance", "ai_rationale"]])
+                else:
+                    st.info("No viable swaps found.")
                             
-                            rec_delta = float(rec[col_map["projected"]] or 0) - float(rec[col_map["allowance"]] or 0)
-                            don_delta = float(don[col_map["projected"]] or 0) - float(don[col_map["allowance"]] or 0)
-                            
-                            score = ((rec_delta - don_delta) * 0.7) - ((dist ** 1.5) * 0.1)
-                            
-                            possible_swaps.append({
-                                "score": score,
-                                "rec_name": rec[col_map["name"]],
-                                "don_name": don[col_map["name"]],
-                                "distance": dist,
-                                "summary": f"Swap {rec[col_map['name']]} (+{int(rec_delta)} mi) with {don[col_map['name']]} ({int(don_delta)} mi)"
-                            })
-
-                    sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
-                    final_recs = []
-                    used_vehicles = set()
-
-                    for s in sorted_swaps:
-                        if s['rec_name'] not in used_vehicles and s['don_name'] not in used_vehicles:
-                            prompt = f"Rationale for swap: {s['summary']} over {s['distance']:.1f} miles."
-                            try:
-                                response = model.generate_content(prompt)
-                                s['ai_rationale'] = response.text
-                            except:
-                                s['ai_rationale'] = "Optimizes lease distribution."
-
-                            final_recs.append(s)
-                            used_vehicles.add(s['rec_name'])
-                            used_vehicles.add(s['don_name'])
-
-                    if final_recs:
-                        st.success(f"Analysis Complete: {len(final_recs)} swaps identified.")
-                        st.table(pd.DataFrame(final_recs)[["summary", "distance", "ai_rationale"]])
-                    else:
-                        st.info("No viable swaps found.")
-                            
-                except Exception as e:
-                    st.error(f"An error occurred during analysis: {e}")
+            except Exception as e:
+                st.error(f"An error occurred during analysis: {e}")
 
 st.divider()
 
