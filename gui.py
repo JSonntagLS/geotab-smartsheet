@@ -76,19 +76,34 @@ except Exception as e:
 # --- HELPER: LEASE RUNWAY ---
 def calculate_runway(row):
     try:
-        total_contract = float(row[col_map["contract"]] or 100000)
-        current_odo = float(row[col_map["odo"]] or 0)
+        # Helper to strip commas and convert to numbers safely
+        def clean_num(val):
+            if isinstance(val, str):
+                val = val.replace(',', '').strip()
+            try:
+                return float(val) if val else 0
+            except:
+                return 0
+
+        total_contract = clean_num(row[col_map["contract"]])
+        current_odo = clean_num(row[col_map["odo"]])
         miles_remaining = total_contract - current_odo
         
-        start_date = pd.to_datetime(row[col_map["start"]])
+        # Safe Date Conversion
+        start_date = pd.to_datetime(row[col_map["start"]], errors='coerce')
         months_duration = int(row[col_map["length"]] or 36)
+        
+        if pd.isnat(start_date):
+            return int(miles_remaining), 12 # Default fallback
+            
         end_date = start_date + pd.offsets.DateOffset(months=months_duration)
         
+        # Calculate months remaining from today
         today = datetime.now()
         months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
         
-        return miles_remaining, max(1, months_remaining)
-    except:
+        return int(miles_remaining), max(1, int(months_remaining))
+    except Exception as e:
         return 0, 1
 
 # --- ACTION ---
