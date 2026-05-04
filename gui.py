@@ -120,24 +120,26 @@ if 'df' in locals():
         
         for i, col in enumerate(m_cols):
             label = labels[i]
-            # Count occurrences in the 'Utilization Tier' column
             count = len(df[df[col_map["tier"]].astype(str).str.strip() == label])
             col.metric(label=label, value=count)
 
-# --- USAGE HISTORY GRAPH ---
-if os.path.exists('usage_history.csv'):
-    try:
-        history_df = pd.read_csv('usage_history.csv')
-        history_df['Date'] = pd.to_datetime(history_df['Date'])
-        
-        # Layout: Left for button, Right for Graph
-        col_btn, col_graph = st.columns([1, 2])
+# --- USAGE HISTORY & ANALYSIS SECTION ---
+col_btn, col_graph = st.columns([1, 2])
 
-        with col_graph:
-            st.write("### Utilization Trends")
+with col_btn:
+    st.write("### Actions")
+    # Adding a unique key ensures no DuplicateElementId error
+    run_analysis = st.button("RUN FLEET ROTATION ANALYSIS", use_container_width=True, key="main_analysis_btn")
+
+with col_graph:
+    if os.path.exists('usage_history.csv'):
+        try:
+            history_df = pd.read_csv('usage_history.csv')
+            history_df['Date'] = pd.to_datetime(history_df['Date'])
             
-            # Dropdowns for filtering
+            st.write("### Utilization Trends")
             g_col1, g_col2 = st.columns(2)
+            
             with g_col1:
                 selected_cat = st.selectbox("Select Category", labels)
             with g_col2:
@@ -147,31 +149,32 @@ if os.path.exists('usage_history.csv'):
                 }
                 selected_time = st.selectbox("Timeframe", list(time_map.keys()))
 
-            # Filter data by time and category
+            # Filter and Plot
             cutoff_date = datetime.now() - timedelta(days=time_map[selected_time])
             filtered_hist = history_df[history_df['Date'] >= cutoff_date]
             
-            if selected_cat in filtered_hist.columns:
+            if selected_cat in filtered_hist.columns and not filtered_hist.empty:
                 plot_data = filtered_hist.set_index('Date')[selected_cat]
-                
-                # Dynamic Y-Axis Scaling (Max + 3 headroom)
-                max_val = plot_data.max() if not plot_data.empty else 0
-                y_limit = int(max_val + 3)
-                
-                st.bar_chart(plot_data, y_label="Vehicle Count", height=300)
+                # Headroom logic: Max + 3
+                y_max = int(plot_data.max() + 3)
+                st.bar_chart(plot_data, height=250)
             else:
-                st.info(f"No historical data found for {selected_cat} yet.")
-                
-        # Move the existing button into the left column to align with layout
-        with col_btn:
-            st.write("### Actions")
-            run_analysis = st.button("RUN FLEET ROTATION ANALYSIS", use_container_width=True)
-            
-    except Exception as e:
-        st.error(f"Error loading graph: {e}")
-        run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
-else:
-    run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
+                st.info(f"Awaiting historical data for {selected_cat}.")
+        except Exception as e:
+            st.warning(f"Graph display unavailable: {e}")
+    else:
+        st.info("Usage history log not found. Trends will appear after the first scheduled run.")
+
+# --- SIDEBAR ---
+max_dist = st.sidebar.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200)
+
+# --- ACTION EXECUTION ---
+if run_analysis:
+    if 'df' not in locals():
+        st.error("Data not found.")
+    else:
+        with st.spinner("Analyzing trajectories..."):
+            # ... (Rest of your existing analysis code remains exactly the same)
 
 # --- SIDEBAR ---
 max_dist = st.sidebar.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200)
