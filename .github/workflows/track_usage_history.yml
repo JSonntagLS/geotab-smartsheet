@@ -19,7 +19,7 @@ jobs:
       - name: Install Dependencies
         run: pip install pandas smartsheet-python-sdk
 
-- name: Run Tracker Script
+      - name: Run Tracker Script
         env:
           smartsheet_token: ${{ secrets.SMARTSHEET_TOKEN }}
           sheet_id: ${{ secrets.SHEET_ID }}
