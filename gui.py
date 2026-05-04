@@ -235,63 +235,56 @@ if run_analysis:
                         date_str = f"{today.strftime('%b %y')} to {runway_end_date.strftime('%b %y')}"
                         est_end_odo = int(force_num(low_v[col_map["odo"]]) + (h_pacing_monthly * l_months_left))
 
-                        # Categorization Logic
-# Map existing script variables to the calculation
-                        current_odo_A = force_num(high_v[col_map["odo"]])
-                        current_odo_B = force_num(low_v[col_map["odo"]])
+                        # --- CATEGORIZATION LOGIC (Updated for Unique Row Data) ---
+                        # Pull data specifically for the current 'high_v' and 'low_v' pair
+                        odo_A = force_num(high_v[col_map["odo"]])
+                        odo_B = force_num(low_v[col_map["odo"]])
                         
-                        # monthly_miles_A/B represents the actual route intensity
-                        # We use 'projected' if available, otherwise 'actual'
-                        route_intensity_A = force_num(high_v[col_map["projected"]]) if force_num(high_v[col_map["projected"]]) > 0 else force_num(high_v[col_map["actual"]])
-                        route_intensity_B = force_num(low_v[col_map["projected"]]) if force_num(low_v[col_map["projected"]]) > 0 else force_num(low_v[col_map["actual"]])
+                        # Use Projected if it exists, otherwise use Actual
+                        route_A = force_num(high_v[col_map["projected"]]) if force_num(high_v[col_map["projected"]]) > 0 else force_num(high_v[col_map["actual"]])
+                        route_B = force_num(low_v[col_map["projected"]]) if force_num(low_v[col_map["projected"]]) > 0 else force_num(low_v[col_map["actual"]])
 
-                        # Get remaining lease months for both
                         _, months_rem_A = calculate_runway(high_v)
                         _, months_rem_B = calculate_runway(low_v)
 
-                        # SWAP CALCULATION:
-                        # Vehicle B (Under-Used) takes the Heavy Route (A)
-                        est_end_odo_B = current_odo_B + (route_intensity_A * months_rem_B)
-                        # Vehicle A (Over-Paced) takes the Light Route (B)
-                        est_end_odo_A = current_odo_A + (route_intensity_B * months_rem_A)
+                        # Logic: Vehicle B takes Route A | Vehicle A takes Route B
+                        proj_end_odo_B = odo_B + (route_A * months_rem_B)
+                        proj_end_odo_A = odo_A + (route_B * months_rem_A)
 
-                        def get_status(miles):
-                            if miles > 105000: return "OVER"
-                            if miles < 85000: return "UNDER"
-                            return "IDEAL"
+                        def get_status_label(miles):
+                            if miles > 105000: return "🔴 OVER"
+                            if miles < 85000: return "🔵 UNDER"
+                            return "🟢 IDEAL"
 
-                        status_A = get_status(est_end_odo_A)
-                        status_B = get_status(est_end_odo_B)
+                        # Create the two separate status strings
+                        s['Over-Paced Post-Swap'] = f"{proj_end_odo_A:,.0f} ({get_status_label(proj_end_odo_A)})"
+                        s['Under-Used Post-Swap'] = f"{proj_end_odo_B:,.0f} ({get_status_label(proj_end_odo_B)})"
 
-                        # Determine the label based on the new asset (B) moving to the heavy route
-                        if status_B == "IDEAL" and status_A != "OVER":
-                            label = "PERMANENT: Both Balanced"
-                        elif status_B == "OVER":
-                            label = f"QUICK FIX: {months_until_over}mo (B will go OVER)"
-                        elif status_B == "UNDER":
-                            label = "UNDER-UTILIZED: Both finish low"
-                        else:
-                            label = "REBALANCE: Review Projections"
-
-                        s['Lease Lifecycle Projection'] = (
-                            f"{label} | "
-                            f"Veh A Ends: {est_end_odo_A:,.0f} ({status_A}) | "
-                            f"Veh B Ends: {est_end_odo_B:,.0f} ({status_B})"
-                        )
-                        
                         final_recs.append(s)
                         used_vehicles.add(s['high_name'])
                         used_vehicles.add(s['low_name'])
 
-                # --- DISPLAY RESULTS ---
+                # --- UPDATED DISPLAY SECTION ---
                 if final_recs:
-                    st.write("### Recommended Swaps (Dual-Projection Analysis)")
-                    rec_df = pd.DataFrame(final_recs).drop(columns=['score', 'h_data', 'l_data'])
-                    # Rename columns for clarity in the UI
-                    rec_df.columns = ['Over-Paced Vehicle', 'Under-Used Vehicle', 'Monthly Miles Over', 'Monthly Miles Under', 'Swap Distance', 'Lease Lifecycle Projection']
-                    st.table(rec_df)
+                    st.write("### Recommended Swaps: Lifecycle Projections")
+                    rec_df = pd.DataFrame(final_recs)
+                    
+                    # Select and Rename columns for a clean table layout
+                    display_cols = {
+                        "high_name": "Over-Paced Vehicle",
+                        "low_name": "Under-Used Vehicle",
+                        "swap_dist": "Distance",
+                        "Over-Paced Post-Swap": "Proj. End (Current High-Use Asset)",
+                        "Under-Used Post-Swap": "Proj. End (Current Low-Use Asset)"
+                    }
+                    
+                    st.dataframe(
+                        rec_df[list(display_cols.keys())].rename(columns=display_cols),
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 else:
-                    st.info("No viable swaps found within distance/type constraints.")
+                    st.info("No viable swaps found within current constraints.")
 
             except Exception as e:
                 st.error(f"Analysis Error: {e}")
