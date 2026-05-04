@@ -94,25 +94,22 @@ try:
 
 
 # DATA CLEANING: Strip Smartsheet errors and recover the numeric value
-    for col in [col_map["allowance"], col_map["projected"], col_map["actual"], col_map["odo"]]:
+    for col_key in ["allowance", "projected", "actual", "odo"]:
+        col = col_map[col_key]
         if col in df.columns:
-            # First, convert everything to string to check for the error indicator
-            df[col] = df[col].astype(str)
+            # We use str(x) first to prevent the 'float' object error
+            df[col] = df[col].apply(lambda x: re.sub(r'[^0-9.]', '', str(x)) if str(x).strip() != "" else "0")
             
-            # If the cell contains #INVALID, we check if there's a valid number hidden behind it
-            # Otherwise, we use regex to keep only digits and decimals
-            df[col] = df[col].apply(lambda x: re.sub(r'[^0-9.]', '', x) if x.strip() != "" else "0")
-            
-            # Final conversion to numeric, ensuring any remaining empty strings become 0
+            # Final conversion to numeric
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
-    df_display = df[[
-        col_map["name"], col_map["loc"], col_map["allowance"], 
-        col_map["projected"], col_map["actual"], col_map["priority"], col_map["tier"]
-    ]].copy()
     
-    for col in [col_map["allowance"], col_map["projected"], col_map["actual"]]:
-        df_display[col] = df_display[col].astype(int)
+        df_display = df[[
+            col_map["name"], col_map["loc"], col_map["allowance"], 
+            col_map["projected"], col_map["actual"], col_map["priority"], col_map["tier"]
+        ]].copy()
+        
+        for col in [col_map["allowance"], col_map["projected"], col_map["actual"]]:
+            df_display[col] = df_display[col].astype(int)
 
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
