@@ -96,7 +96,9 @@ try:
     numeric_cols = [col_map["allowance"], col_map["projected"], col_map["actual"], col_map["odo"]]
     for col in numeric_cols:
         if col in df.columns:
-            df[col] = pd.to_numeric(df[col].apply(lambda x: re.sub(r'[^0-9.]', '', str(x)) if x and str(x).strip() != "" and "#" not in str(x) else 0), errors='coerce').fillna(0)
+            # We convert to string, check for the error string, and force to 0 only if it's actually an error
+            df[col] = df[col].apply(lambda x: 0 if "#" in str(x) or str(x).strip() == "" else re.sub(r'[^0-9.]', '', str(x)))
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
     df_display = df[[
         col_map["name"], col_map["loc"], col_map["allowance"], 
