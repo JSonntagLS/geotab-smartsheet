@@ -254,24 +254,26 @@ if run_analysis:
                         orig_proj_A = s['data_A']['odo'] + (force_num(high_usage_assets.loc[high_usage_assets[col_map["name"]] == s['h_name'], col_map["projected"]].values[0]) * s['data_A']['months'])
                         orig_proj_B = s['data_B']['odo'] + (force_num(low_usage_assets.loc[low_usage_assets[col_map["name"]] == s['l_name'], col_map["projected"]].values[0]) * s['data_B']['months'])
 
+                        raw_proj_A = force_num(df.loc[df[col_map['name']]==s['h_name'], col_map['projected']].iloc[0])
+                        route_A_final = max(raw_proj_A, 200.0)
+                        without_swap_A = s['data_A']['odo'] + (route_A_final * s['data_A']['months'])
+
+                        raw_proj_B = force_num(df.loc[df[col_map['name']]==s['l_name'], col_map['projected']].iloc[0])
+                        route_B_final = max(raw_proj_B, 200.0)
+                        without_swap_B = s['data_B']['odo'] + (route_B_final * s['data_B']['months'])
+
                         final_recs.append({
                             "Over-Paced Vehicle": s['h_name'],
                             "Under-Used Vehicle": s['l_name'],
                             "Distance": s['dist'],
-                            # NEW: Without-Swap Columns
                             "Without-Swap: Current High-Use Asset": format_projection(
-                                (s['data_A']['odo'] + (force_num(df.loc[df[col_map['name']]==s['h_name'], col_map['projected']].iloc[0]) * s['data_A']['months'])), 
-                                s['data_A']['odo'], 
-                                force_num(df.loc[df[col_map['name']]==s['h_name'], col_map['projected']].iloc[0])
+                                without_swap_A, s['data_A']['odo'], route_A_final
                             ),
                             "Post-Swap: Current High-Use Asset": format_projection(
                                 s['data_A']['proj'], s['data_A']['odo'], s['data_A']['route']
                             ),
-                            # NEW: Without-Swap Columns
                             "Without-Swap: Current Low-Use Asset": format_projection(
-                                (s['data_B']['odo'] + (force_num(df.loc[df[col_map['name']]==s['l_name'], col_map['projected']].iloc[0]) * s['data_B']['months'])), 
-                                s['data_B']['odo'], 
-                                force_num(df.loc[df[col_map['name']]==s['l_name'], col_map['projected']].iloc[0])
+                                without_swap_B, s['data_B']['odo'], route_B_final
                             ),
                             "Post-Swap: Current Low-Use Asset": format_projection(
                                 s['data_B']['proj'], s['data_B']['odo'], s['data_B']['route']
