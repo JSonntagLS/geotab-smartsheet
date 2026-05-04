@@ -1,7 +1,7 @@
 name: Track Fleet History
 on:
   schedule:
-    - cron: '0 8 * * 1' # Every Sunday
+    - cron: '0 8 * * 0' # Every Sunday
   workflow_dispatch: # Allows you to run it manually for testing
 
 jobs:
