@@ -239,7 +239,8 @@ if run_analysis:
                         if 90000 <= est_end_odo <= 105000:
                             s['Lease Lifecycle Projection'] = f"PERMANENT FIX: High Utility (Est. {est_end_odo:,} mi)."
                         elif est_end_odo < 90000:
-                            s['Lease Lifecycle Projection'] = f"PERMANENT FIX: Under Limit (Est. {est_end_odo:,} mi)."
+                            # Flagging as Under-Used instead of Permanent to highlight wasted lease capacity
+                            s['Lease Lifecycle Projection'] = f"UNDER-UTILIZED: Finishing Low (Est. {est_end_odo:,} mi)."
                         else:
                             # If it's going to go over 105k, it's a temporary fix
                             status_tier = "QUICK FIX" if months_until_over <= 4 else "REBALANCE"
