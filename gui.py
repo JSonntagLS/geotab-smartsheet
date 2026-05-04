@@ -227,11 +227,21 @@ if run_analysis:
                         h_pacing_monthly = s['over_pacing']
                         projected_total_needed = h_pacing_monthly * l_months_left
                         
-                        if projected_total_needed < l_miles_left:
-                            s['Lease Lifecycle Projection'] = f"PERMANENT FIX: Runway ({l_miles_left} mi) carries to lease end."
+                        # Calculate specific dates
+                        today = datetime.now()
+                        months_until_over = int(l_miles_left / max(1, h_pacing_monthly))
+                        runway_end_date = today + pd.offsets.DateOffset(months=months_until_over)
+                        
+                        date_str = f"{today.strftime('%b %y')} to {runway_end_date.strftime('%b %y')}"
+                        est_end_odo = int(force_num(low_v[col_map["odo"]]) + (h_pacing_monthly * l_months_left))
+
+                        # Categorization Logic
+                        if est_end_odo <= 100000:
+                            s['Lease Lifecycle Projection'] = f"PERMANENT FIX: Est. {est_end_odo:,} mi at lease end."
+                        elif months_until_over <= 4:
+                            s['Lease Lifecycle Projection'] = f"QUICK FIX: Buys {months_until_over} months ({date_str})."
                         else:
-                            months_until_over = int(l_miles_left / max(1, h_pacing_monthly))
-                            s['Lease Lifecycle Projection'] = f"QUICK FIX: Buys {months_until_over} months of runway."
+                            s['Lease Lifecycle Projection'] = f"REBALANCE: Buys {months_until_over} months ({date_str})."
 
                         final_recs.append(s)
                         used_vehicles.add(s['high_name'])
