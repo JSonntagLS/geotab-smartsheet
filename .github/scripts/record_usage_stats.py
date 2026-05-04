@@ -3,27 +3,27 @@ import smartsheet
 import os
 from datetime import datetime
 
-# Load from GitHub Secrets
-token = os.environ["smartsheet_token"]
-sid = os.environ["sheet_id"]
+# Match the variable names exactly as they appear in your gui.py
+access_token = os.environ.get('SMARTSHEET_TOKEN')
+sheet_id = os.environ.get('SHEET_ID')
 
-smart = smartsheet.Smartsheet(token)
+if not access_token or not sheet_id:
+    print("Error: Missing SMARTSHEET_TOKEN or SHEET_ID environment variables.")
+    exit(1)
 
-# Re-matching the logic that works in your other scripts
+smartsheet_client = smartsheet.Smartsheet(access_token)
+
 try:
-    sheet = smart.Sheets.get_sheet(sid)
+    # Converting to int to match gui.py logic
+    sheet = smartsheet_client.Sheets.get_sheet(int(sheet_id))
     columns = [col.title for col in sheet.columns]
-    rows = []
-    for row in sheet.rows:
-        rows.append([cell.value for cell in row.cells])
+    rows = [[cell.value for cell in row.cells] for row in sheet.rows]
     df = pd.DataFrame(rows, columns=columns)
 except Exception as e:
-    print(f"Error loading sheet: {e}")
-    df = pd.DataFrame()
+    print(f"Error accessing Smartsheet: {e}")
+    exit(1)
 
-# The column name from your Smartsheet
 target_col = "Utilization Tier"
-
 labels = [
     "Highly Overused", "Moderately Overused", "Slightly Overused", 
     "Balanced", 
@@ -31,24 +31,16 @@ labels = [
 ]
 
 stats = {"Date": datetime.now().strftime("%Y-%m-%d")}
-
-# Define filename
 hist_file = "usage_history.csv" 
 
-if not df.empty and target_col in df.columns:
-    # Clean data: handle Nones, strip whitespace, lowercase for matching
+if target_col in df.columns:
     raw_values = df[target_col].fillna("None").astype(str).str.strip().str.lower()
-    
     for label in labels:
-        # Match cleaned labels against cleaned data
-        match_count = (raw_values == label.lower().strip()).sum()
-        stats[label] = int(match_count)
+        stats[label] = int((raw_values == label.lower().strip()).sum())
     
-    # Save Logic
     new_row = pd.DataFrame([stats])
     if os.path.exists(hist_file):
         history_df = pd.read_csv(hist_file)
-        # Overwrite today's date if re-running manual tests
         history_df = history_df[history_df['Date'] != stats['Date']]
         history_df = pd.concat([history_df, new_row], ignore_index=True)
     else:
@@ -57,5 +49,5 @@ if not df.empty and target_col in df.columns:
     history_df.to_csv(hist_file, index=False)
     print(f"Successfully recorded stats to {hist_file}")
 else:
-    available = df.columns.tolist() if not df.empty else "No columns found"
-    print(f"ABORTING: Could not find '{target_col}'. Available columns: {available}")
+    print(f"ABORTING: Could not find '{target_col}'. Available: {df.columns.tolist()}")
+    exit(1)
