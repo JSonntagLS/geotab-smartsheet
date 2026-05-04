@@ -112,9 +112,9 @@ if 'df' in locals():
     with st.container():
         m_cols = st.columns(7)
         labels = [
-            "Highly Overused", "Overused", "Slightly Overused", 
-            "Ideal Use", 
-            "Slightly Underused", "Underused", "Highly Underused"
+            "Highly Overused", "Moderately Overused", "Slightly Overused", 
+            "Balanced", 
+            "Slightly Underused", "Moderately Underused", "Highly Underused"
         ]
         
         for i, col in enumerate(m_cols):
