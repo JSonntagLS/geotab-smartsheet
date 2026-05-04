@@ -35,6 +35,6 @@ jobs:
         run: |
           git config --global user.name "Fleet Bot"
           git config --global user.email "bot@lifeserve.com"
-          git add history.csv
+          git add usage_history.csv  # Updated name
           git commit -m "Update weekly fleet statistics" || exit 0
           git push
