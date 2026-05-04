@@ -5,6 +5,7 @@ from datetime import datetime
 import math
 import google.generativeai as genai
 import re
+import os
 
 # --- PAGE CONFIG ---
 st.set_page_config(layout="wide")
@@ -122,6 +123,55 @@ if 'df' in locals():
             # Count occurrences in the 'Utilization Tier' column
             count = len(df[df[col_map["tier"]].astype(str).str.strip() == label])
             col.metric(label=label, value=count)
+
+# --- USAGE HISTORY GRAPH ---
+if os.path.exists('usage_history.csv'):
+    try:
+        history_df = pd.read_csv('usage_history.csv')
+        history_df['Date'] = pd.to_datetime(history_df['Date'])
+        
+        # Layout: Left for button, Right for Graph
+        col_btn, col_graph = st.columns([1, 2])
+
+        with col_graph:
+            st.write("### Utilization Trends")
+            
+            # Dropdowns for filtering
+            g_col1, g_col2 = st.columns(2)
+            with g_col1:
+                selected_cat = st.selectbox("Select Category", labels)
+            with g_col2:
+                time_map = {
+                    "1 month": 30, "3 months": 90, "6 months": 180, 
+                    "1 year": 365, "3 years": 1095
+                }
+                selected_time = st.selectbox("Timeframe", list(time_map.keys()))
+
+            # Filter data by time and category
+            cutoff_date = datetime.now() - timedelta(days=time_map[selected_time])
+            filtered_hist = history_df[history_df['Date'] >= cutoff_date]
+            
+            if selected_cat in filtered_hist.columns:
+                plot_data = filtered_hist.set_index('Date')[selected_cat]
+                
+                # Dynamic Y-Axis Scaling (Max + 3 headroom)
+                max_val = plot_data.max() if not plot_data.empty else 0
+                y_limit = int(max_val + 3)
+                
+                st.bar_chart(plot_data, y_label="Vehicle Count", height=300)
+            else:
+                st.info(f"No historical data found for {selected_cat} yet.")
+                
+        # Move the existing button into the left column to align with layout
+        with col_btn:
+            st.write("### Actions")
+            run_analysis = st.button("RUN FLEET ROTATION ANALYSIS", use_container_width=True)
+            
+    except Exception as e:
+        st.error(f"Error loading graph: {e}")
+        run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
+else:
+    run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
 
 # --- SIDEBAR ---
 max_dist = st.sidebar.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200)
