@@ -174,31 +174,38 @@ if run_analysis:
     else:
         with st.spinner("Analyzing trajectories..."):
             try:
-                # 1. Filter assets
-                high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH|OVER', na=False, case=False)]
-                low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED|LOW|UNDER', na=False, case=False)]
+                # 1. Identify candidates based on Tier and Priority
+                # We want assets marked as URGENT/HIGH for high usage, and UNDERUSED for low usage
+                high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
+                low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
                 
-                if high_usage_assets.empty or low_usage_assets.empty:
-                    st.warning(f"Filter Check: Found {len(high_usage_assets)} 'Urgent' and {len(low_usage_assets)} 'Underused' vehicles.")
-
                 possible_swaps = []
                 for _, high_v in high_usage_assets.iterrows():
                     for _, low_v in low_usage_assets.iterrows():
+                        # --- STRICT MODEL MATCHING ---
+                        # Only swap if the descriptions (Vehicle Type) match
                         h_desc = str(high_v[col_map["desc"]]).strip().lower()
                         l_desc = str(low_v[col_map["desc"]]).strip().lower()
+                        if h_desc != l_desc: 
+                            continue
 
-                        if h_desc != l_desc: continue
-
+                        # --- DISTANCE CHECK ---
                         dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
-                        if dist > max_dist: continue
+                        if dist > max_dist: 
+                            continue
                         
+                        # --- CALCULATION ---
                         h_proj = force_num(high_v[col_map["projected"]])
                         h_allow = force_num(high_v[col_map["allowance"]])
                         l_proj = force_num(low_v[col_map["projected"]])
                         l_allow = force_num(low_v[col_map["allowance"]])
                         
+                        # High delta should be positive (how much they are over)
                         high_delta = h_proj - h_allow
+                        # Low delta should be negative (how much room they have)
                         low_delta = l_proj - l_allow
+                        
+                        # Scoring: Higher is better (biggest gap in usage + shortest distance)
                         score = ((high_delta - low_delta) * 0.7) - ((dist ** 1.5) * 0.1)
                         
                         h_miles, h_months = calculate_runway(high_v)
@@ -215,18 +222,25 @@ if run_analysis:
                             "l_data": {"m": l_miles, "mo": l_months}
                         })
 
+                # Sort by score and remove duplicates (one vehicle can only be in one swap)
                 sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
                 final_recs = []
                 used_vehicles = set()
 
                 for s in sorted_swaps:
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
+                        # Lease Lifecycle Logic
                         l_miles_left = s['l_data']['m']
                         l_months_left = s['l_data']['mo']
                         h_pacing_monthly = s['over_pacing']
                         
-                        # Projection Logic
+                        # If the underused vehicle's remaining miles can cover the overused pacing
                         projected_total_needed = h_pacing_monthly * l_months_left
+                        
+                        if h_pacing_monthly <= 0:
+                            # Skip if the math says it's not actually over-pacing
+                            continue
+
                         if projected_total_needed < l_miles_left:
                             s['Lease Lifecycle Projection'] = f"PERMANENT FIX: Runway ({l_miles_left} mi) carries to lease end."
                         else:
@@ -238,18 +252,18 @@ if run_analysis:
                         used_vehicles.add(s['low_name'])
 
                 if final_recs:
-                    st.success(f"Analysis Complete. Found {len(final_recs)} rotations.")
+                    st.success(f"Analysis Complete. Found {len(final_recs)} valid rotations.")
                     ui_df = pd.DataFrame(final_recs)
                     ui_df = ui_df.rename(columns={
                         "high_name": "Over-Paced Vehicle",
                         "low_name": "Under-Used Vehicle",
                         "over_pacing": "Monthly Miles Over",
-                        "wasted_miles": "Monthly Miles Wasted",
+                        "wasted_miles": "Monthly Miles Under",
                         "swap_dist": "Swap Distance"
                     })
-                    st.table(ui_df[["Over-Paced Vehicle", "Under-Used Vehicle", "Monthly Miles Over", "Monthly Miles Wasted", "Swap Distance", "Lease Lifecycle Projection"]])
+                    st.table(ui_df[["Over-Paced Vehicle", "Under-Used Vehicle", "Monthly Miles Over", "Monthly Miles Under", "Swap Distance", "Lease Lifecycle Projection"]])
                 else:
-                    st.info("No viable rotations found.")
+                    st.info("No viable rotations found matching these constraints.")
             except Exception as e:
                 st.error(f"Rotation Logic Error: {e}")
 
