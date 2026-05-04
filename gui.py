@@ -65,19 +65,11 @@ def force_num(val, fallback=0.0):
         return fallback
 
 def calculate_runway(row):
-    # This updated version looks for the data more aggressively 
     try:
-        # 1. Get Contract Miles (Look for 100k as default for LifeServe)
         raw_contract = force_num(row.get(col_map["contract"]))
         total_contract = raw_contract if raw_contract > 1000 else 100000.0
-        
-        # 2. Get Odometer
         current_odo = force_num(row.get(col_map["odo"]), fallback=0.0)
-        
-        # 3. Calculate remaining
         miles_remaining = total_contract - current_odo
-        
-        # 4. Get Dates
         start_date = pd.to_datetime(row.get(col_map["start"]), errors='coerce')
         raw_len = force_num(row.get(col_map["length"]), fallback=36.0)
         
@@ -89,21 +81,9 @@ def calculate_runway(row):
         months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
         
         return int(miles_remaining), max(1, int(months_remaining))
-    except Exception as e:
-        # If it fails, we return a huge number so it doesn't trigger the "Critical" warning by mistake
+    except Exception:
         return 50000, 12
 
-# --- DATA LOADING ---
-I understand the frustration. Seeing #INVALID OPERATION in your fleet status table (as shown in image_4a4a01.png) means the script is trying to display raw Smartsheet formula errors instead of the processed numbers we need for the graph and analysis.
-
-The reason my previous suggestion seemed confusing is that I was trying to fix both the data corruption and the layout at once. Let's fix the data integrity first so your "Projected Monthly Usage" column works again.
-
-1. Fix the Data Corruption (#INVALID OPERATION)
-The error happens because the script is pulling the literal string "#INVALID OPERATION" from Smartsheet. We need to force these columns to be numbers before they hit the display table.
-
-In your script, find the # --- DATA LOADING --- section and replace the existing try/except block with this version:
-
-Python
 # --- DATA LOADING ---
 try:
     smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
@@ -112,34 +92,28 @@ try:
     rows = [[cell.value for cell in row.cells] for row in sheet.rows]
     df = pd.DataFrame(rows, columns=columns)
 
-    # DATA CLEANING: Fix the #INVALID OPERATION by forcing numeric conversion
+    # DATA CLEANING: Fix #INVALID OPERATION by forcing numeric conversion
     numeric_cols = [col_map["allowance"], col_map["projected"], col_map["actual"], col_map["odo"]]
     for col in numeric_cols:
         if col in df.columns:
-            # This line strips non-numeric characters and turns "#INVALID OPERATION" into 0
             df[col] = pd.to_numeric(df[col].apply(lambda x: re.sub(r'[^0-9.]', '', str(x)) if x and str(x).strip() != "" and "#" not in str(x) else 0), errors='coerce').fillna(0)
 
-    # Prepare display version with clean integers
     df_display = df[[
         col_map["name"], col_map["loc"], col_map["allowance"], 
         col_map["projected"], col_map["actual"], col_map["priority"], col_map["tier"]
     ]].copy()
     
-    # Ensure they render as clean whole numbers in the table
     for col in [col_map["allowance"], col_map["projected"], col_map["actual"]]:
         df_display[col] = df_display[col].astype(int)
 
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
+
 # --- DASHBOARD METRICS ---
 if 'df' in locals():
     with st.container():
         m_cols = st.columns(7)
-        labels = [
-            "Highly Overused", "Moderately Overused", "Slightly Overused", 
-            "Balanced", 
-            "Slightly Underused", "Moderately Underused", "Highly Underused"
-        ]
+        labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
         
         for i, col in enumerate(m_cols):
             label = labels[i]
@@ -151,7 +125,6 @@ col_btn, col_graph = st.columns([1, 2])
 
 with col_btn:
     st.write("### Actions")
-    # Fixed unique key and width
     run_analysis = st.button("RUN FLEET ROTATION ANALYSIS", use_container_width=True, key="fleet_rot_final")
 
 with col_graph:
@@ -160,7 +133,6 @@ with col_graph:
             history_df = pd.read_csv('usage_history.csv')
             history_df['Date'] = pd.to_datetime(history_df['Date'])
             st.write("### Utilization Trends")
-            
             g_col1, g_col2 = st.columns(2)
             with g_col1:
                 selected_cat = st.selectbox("Select Category", labels)
@@ -168,15 +140,14 @@ with col_graph:
                 time_map = {"1 month": 30, "3 months": 90, "6 months": 180, "1 year": 365, "3 years": 1095}
                 selected_time = st.selectbox("Timeframe", list(time_map.keys()))
 
-            from datetime import timedelta
-            cutoff = datetime.now() - timedelta(days=time_map[selected_time])
+            cutoff = datetime.now() - pd.Timedelta(days=time_map[selected_time])
             filtered = history_df[history_df['Date'] >= cutoff]
             
             if selected_cat in filtered.columns and not filtered.empty:
                 st.bar_chart(filtered.set_index('Date')[selected_cat], height=250)
             else:
                 st.info("No trend data for this selection.")
-        except:
+        except Exception:
             st.warning("Trend log busy or unavailable.")
     else:
         st.info("Usage history log will populate after the next automated sync.")
@@ -190,44 +161,36 @@ if run_analysis:
         st.error("Data not found.")
     else:
         with st.spinner("Analyzing trajectories..."):
-            # Ensure we are looking for the right strings in Priority and Tier
-            high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
-            low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
-            
-            possible_swaps = []
-            for _, high_v in high_usage_assets.iterrows():
-                for _, low_v in low_usage_assets.iterrows():
-                    # Match by Description (e.g., "CHRYSLER PACIFICA")
-                    h_desc = str(high_v.get(col_map["desc"], "")).strip().lower()
-                    l_desc = str(low_v.get(col_map["desc"], "")).strip().lower()
-                    
-                    # If descriptions are missing, we use the Name as a fallback to find model matches
-                    if not h_desc or h_desc == "none":
-                        h_desc = "pacifica" if "PACIFICA" in str(high_v[col_map["name"]]).upper() else "rogue" if "ROGUE" in str(high_v[col_map["name"]]).upper() else "voyager"
-                    if not l_desc or l_desc == "none":
-                        l_desc = "pacifica" if "PACIFICA" in str(low_v[col_map["name"]]).upper() else "rogue" if "ROGUE" in str(low_v[col_map["name"]]).upper() else "voyager"
-
-                    if h_desc != l_desc:
-                        continue
-
-                    dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
-                    if dist <= max_dist:
-                            continue
+            try:
+                high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
+                low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
+                
+                possible_swaps = []
+                for _, high_v in high_usage_assets.iterrows():
+                    for _, low_v in low_usage_assets.iterrows():
+                        # Match by Description with Name fallback
+                        h_desc = str(high_v.get(col_map["desc"], "")).strip().lower()
+                        l_desc = str(low_v.get(col_map["desc"], "")).strip().lower()
                         
-                        # --- CALCULATION ---
-                        h_proj = force_num(high_v[col_map["projected"]])
-                        h_allow = force_num(high_v[col_map["allowance"]])
-                        l_proj = force_num(low_v[col_map["projected"]])
-                        l_allow = force_num(low_v[col_map["allowance"]])
+                        if not h_desc or h_desc == "none":
+                            h_desc = "pacifica" if "PACIFICA" in str(high_v[col_map["name"]]).upper() else "rogue" if "ROGUE" in str(high_v[col_map["name"]]).upper() else "voyager"
+                        if not l_desc or l_desc == "none":
+                            l_desc = "pacifica" if "PACIFICA" in str(low_v[col_map["name"]]).upper() else "rogue" if "ROGUE" in str(low_v[col_map["name"]]).upper() else "voyager"
+
+                        if h_desc != l_desc: continue
+
+                        dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
+                        if dist > max_dist: continue
                         
-                        # High delta should be positive (how much they are over)
+                        h_proj, h_allow = force_num(high_v[col_map["projected"]]), force_num(high_v[col_map["allowance"]])
+                        l_proj, l_allow = force_num(low_v[col_map["projected"]]), force_num(low_v[col_map["allowance"]])
+                        
                         high_delta = h_proj - h_allow
-                        # Low delta should be negative (how much room they have)
                         low_delta = l_proj - l_allow
                         
-                        # Scoring: Higher is better (biggest gap in usage + shortest distance)
+                        if high_delta <= 0: continue
+
                         score = ((high_delta - low_delta) * 0.7) - ((dist ** 1.5) * 0.1)
-                        
                         h_miles, h_months = calculate_runway(high_v)
                         l_miles, l_months = calculate_runway(low_v)
 
@@ -242,25 +205,16 @@ if run_analysis:
                             "l_data": {"m": l_miles, "mo": l_months}
                         })
 
-                # Sort by score and remove duplicates (one vehicle can only be in one swap)
                 sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
                 final_recs = []
                 used_vehicles = set()
 
                 for s in sorted_swaps:
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
-                        # Lease Lifecycle Logic
-                        l_miles_left = s['l_data']['m']
-                        l_months_left = s['l_data']['mo']
+                        l_miles_left, l_months_left = s['l_data']['m'], s['l_data']['mo']
                         h_pacing_monthly = s['over_pacing']
-                        
-                        # If the underused vehicle's remaining miles can cover the overused pacing
                         projected_total_needed = h_pacing_monthly * l_months_left
                         
-                        if h_pacing_monthly <= 0:
-                            # Skip if the math says it's not actually over-pacing
-                            continue
-
                         if projected_total_needed < l_miles_left:
                             s['Lease Lifecycle Projection'] = f"PERMANENT FIX: Runway ({l_miles_left} mi) carries to lease end."
                         else:
@@ -273,13 +227,9 @@ if run_analysis:
 
                 if final_recs:
                     st.success(f"Analysis Complete. Found {len(final_recs)} valid rotations.")
-                    ui_df = pd.DataFrame(final_recs)
-                    ui_df = ui_df.rename(columns={
-                        "high_name": "Over-Paced Vehicle",
-                        "low_name": "Under-Used Vehicle",
-                        "over_pacing": "Monthly Miles Over",
-                        "wasted_miles": "Monthly Miles Under",
-                        "swap_dist": "Swap Distance"
+                    ui_df = pd.DataFrame(final_recs).rename(columns={
+                        "high_name": "Over-Paced Vehicle", "low_name": "Under-Used Vehicle",
+                        "over_pacing": "Monthly Miles Over", "wasted_miles": "Monthly Miles Under", "swap_dist": "Swap Distance"
                     })
                     st.table(ui_df[["Over-Paced Vehicle", "Under-Used Vehicle", "Monthly Miles Over", "Monthly Miles Under", "Swap Distance", "Lease Lifecycle Projection"]])
                 else:
