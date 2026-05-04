@@ -22,7 +22,7 @@ jobs:
       - name: Run Tracker Script
         env:
           SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
-          SHEET_ID: ${{ secrets.SHEET_ID }}
+          SHEET_ID: ${{ secrets.SMARTSHEET_ID }}
         run: |
           SCRIPT_PATH=$(find . -name "record_usage_stats.py" | head -n 1)
           python "$SCRIPT_PATH"
