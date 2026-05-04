@@ -24,7 +24,7 @@ jobs:
           smartsheet_token: ${{ secrets.SMARTSHEET_TOKEN }}
           sheet_id: ${{ secrets.SHEET_ID }}
         run: |
-          python .github/scripts/record_stats.py
+          python .github/scripts/record_usage_stats.py
 
       - name: Commit and Push
         run: |
