@@ -236,14 +236,25 @@ if run_analysis:
                         est_end_odo = int(force_num(low_v[col_map["odo"]]) + (h_pacing_monthly * l_months_left))
 
                         # Categorization Logic
-                        # Calculate for BOTH vehicles (A = Over-Paced, B = Under-Used)
-                        # Vehicle B (Under-Used) takes over the Heavy Route
-                        est_end_odo_B = current_odo_B + (monthly_miles_A * months_remaining_B)
+# Map existing script variables to the calculation
+                        current_odo_A = force_num(high_v[col_map["odo"]])
+                        current_odo_B = force_num(low_v[col_map["odo"]])
                         
-                        # Vehicle A (Over-Paced) takes over the Light Route
-                        est_end_odo_A = current_odo_A + (monthly_miles_B * months_remaining_A)
+                        # monthly_miles_A/B represents the actual route intensity
+                        # We use 'projected' if available, otherwise 'actual'
+                        route_intensity_A = force_num(high_v[col_map["projected"]]) if force_num(high_v[col_map["projected"]]) > 0 else force_num(high_v[col_map["actual"]])
+                        route_intensity_B = force_num(low_v[col_map["projected"]]) if force_num(low_v[col_map["projected"]]) > 0 else force_num(low_v[col_map["actual"]])
 
-                        # New Projection Report for both
+                        # Get remaining lease months for both
+                        _, months_rem_A = calculate_runway(high_v)
+                        _, months_rem_B = calculate_runway(low_v)
+
+                        # SWAP CALCULATION:
+                        # Vehicle B (Under-Used) takes the Heavy Route (A)
+                        est_end_odo_B = current_odo_B + (route_intensity_A * months_rem_B)
+                        # Vehicle A (Over-Paced) takes the Light Route (B)
+                        est_end_odo_A = current_odo_A + (route_intensity_B * months_rem_A)
+
                         def get_status(miles):
                             if miles > 105000: return "OVER"
                             if miles < 85000: return "UNDER"
@@ -252,21 +263,38 @@ if run_analysis:
                         status_A = get_status(est_end_odo_A)
                         status_B = get_status(est_end_odo_B)
 
-                        # Determine the "useful" label based on both results
+                        # Determine the label based on the new asset (B) moving to the heavy route
                         if status_B == "IDEAL" and status_A != "OVER":
                             label = "PERMANENT: Both Balanced"
                         elif status_B == "OVER":
-                            label = f"QUICK FIX: {months_until_over}mo (B will eventually Over-Pace)"
+                            label = f"QUICK FIX: {months_until_over}mo (B will go OVER)"
                         elif status_B == "UNDER":
                             label = "UNDER-UTILIZED: Both finish low"
                         else:
-                            label = "REBALANCE: Check Projections"
+                            label = "REBALANCE: Review Projections"
 
                         s['Lease Lifecycle Projection'] = (
                             f"{label} | "
                             f"Veh A Ends: {est_end_odo_A:,.0f} ({status_A}) | "
                             f"Veh B Ends: {est_end_odo_B:,.0f} ({status_B})"
                         )
+                        
+                        final_recs.append(s)
+                        used_vehicles.add(s['high_name'])
+                        used_vehicles.add(s['low_name'])
+
+                # --- DISPLAY RESULTS ---
+                if final_recs:
+                    st.write("### Recommended Swaps (Dual-Projection Analysis)")
+                    rec_df = pd.DataFrame(final_recs).drop(columns=['score', 'h_data', 'l_data'])
+                    # Rename columns for clarity in the UI
+                    rec_df.columns = ['Over-Paced Vehicle', 'Under-Used Vehicle', 'Monthly Miles Over', 'Monthly Miles Under', 'Swap Distance', 'Lease Lifecycle Projection']
+                    st.table(rec_df)
+                else:
+                    st.info("No viable swaps found within distance/type constraints.")
+
+            except Exception as e:
+                st.error(f"Analysis Error: {e}")
 
 st.divider()
 st.write("### Current Fleet Status")
