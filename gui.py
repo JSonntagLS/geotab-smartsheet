@@ -171,11 +171,9 @@ if run_analysis:
                 low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
                 
                 possible_swaps = []
-                # Use standard for loop to ensure fresh row data per iteration
                 for h_idx, high_row in high_usage_assets.iterrows():
                     for l_idx, low_row in low_usage_assets.iterrows():
                         
-                        # Type matching
                         h_desc = str(high_row.get(col_map["desc"], "")).strip().lower()
                         l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
                         if h_desc != l_desc: continue
@@ -197,7 +195,7 @@ if run_analysis:
                         proj_A = odo_A + (route_B * months_rem_A)
                         proj_B = odo_B + (route_A * months_rem_B)
 
-                        # 4. SCORING (For Sorting)
+                        # 4. SCORING
                         score = ((route_A - route_B) * 0.7) - ((dist ** 1.5) * 0.1)
 
                         possible_swaps.append({
@@ -214,50 +212,37 @@ if run_analysis:
                 final_recs = []
                 used_vehicles = set()
 
-                for s in sorted_swaps:
-                    if s['h_name'] not in used_vehicles and s['l_name'] not in used_vehicles:
-                        
-                        # Logic to build status strings
-                    def format_projection(proj_val, current_odo, route_val):
-                        if proj_val > 105000:
-                            # Calculate months until 105k limit
-                            miles_to_go = 105000 - current_odo
-                            
-                            # Prevent division by zero if route_val is 0
-                            if route_val > 0:
-                                months_until = max(0, miles_to_go / route_val)
-                                time_text = f"Hits limit in {months_until:.1f} months"
-                            else:
-                                time_text = "No usage detected"
-                                
-                            return f"🔴 OVER: {proj_val:,.0f} mi ({time_text})"
-                        elif proj_val < 85000:
-                            return f"🔵 UNDER: {proj_val:,.0f} mi"
-                        return f"🟢 IDEAL: {proj_val:,.0f} mi"
+                # Define helper function within the analysis block scope
+                def format_projection(proj_val, current_odo, route_val):
+                    if proj_val > 105000:
+                        miles_to_go = 105000 - current_odo
+                        if route_val > 0:
+                            months_until = max(0, miles_to_go / route_val)
+                            time_text = f"Hits limit in {months_until:.1f} months"
+                        else:
+                            time_text = "No usage detected"
+                        return f"🔴 OVER: {proj_val:,.0f} mi ({time_text})"
+                    elif proj_val < 85000:
+                        return f"🔵 UNDER: {proj_val:,.0f} mi"
+                    return f"🟢 IDEAL: {proj_val:,.0f} mi"
 
                 for s in sorted_swaps:
                     if s['h_name'] not in used_vehicles and s['l_name'] not in used_vehicles:
-                        # Build the display rows using the captured data
                         final_recs.append({
                             "Over-Paced Vehicle": s['h_name'],
                             "Under-Used Vehicle": s['l_name'],
                             "Distance": s['dist'],
                             "Post-Swap: Current High-Use Asset": format_projection(
-                                s['data_A']['proj'], 
-                                s['data_A']['odo'], 
-                                s['data_A']['route']
+                                s['data_A']['proj'], s['data_A']['odo'], s['data_A']['route']
                             ),
                             "Post-Swap: Current Low-Use Asset": format_projection(
-                                s['data_B']['proj'], 
-                                s['data_B']['odo'], 
-                                s['data_B']['route']
+                                s['data_B']['proj'], s['data_B']['odo'], s['data_B']['route']
                             )
                         })
-                        
                         used_vehicles.add(s['h_name'])
                         used_vehicles.add(s['l_name'])
 
-                # 6. DISPLAY
+                # 6. DISPLAY RESULTS
                 if final_recs:
                     st.write("### Fleet Rotation Analysis")
                     st.table(pd.DataFrame(final_recs))
