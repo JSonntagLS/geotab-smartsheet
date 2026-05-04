@@ -190,7 +190,15 @@ if run_analysis:
                         high_delta = h_proj - h_allow
                         low_delta = l_proj - l_allow
                         
-                        if high_delta <= 0: continue
+                        # If projected is 0 due to a Smartsheet error, we calculate delta based on Actual miles instead
+                        if h_proj == 0:
+                            high_delta = force_num(high_v[col_map["actual"]]) - h_allow
+                        else:
+                            high_delta = h_proj - h_allow
+                        
+                        # Only skip if the vehicle is truly under the allowance
+                        if high_delta <= 0: 
+                            continue
 
                         score = ((high_delta - low_delta) * 0.7) - ((dist ** 1.5) * 0.1)
                         h_miles, h_months = calculate_runway(high_v)
