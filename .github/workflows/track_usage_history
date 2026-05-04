@@ -1,0 +1,35 @@
+name: Track Fleet History
+on:
+  schedule:
+    - cron: '0 8 * * 1' # Every Sunday
+  workflow_dispatch: # Allows you to run it manually for testing
+
+jobs:
+  update-history:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install pandas smartsheet-python-sdk
+
+      - name: Run Tracker Script
+        env:
+          smartsheet_token: ${{ secrets.SMARTSHEET_TOKEN }}
+          sheet_id: ${{ secrets.SHEET_ID }}
+        run: |
+          python .github/scripts/record_stats.py
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "Fleet Bot"
+          git config --global user.email "bot@lifeserve.com"
+          git add history.csv
+          git commit -m "Update weekly fleet statistics" || exit 0
+          git push
