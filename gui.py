@@ -236,31 +236,37 @@ if run_analysis:
                         est_end_odo = int(force_num(low_v[col_map["odo"]]) + (h_pacing_monthly * l_months_left))
 
                         # Categorization Logic
-                        if 90000 <= est_end_odo <= 105000:
-                            s['Lease Lifecycle Projection'] = f"PERMANENT FIX: High Utility (Est. {est_end_odo:,} mi)."
-                        elif est_end_odo < 90000:
-                            # Flagging as Under-Used instead of Permanent to highlight wasted lease capacity
-                            s['Lease Lifecycle Projection'] = f"UNDER-UTILIZED: Finishing Low (Est. {est_end_odo:,} mi)."
+                        # Calculate for BOTH vehicles (A = Over-Paced, B = Under-Used)
+                        # Vehicle B (Under-Used) takes over the Heavy Route
+                        est_end_odo_B = current_odo_B + (monthly_miles_A * months_remaining_B)
+                        
+                        # Vehicle A (Over-Paced) takes over the Light Route
+                        est_end_odo_A = current_odo_A + (monthly_miles_B * months_remaining_A)
+
+                        # New Projection Report for both
+                        def get_status(miles):
+                            if miles > 105000: return "OVER"
+                            if miles < 85000: return "UNDER"
+                            return "IDEAL"
+
+                        status_A = get_status(est_end_odo_A)
+                        status_B = get_status(est_end_odo_B)
+
+                        # Determine the "useful" label based on both results
+                        if status_B == "IDEAL" and status_A != "OVER":
+                            label = "PERMANENT: Both Balanced"
+                        elif status_B == "OVER":
+                            label = f"QUICK FIX: {months_until_over}mo (B will eventually Over-Pace)"
+                        elif status_B == "UNDER":
+                            label = "UNDER-UTILIZED: Both finish low"
                         else:
-                            # If it's going to go over 105k, it's a temporary fix
-                            status_tier = "QUICK FIX" if months_until_over <= 4 else "REBALANCE"
-                            s['Lease Lifecycle Projection'] = f"{status_tier}: Buys {months_until_over} months ({date_str})."
+                            label = "REBALANCE: Check Projections"
 
-                        final_recs.append(s)
-                        used_vehicles.add(s['high_name'])
-                        used_vehicles.add(s['low_name'])
-
-                if final_recs:
-                    st.success(f"Analysis Complete. Found {len(final_recs)} valid rotations.")
-                    ui_df = pd.DataFrame(final_recs).rename(columns={
-                        "high_name": "Over-Paced Vehicle", "low_name": "Under-Used Vehicle",
-                        "over_pacing": "Monthly Miles Over", "wasted_miles": "Monthly Miles Under", "swap_dist": "Swap Distance"
-                    })
-                    st.table(ui_df[["Over-Paced Vehicle", "Under-Used Vehicle", "Monthly Miles Over", "Monthly Miles Under", "Swap Distance", "Lease Lifecycle Projection"]])
-                else:
-                    st.info("No viable rotations found matching these constraints.")
-            except Exception as e:
-                st.error(f"Rotation Logic Error: {e}")
+                        s['Lease Lifecycle Projection'] = (
+                            f"{label} | "
+                            f"Veh A Ends: {est_end_odo_A:,.0f} ({status_A}) | "
+                            f"Veh B Ends: {est_end_odo_B:,.0f} ({status_B})"
+                        )
 
 st.divider()
 st.write("### Current Fleet Status")
