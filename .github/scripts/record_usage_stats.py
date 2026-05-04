@@ -8,12 +8,20 @@ token = os.environ["smartsheet_token"]
 sid = os.environ["sheet_id"]
 
 smart = smartsheet.Smartsheet(token)
-sheet = smart.Sheets.get_sheet(sid)
-columns = [col.title.strip() for col in sheet.columns]
-rows = [[cell.value for cell in row.cells] for row in sheet.rows]
-df = pd.DataFrame(rows, columns=columns)
 
-# The column name must be EXACT
+# Re-matching the logic that works in your other scripts
+try:
+    sheet = smart.Sheets.get_sheet(sid)
+    columns = [col.title for col in sheet.columns]
+    rows = []
+    for row in sheet.rows:
+        rows.append([cell.value for cell in row.cells])
+    df = pd.DataFrame(rows, columns=columns)
+except Exception as e:
+    print(f"Error loading sheet: {e}")
+    df = pd.DataFrame()
+
+# The column name from your Smartsheet
 target_col = "Utilization Tier"
 
 labels = [
@@ -24,28 +32,15 @@ labels = [
 
 stats = {"Date": datetime.now().strftime("%Y-%m-%d")}
 
-if target_col in df.columns:
-    # 1. Clean the Smartsheet data (Remove None, force string, strip, lowercase)
-    raw_values = df[target_col].fillna("None").astype(str).str.strip().str.lower()
-    
-    # DEBUG: This will show up in your GitHub Action logs so we can see the data
-    print(f"Unique values found in Smartsheet: {raw_values.unique()}")
-
-    for label in labels:
-        # 2. Match against a cleaned version of our labels
-        match_count = (raw_values == label.lower().strip()).sum()
-        stats[label] = int(match_count)
-else:
-    print(f"ERROR: Column '{target_col}' not found. Available: {columns}")
-    for label in labels: stats[label] = 0
-
-# --- SAVE LOGIC ---
+# Define filename
 hist_file = "usage_history.csv" 
 
-# Check if we actually found data before saving
-if target_col in df.columns and not df.empty:
+if not df.empty and target_col in df.columns:
+    # Clean data: handle Nones, strip whitespace, lowercase for matching
     raw_values = df[target_col].fillna("None").astype(str).str.strip().str.lower()
+    
     for label in labels:
+        # Match cleaned labels against cleaned data
         match_count = (raw_values == label.lower().strip()).sum()
         stats[label] = int(match_count)
     
@@ -53,6 +48,7 @@ if target_col in df.columns and not df.empty:
     new_row = pd.DataFrame([stats])
     if os.path.exists(hist_file):
         history_df = pd.read_csv(hist_file)
+        # Overwrite today's date if re-running manual tests
         history_df = history_df[history_df['Date'] != stats['Date']]
         history_df = pd.concat([history_df, new_row], ignore_index=True)
     else:
@@ -61,4 +57,5 @@ if target_col in df.columns and not df.empty:
     history_df.to_csv(hist_file, index=False)
     print(f"Successfully recorded stats to {hist_file}")
 else:
-    print(f"ABORTING: No data found in column '{target_col}'. Check your SHEET_ID secret.")
+    available = df.columns.tolist() if not df.empty else "No columns found"
+    print(f"ABORTING: Could not find '{target_col}'. Available columns: {available}")
