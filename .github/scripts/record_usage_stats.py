@@ -13,10 +13,9 @@ columns = [col.title.strip() for col in sheet.columns]
 rows = [[cell.value for cell in row.cells] for row in sheet.rows]
 df = pd.DataFrame(rows, columns=columns)
 
-# MAPPING: Matches the col_map in your Streamlit app
-tier_column_name = "Utilization Tier"
+# MAPPING: This ensures we find the "Utilization Tier" column accurately
+target_col = "Utilization Tier"
 
-# UPDATED CATEGORIES: Matches your new naming convention
 labels = [
     "Highly Overused", 
     "Moderately Overused", 
@@ -27,30 +26,35 @@ labels = [
     "Highly Underused"
 ]
 
-# Create current stats row
 stats = {"Date": datetime.now().strftime("%Y-%m-%d")}
 
-for label in labels:
-    # Count occurrences in the 'Utilization Tier' column, stripping whitespace for accuracy
-    if tier_column_name in df.columns:
-        count = len(df[df[tier_column_name].astype(str).str.strip() == label])
-    else:
-        count = 0
-    stats[label] = count
+# --- IMPROVED MATCHING LOGIC ---
+if target_col in df.columns:
+    # We strip spaces and force lowercase on both the data and the labels to ensure a match
+    # This prevents zeros caused by trailing spaces like "Balanced "
+    current_data = df[target_col].astype(str).str.strip().str.lower()
+    
+    for label in labels:
+        count = len(current_data[current_data == label.lower().strip()])
+        stats[label] = count
+else:
+    # If the script can't find the column, we'll know because all values will be 0
+    for label in labels:
+        stats[label] = 0
 
-# Append to CSV
+# --- CSV SAVE LOGIC ---
 hist_file = "history.csv"
 new_row = pd.DataFrame([stats])
 
 if os.path.exists(hist_file):
     try:
         history_df = pd.read_csv(hist_file)
+        # Remove any existing row for today if you are running manual tests
+        history_df = history_df[history_df['Date'] != stats['Date']]
         history_df = pd.concat([history_df, new_row], ignore_index=True)
     except Exception:
-        # If the CSV is corrupted or empty, start fresh with the new row
         history_df = new_row
 else:
     history_df = new_row
 
-# Save back to the root of the repository
 history_df.to_csv(hist_file, index=False)
