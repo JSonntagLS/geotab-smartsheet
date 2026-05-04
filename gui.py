@@ -218,31 +218,40 @@ if run_analysis:
                     if s['h_name'] not in used_vehicles and s['l_name'] not in used_vehicles:
                         
                         # Logic to build status strings
-                        def format_projection(proj_val, route_val):
-                            if proj_val > 105000:
-                                # Calculate months until 105k limit
-                                miles_to_limit = 105000 - (proj_val - (route_val * 1)) # approx check
-                                months_until = max(1, int((105000 - (proj_val - (route_val * 1))) / max(1, route_val))) # Placeholder logic
-                                # More precise:
-                                current_odo_at_swap = proj_val - (route_val * 1) # simplified
-                                # Real math:
-                                months_to_hit = int((105000 - (proj_val - (route_val * s['data_A']['months'] if 'data_A' in s else 0))) / max(1, route_val))
+                    def format_projection(proj_val, current_odo, route_val):
+                        if proj_val > 105000:
+                            # Calculate months until 105k limit
+                            miles_to_go = 105000 - current_odo
+                            
+                            # Prevent division by zero if route_val is 0
+                            if route_val > 0:
+                                months_until = max(0, miles_to_go / route_val)
+                                time_text = f"Hits limit in {months_until:.1f} months"
+                            else:
+                                time_text = "No usage detected"
                                 
-                                # Let's use the actual remaining logic:
-                                # We need to know how many months of 'route_val' it takes to hit 105k from current odo
-                                # But we'll simplify for the display:
-                                return f"🔴 OVER: {proj_val:,.0f} mi (Hits limit in {max(1, int(105000/route_val))} total months)"
-                            elif proj_val < 85000:
-                                return f"🔵 UNDER: {proj_val:,.0f} mi"
-                            return f"🟢 IDEAL: {proj_val:,.0f} mi"
+                            return f"🔴 OVER: {proj_val:,.0f} mi ({time_text})"
+                        elif proj_val < 85000:
+                            return f"🔵 UNDER: {proj_val:,.0f} mi"
+                        return f"🟢 IDEAL: {proj_val:,.0f} mi"
 
-                        # Build the display rows
+                for s in sorted_swaps:
+                    if s['h_name'] not in used_vehicles and s['l_name'] not in used_vehicles:
+                        # Build the display rows using the captured data
                         final_recs.append({
                             "Over-Paced Vehicle": s['h_name'],
                             "Under-Used Vehicle": s['l_name'],
                             "Distance": s['dist'],
-                            "Post-Swap: Current High-Use Asset": format_projection(s['data_A']['proj'], s['data_A']['route']),
-                            "Post-Swap: Current Low-Use Asset": format_projection(s['data_B']['proj'], s['data_B']['route'])
+                            "Post-Swap: Current High-Use Asset": format_projection(
+                                s['data_A']['proj'], 
+                                s['data_A']['odo'], 
+                                s['data_A']['route']
+                            ),
+                            "Post-Swap: Current Low-Use Asset": format_projection(
+                                s['data_B']['proj'], 
+                                s['data_B']['odo'], 
+                                s['data_B']['route']
+                            )
                         })
                         
                         used_vehicles.add(s['h_name'])
