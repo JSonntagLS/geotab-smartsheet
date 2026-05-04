@@ -173,6 +173,11 @@ if run_analysis:
                 possible_swaps = []
                 for h_idx, high_row in high_usage_assets.iterrows():
                     # Calculate "Without-Swap" projection for the high-use asset first
+                    raw_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
+                        route_A = max(raw_route_A, 200.0)
+                        
+                        raw_route_B = force_num(low_row[col_map["projected"]]) if force_num(low_row[col_map["projected"]]) > 0 else force_num(low_row[col_map["actual"]])
+                        route_B = max(raw_route_B, 200.0)
                     _, months_rem_A = calculate_runway(high_row)
                     current_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
                     odo_A = force_num(high_row[col_map["odo"]])
@@ -225,6 +230,9 @@ if run_analysis:
 
                 # Define helper function within the analysis block scope
                 def format_projection(proj_val, current_odo, route_val):
+                    # Check if we are using the baseline floor
+                    is_stationary = route_val <= 200.0
+                    
                     if proj_val > 105000:
                         miles_to_go = 105000 - current_odo
                         if route_val > 0:
@@ -233,8 +241,13 @@ if run_analysis:
                         else:
                             time_text = "No usage detected"
                         return f"🔴 OVER: {proj_val:,.0f} mi ({time_text})"
+                    
                     elif proj_val < 85000:
-                        return f"🔵 UNDER: {proj_val:,.0f} mi"
+                        status_text = "🔵 UNDER"
+                        if is_stationary:
+                            return f"{status_text}: {proj_val:,.0f} mi (Minimal Usage)"
+                        return f"{status_text}: {proj_val:,.0f} mi"
+                        
                     return f"🟢 IDEAL: {proj_val:,.0f} mi"
 
                 for s in sorted_swaps:
