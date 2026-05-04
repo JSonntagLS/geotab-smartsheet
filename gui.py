@@ -172,14 +172,25 @@ if run_analysis:
                 
                 possible_swaps = []
                 for h_idx, high_row in high_usage_assets.iterrows():
+                    # Calculate "Without-Swap" projection for the high-use asset first
+                    _, months_rem_A = calculate_runway(high_row)
+                    current_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
+                    odo_A = force_num(high_row[col_map["odo"]])
+                    without_swap_proj_A = odo_A + (current_route_A * months_rem_A)
+
+                    # GATEKEEPER: If it's already under 103,000 miles, leave it alone!
+                    if without_swap_proj_A <= 103000:
+                        continue 
+
                     for l_idx, low_row in low_usage_assets.iterrows():
-                        
                         h_desc = str(high_row.get(col_map["desc"], "")).strip().lower()
                         l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
                         if h_desc != l_desc: continue
 
                         dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
                         if dist > max_dist: continue
+                        
+                        # (The rest of your existing projection and scoring logic follows here...)
                         
                         # 2. CAPTURE UNIQUE ROW DATA
                         odo_A = force_num(high_row[col_map["odo"]])
