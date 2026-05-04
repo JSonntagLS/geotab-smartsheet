@@ -92,24 +92,23 @@ try:
     rows = [[cell.value for cell in row.cells] for row in sheet.rows]
     df = pd.DataFrame(rows, columns=columns)
 
-
-# DATA CLEANING: Strip Smartsheet errors and recover the numeric value
+    # DATA CLEANING: Clean all columns first
     for col_key in ["allowance", "projected", "actual", "odo"]:
         col = col_map[col_key]
         if col in df.columns:
-            # We use str(x) first to prevent the 'float' object error
-            df[col] = df[col].apply(lambda x: re.sub(r'[^0-9.]', '', str(x)) if str(x).strip() != "" else "0")
-            
-            # Final conversion to numeric
+            # Clean and convert to float first to handle decimals/errors safely
+            df[col] = df[col].apply(lambda x: force_num(x))
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
-        df_display = df[[
-            col_map["name"], col_map["loc"], col_map["allowance"], 
-            col_map["projected"], col_map["actual"], col_map["priority"], col_map["tier"]
-        ]].copy()
-        
-        for col in [col_map["allowance"], col_map["projected"], col_map["actual"]]:
-            df_display[col] = df_display[col].astype(int)
+    # INDENTATION FIX: Move the display and int-casting OUTSIDE the loop above
+    df_display = df[[
+        col_map["name"], col_map["loc"], col_map["allowance"], 
+        col_map["projected"], col_map["actual"], col_map["priority"], col_map["tier"]
+    ]].copy()
+    
+    for col in [col_map["allowance"], col_map["projected"], col_map["actual"]]:
+        # Now that we've used force_num, casting to int will not crash
+        df_display[col] = df_display[col].astype(int)
 
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
