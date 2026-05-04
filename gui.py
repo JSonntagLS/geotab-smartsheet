@@ -92,12 +92,18 @@ try:
     rows = [[cell.value for cell in row.cells] for row in sheet.rows]
     df = pd.DataFrame(rows, columns=columns)
 
-    # DATA CLEANING: Fix #INVALID OPERATION by forcing numeric conversion
-    numeric_cols = [col_map["allowance"], col_map["projected"], col_map["actual"], col_map["odo"]]
-    for col in numeric_cols:
+
+# DATA CLEANING: Strip Smartsheet errors and recover the numeric value
+    for col in [col_map["allowance"], col_map["projected"], col_map["actual"], col_map["odo"]]:
         if col in df.columns:
-            # We convert to string, check for the error string, and force to 0 only if it's actually an error
-            df[col] = df[col].apply(lambda x: 0 if "#" in str(x) or str(x).strip() == "" else re.sub(r'[^0-9.]', '', str(x)))
+            # First, convert everything to string to check for the error indicator
+            df[col] = df[col].astype(str)
+            
+            # If the cell contains #INVALID, we check if there's a valid number hidden behind it
+            # Otherwise, we use regex to keep only digits and decimals
+            df[col] = df[col].apply(lambda x: re.sub(r'[^0-9.]', '', x) if x.strip() != "" else "0")
+            
+            # Final conversion to numeric, ensuring any remaining empty strings become 0
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
     df_display = df[[
