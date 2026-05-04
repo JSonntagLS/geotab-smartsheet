@@ -236,10 +236,10 @@ if run_analysis:
                         est_end_odo = int(force_num(low_v[col_map["odo"]]) + (h_pacing_monthly * l_months_left))
 
                         # Categorization Logic
-                        if est_end_odo <= 100000:
-                            s['Lease Lifecycle Projection'] = f"PERMANENT FIX: Est. {est_end_odo:,} mi at lease end."
-                        elif months_until_over <= 4:
-                            s['Lease Lifecycle Projection'] = f"QUICK FIX: Buys {months_until_over} months ({date_str})."
+                        if 90000 <= est_end_odo <= 100000:
+                            s['Lease Lifecycle Projection'] = f"PERMANENT FIX: High Utility (Est. {est_end_odo:,} mi)."
+                        elif est_end_odo < 90000:
+                            s['Lease Lifecycle Projection'] = f"PERMANENT FIX: Under Limit (Est. {est_end_odo:,} mi)."
                         else:
                             s['Lease Lifecycle Projection'] = f"REBALANCE: Buys {months_until_over} months ({date_str})."
 
