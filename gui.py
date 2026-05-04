@@ -128,7 +128,7 @@ col_btn, col_graph = st.columns([1, 2])
 
 with col_btn:
     st.write("### Actions")
-    # Adding a unique key ensures no DuplicateElementId error
+    # Consolidating to one single button definition
     run_analysis = st.button("RUN FLEET ROTATION ANALYSIS", use_container_width=True, key="main_analysis_btn")
 
 with col_graph:
@@ -150,13 +150,12 @@ with col_graph:
                 selected_time = st.selectbox("Timeframe", list(time_map.keys()))
 
             # Filter and Plot
+            from datetime import timedelta
             cutoff_date = datetime.now() - timedelta(days=time_map[selected_time])
             filtered_hist = history_df[history_df['Date'] >= cutoff_date]
             
             if selected_cat in filtered_hist.columns and not filtered_hist.empty:
                 plot_data = filtered_hist.set_index('Date')[selected_cat]
-                # Headroom logic: Max + 3
-                y_max = int(plot_data.max() + 3)
                 st.bar_chart(plot_data, height=250)
             else:
                 st.info(f"Awaiting historical data for {selected_cat}.")
@@ -174,30 +173,13 @@ if run_analysis:
         st.error("Data not found.")
     else:
         with st.spinner("Analyzing trajectories..."):
-            # ... (Rest of your existing analysis code remains exactly the same)
-
-# --- SIDEBAR ---
-max_dist = st.sidebar.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200)
-
-# --- ACTION ---
-run_analysis = st.button("RUN FLEET ROTATION ANALYSIS")
-
-if run_analysis:
-    if 'df' not in locals():
-        st.error("Data not found.")
-    else:
-        with st.spinner("Analyzing trajectories..."):
             try:
-                # Loosened filtering to capture more potential swaps
-                # Expanded filters to be more inclusive
+                # 1. Filter assets
                 high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH|OVER', na=False, case=False)]
                 low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED|LOW|UNDER', na=False, case=False)]
                 
-                # DIAGNOSTIC MONITOR
                 if high_usage_assets.empty or low_usage_assets.empty:
                     st.warning(f"Filter Check: Found {len(high_usage_assets)} 'Urgent' and {len(low_usage_assets)} 'Underused' vehicles.")
-                    if not high_usage_assets.empty: st.write("Urgent Models detected:", high_usage_assets[col_map["desc"]].unique())
-                    if not low_usage_assets.empty: st.write("Underused Models detected:", low_usage_assets[col_map["desc"]].unique())
 
                 possible_swaps = []
                 for _, high_v in high_usage_assets.iterrows():
@@ -205,8 +187,7 @@ if run_analysis:
                         h_desc = str(high_v[col_map["desc"]]).strip().lower()
                         l_desc = str(low_v[col_map["desc"]]).strip().lower()
 
-                        if h_desc != l_desc:
-                            continue
+                        if h_desc != l_desc: continue
 
                         dist = get_distance_miles(high_v[col_map["loc"]], low_v[col_map["loc"]])
                         if dist > max_dist: continue
@@ -239,63 +220,19 @@ if run_analysis:
                 used_vehicles = set()
 
                 for s in sorted_swaps:
-                    # Check if either vehicle in this potential swap is already being used in a better-ranked swap
                     if s['high_name'] not in used_vehicles and s['low_name'] not in used_vehicles:
-                        
-                        # --- LEASE LIFECYCLE LOGIC ---
                         l_miles_left = s['l_data']['m']
                         l_months_left = s['l_data']['mo']
-                        h_pacing = s['over_pacing']
-
-                        prompt = (
-                            f"Vehicle A is over-pacing by {h_pacing} miles/month. "
-                            f"Vehicle B has {l_miles_left} miles remaining and {l_months_left} months left on lease. "
-                            f"If we swap them, will Vehicle B likely stay under its contract limit? "
-                            f"Answer in 1-2 professional sentences."
-                        )
+                        h_pacing_monthly = s['over_pacing']
                         
-                        try:
-                            # Attempting AI Analysis
-                            response = model.generate_content(prompt)
-                            s['Lease Lifecycle Projection'] = response.text.strip()
-                        except Exception:
-                            # --- STRATEGIC MANUAL FALLBACK ---
-                            l_miles_left = s['l_data']['m']
-                            l_months_left = s['l_data']['mo']
-                            h_pacing_monthly = s['over_pacing']
-                            
-                            # Estimate total miles if this swap lasts until lease end
-                            projected_total_needed = h_pacing_monthly * l_months_left
-                            
-                            if projected_total_needed < l_miles_left:
-                                # This swap clears the rest of the lease
-                                s['Lease Lifecycle Projection'] = (
-                                    f"PERMANENT FIX: Vehicle B has plenty of runway ({l_miles_left} mi). "
-                                    f"This swap should carry the asset to lease end without further intervention."
-                                )
-                            elif projected_total_needed < (l_miles_left * 1.2):
-                                # It's close—might need a tweak in the final months
-                                s['Lease Lifecycle Projection'] = (
-                                    f"MID-TERM FIX: This solves the immediate over-pacing but is tight. "
-                                    f"Expect to review this asset again in about 6-8 months as the cap nears."
-                                )
-                            else:
-                                # Calculate exactly how much time you're buying
-                                # We use max(1, ...) to avoid dividing by zero if pacing is 0
-                                months_until_over = int(l_miles_left / max(1, h_pacing_monthly))
-                                
-                                if months_until_over == 0:
-                                    s['Lease Lifecycle Projection'] = (
-                                        f"CRITICAL/QUICK FIX: Asset B is nearly at its limit ({l_miles_left} mi left). "
-                                        f"This swap buys less than 1 month of runway. Seek a different asset."
-                                    )
-                                else:
-                                    s['Lease Lifecycle Projection'] = (
-                                        f"QUICK FIX ONLY: This only buys about {months_until_over} months of runway. "
-                                        f"The replacement asset will hit its limit before the lease ends."
-                                    )
+                        # Projection Logic
+                        projected_total_needed = h_pacing_monthly * l_months_left
+                        if projected_total_needed < l_miles_left:
+                            s['Lease Lifecycle Projection'] = f"PERMANENT FIX: Runway ({l_miles_left} mi) carries to lease end."
+                        else:
+                            months_until_over = int(l_miles_left / max(1, h_pacing_monthly))
+                            s['Lease Lifecycle Projection'] = f"QUICK FIX: Buys {months_until_over} months of runway."
 
-                        # CRITICAL: Add the swap to our final list and mark vehicles as used
                         final_recs.append(s)
                         used_vehicles.add(s['high_name'])
                         used_vehicles.add(s['low_name'])
@@ -303,11 +240,6 @@ if run_analysis:
                 if final_recs:
                     st.success(f"Analysis Complete. Found {len(final_recs)} rotations.")
                     ui_df = pd.DataFrame(final_recs)
-                    
-                    # Ensure the column exists before renaming/displaying
-                    if 'Lease Lifecycle Projection' not in ui_df.columns:
-                        ui_df['Lease Lifecycle Projection'] = "Data Pending"
-                
                     ui_df = ui_df.rename(columns={
                         "high_name": "Over-Paced Vehicle",
                         "low_name": "Under-Used Vehicle",
@@ -315,13 +247,7 @@ if run_analysis:
                         "wasted_miles": "Monthly Miles Wasted",
                         "swap_dist": "Swap Distance"
                     })
-                    
-                    st.table(ui_df[[
-                        "Over-Paced Vehicle", "Under-Used Vehicle", 
-                        "Monthly Miles Over", "Monthly Miles Wasted", 
-                        "Swap Distance", "Lease Lifecycle Projection"
-                    ]])
-                    
+                    st.table(ui_df[["Over-Paced Vehicle", "Under-Used Vehicle", "Monthly Miles Over", "Monthly Miles Wasted", "Swap Distance", "Lease Lifecycle Projection"]])
                 else:
                     st.info("No viable rotations found.")
             except Exception as e:
