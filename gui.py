@@ -9,6 +9,25 @@ import re
 # --- PAGE CONFIG ---
 st.set_page_config(layout="wide")
 
+# --- DASHBOARD METRICS ---
+with st.container():
+    m_cols = st.columns(7)
+    labels = [
+        "Highly Overused", "Overused", "Slightly Overused", 
+        "Ideal Use", 
+        "Slightly Underused", "Underused", "Highly Underused"
+    ]
+    
+    # Check if df exists to pull counts, otherwise default to 0
+    for i, col in enumerate(m_cols):
+        label = labels[i]
+        count = 0
+        if 'df' in locals():
+            # Matches the label against your "Utilization Tier" column
+            count = len(df[df[col_map["tier"]] == label])
+        
+        col.metric(label=label, value=count)
+
 # --- AI SETUP ---
 genai.configure(api_key=st.secrets["gemini_api_key"])
 model = genai.GenerativeModel('models/gemini-1.5-flash')
