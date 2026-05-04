@@ -173,15 +173,13 @@ if run_analysis:
                 possible_swaps = []
                 for h_idx, high_row in high_usage_assets.iterrows():
                     # Calculate "Without-Swap" projection for the high-use asset first
+                    # LOGIC INTEGRATION: Establish a 200-mile baseline for stationary vehicles
                     raw_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
-                        route_A = max(raw_route_A, 200.0)
-                        
-                        raw_route_B = force_num(low_row[col_map["projected"]]) if force_num(low_row[col_map["projected"]]) > 0 else force_num(low_row[col_map["actual"]])
-                        route_B = max(raw_route_B, 200.0)
+                    route_A_baseline = max(raw_route_A, 200.0)
+                    
                     _, months_rem_A = calculate_runway(high_row)
-                    current_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
                     odo_A = force_num(high_row[col_map["odo"]])
-                    without_swap_proj_A = odo_A + (current_route_A * months_rem_A)
+                    without_swap_proj_A = odo_A + (route_A_baseline * months_rem_A)
 
                     # GATEKEEPER: If it's already under 103,000 miles, leave it alone!
                     if without_swap_proj_A <= 103000:
@@ -195,32 +193,29 @@ if run_analysis:
                         dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
                         if dist > max_dist: continue
                         
-                        # (The rest of your existing projection and scoring logic follows here...)
-                        
-                        # 2. CAPTURE UNIQUE ROW DATA
-                        odo_A = force_num(high_row[col_map["odo"]])
+                        # 2. CAPTURE UNIQUE ROW DATA & APPLY BASELINES
                         odo_B = force_num(low_row[col_map["odo"]])
                         
-                        route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
-                        route_B = force_num(low_row[col_map["projected"]]) if force_num(low_row[col_map["projected"]]) > 0 else force_num(low_row[col_map["actual"]])
+                        raw_route_B = force_num(low_row[col_map["projected"]]) if force_num(low_row[col_map["projected"]]) > 0 else force_num(low_row[col_map["actual"]])
+                        route_B_baseline = max(raw_route_B, 200.0)
                         
-                        _, months_rem_A = calculate_runway(high_row)
                         _, months_rem_B = calculate_runway(low_row)
 
-                        # 3. CALCULATE PROJECTIONS
-                        proj_A = odo_A + (route_B * months_rem_A)
-                        proj_B = odo_B + (route_A * months_rem_B)
+                        # 3. CALCULATE SWAP PROJECTIONS
+                        # A gets B's route, B gets A's route
+                        proj_A = odo_A + (route_B_baseline * months_rem_A)
+                        proj_B = odo_B + (route_A_baseline * months_rem_B)
 
                         # 4. SCORING
-                        score = ((route_A - route_B) * 0.7) - ((dist ** 1.5) * 0.1)
+                        score = ((route_A_baseline - route_B_baseline) * 0.7) - ((dist ** 1.5) * 0.1)
 
                         possible_swaps.append({
                             "score": score,
                             "h_name": high_row[col_map["name"]],
                             "l_name": low_row[col_map["name"]],
                             "dist": f"{dist:.1f} miles",
-                            "data_A": {"odo": odo_A, "route": route_B, "months": months_rem_A, "proj": proj_A},
-                            "data_B": {"odo": odo_B, "route": route_A, "months": months_rem_B, "proj": proj_B}
+                            "data_A": {"odo": odo_A, "route": route_B_baseline, "months": months_rem_A, "proj": proj_A},
+                            "data_B": {"odo": odo_B, "route": route_A_baseline, "months": months_rem_B, "proj": proj_B}
                         })
 
                 # 5. SORT AND DEDUPLICATE
