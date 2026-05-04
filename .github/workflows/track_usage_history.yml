@@ -19,12 +19,17 @@ jobs:
       - name: Install Dependencies
         run: pip install pandas smartsheet-python-sdk
 
-      - name: Run Tracker Script
+- name: Run Tracker Script
         env:
           smartsheet_token: ${{ secrets.SMARTSHEET_TOKEN }}
           sheet_id: ${{ secrets.SHEET_ID }}
         run: |
-          python .github/scripts/record_usage_stats.py
+          SCRIPT_PATH=$(find . -name "record_usage_stats.py" | head -n 1)
+          if [ -z "$SCRIPT_PATH" ]; then
+            echo "Error: Could not find record_usage_stats.py in the repository."
+            exit 1
+          fi
+          python "$SCRIPT_PATH"
 
       - name: Commit and Push
         run: |
