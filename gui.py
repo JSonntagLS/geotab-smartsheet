@@ -119,16 +119,19 @@ except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
-st.sidebar.markdown("# LifeServe\n# Fleet Management")
+st.sidebar.header("LifeServe")
+st.sidebar.subheader("Fleet Management")
 
-# Optimized single-line CSS to prevent Python 3.14 markdown crash
-sidebar_style = "<style>[data-testid='stSidebar'] [data-testid='stWidgetLabel'] {display: none;} [data-testid='stSidebar'] .st-bf {display: none;} [data-testid='stSidebar'] label {background-color: transparent !important; border: none !important; padding: 10px 5px !important; cursor: pointer !important; color: #4b5563 !important; font-size: 1.1rem !important; transition: 0.2s;} [data-testid='stSidebar'] label:hover {color: #2563eb !important;} [data-testid='stSidebar'] [data-checked='true'] div div {color: #2563eb !important; font-weight: 600 !important;}</style>"
-st.markdown(sidebar_style, unsafe_content_html=True)
-
+# Removing the custom CSS block entirely to prevent the Python 3.14 markdown crash.
+# We will use the native radio buttons which are stable in this environment.
 nav_options = ["Fleet Rotation Analysis", "New Lease Analysis"]
 page_selection = st.sidebar.radio("NAVIGATION", nav_options, index=0)
 
+# Sidebar Divider
+st.sidebar.divider()
+
 # --- PAGE ROUTING ---
+# Sanitize selection to prevent string-comparison TypeErrors
 current_page = str(page_selection)
 
 if current_page == "Fleet Rotation Analysis":
