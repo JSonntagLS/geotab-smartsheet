@@ -119,20 +119,25 @@ except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
-# Using a single markdown block with <br> to keep titles tight and avoid the 3.14 crash
 st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 
-# Selectbox mimics the Geotab 'clickable' feel and avoids the 'red circle' radio buttons
-# It also avoids the specific CSS-injection crash you were seeing
-nav_options = ["Fleet Rotation Analysis", "New Lease Analysis"]
-page_selection = st.sidebar.selectbox("Go to:", nav_options, label_visibility="collapsed")
+# Initialize navigation state if it doesn't exist
+if 'active_page' not in st.session_state:
+    st.session_state.active_page = "Fleet Rotation Analysis"
+
+# Create clickable navigation buttons
+if st.sidebar.button("Fleet Rotation Analysis", use_container_width=True, type="secondary"):
+    st.session_state.active_page = "Fleet Rotation Analysis"
+
+if st.sidebar.button("New Lease Analysis", use_container_width=True, type="secondary"):
+    st.session_state.active_page = "New Lease Analysis"
 
 # Sidebar Divider
 st.sidebar.divider()
 
 # --- PAGE ROUTING ---
-# Sanitize selection to prevent string-comparison TypeErrors
-current_page = str(page_selection)
+# Using the session_state variable for routing
+current_page = st.session_state.active_page
 
 if current_page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
