@@ -125,24 +125,24 @@ st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-# Using button structure to maintain the 3-tab layout for the day
-if st.sidebar.button("Fleet Rotation Analysis", type="primary", use_container_width=True, key="btn_rot"):
+# Using secondary buttons to avoid the "Red" primary theme
+if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-if st.sidebar.button("Oil Changes", type="primary", use_container_width=True, key="btn_oil"):
+if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
 
-if st.sidebar.button("New Lease Analysis", type="primary", use_container_width=True, key="btn_lease"):
+if st.sidebar.button("New Lease Analysis", type="secondary", use_container_width=True, key="btn_lease"):
     st.session_state.active_page = "New Lease Analysis"
 
 st.sidebar.divider()
 
 # --- PAGE ROUTING ---
-current_page = st.session_state.active_page
-
-if current_page == "Fleet Rotation Analysis":
+# We use st.session_state.active_page directly to ensure the content loads
+if st.session_state.active_page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
     
+    # Logic Integration: Re-defining m_cols here to ensure metrics appear
     if 'df' in locals() and not df.empty:
         m_cols = st.columns(7)
         # ... (Metrics logic continues here)
