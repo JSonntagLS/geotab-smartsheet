@@ -118,14 +118,46 @@ try:
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
-# --- TAB SETUP ---
-tab_rotation, tab_oil, tab_lease = st.tabs([
-    "Fleet Rotation Analysis", 
-    "Oil Changes", 
-    "New Lease Analysis"
-])
+# --- SIDEBAR NAVIGATION ---
+with st.sidebar:
+    st.title("myGEOTAB") # Naming convention from image_cb7278.jpg
+    page = st.radio(
+        "DASHBOARD",
+        ["Fleet Rotation Analysis", "Oil Changes", "New Lease Analysis"],
+        index=0
+    )
+    st.sidebar.markdown("---")
+    st.sidebar.caption("Fleet Management System v2.0")
 
-with tab_rotation:
+# --- CUSTOM CSS FOR GEOTAB AESTHETIC ---
+st.markdown("""
+    <style>
+        /* Sidebar background and border */
+        [data-testid="stSidebar"] {
+            background-color: #f0f2f5;
+            border-right: 1px solid #d1d5db;
+        }
+        /* Sidebar text color */
+        [data-testid="stSidebar"] .stRadio > label {
+            color: #1e293b;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+        /* Metric value color (Geotab Blue) */
+        [data-testid="stMetricValue"] {
+            color: #2563eb;
+        }
+        /* Header styling */
+        h1, h2, h3 {
+            color: #0f172a;
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+""", unsafe_content_html=True)
+
+# --- PAGE ROUTING ---
+if page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
     # Everything below this line in your script now belongs inside this 'with' block
 
@@ -319,10 +351,10 @@ with tab_rotation:
         st.dataframe(df_display, use_container_width=True, hide_index=True)
 
 # --- NEW BLANK TABS ---
-with tab_oil:
+elif page == "Oil Changes":
     st.header("Oil Change Management")
     st.info("Tracking logic for oil changes will be placed here.")
 
-with tab_lease:
+elif page == "New Lease Analysis":
     st.header("New Lease Analysis")
     st.info("Analysis logic for new leases will be placed here.")
