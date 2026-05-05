@@ -121,47 +121,19 @@ except Exception as e:
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
 st.sidebar.markdown("# LifeServe\n# Fleet Management")
 
-# CSS to hide radio circles and style navigation like the Geotab example
-st.markdown("""
-    <style>
-        /* Hide the radio button circles */
-        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {
-            display: none;
-        }
-        [data-testid="stSidebar"] .st-bf {
-            display: none;
-        }
-        /* Style the labels as clickable menu items */
-        [data-testid="stSidebar"] label {
-            background-color: transparent !important;
-            border: none !important;
-            padding: 10px 5px !important;
-            cursor: pointer !important;
-            color: #4b5563 !important;
-            font-size: 1.1rem !important;
-            transition: 0.2s;
-        }
-        /* Highlight on hover */
-        [data-testid="stSidebar"] label:hover {
-            color: #2563eb !important;
-        }
-        /* Style for the active selection */
-        [data-testid="stSidebar"] [data-checked="true"] div div {
-            color: #2563eb !important;
-            font-weight: 600 !important;
-        }
-    </style>
-""", unsafe_content_html=True)
+# Optimized single-line CSS to prevent Python 3.14 markdown crash
+sidebar_style = "<style>[data-testid='stSidebar'] [data-testid='stWidgetLabel'] {display: none;} [data-testid='stSidebar'] .st-bf {display: none;} [data-testid='stSidebar'] label {background-color: transparent !important; border: none !important; padding: 10px 5px !important; cursor: pointer !important; color: #4b5563 !important; font-size: 1.1rem !important; transition: 0.2s;} [data-testid='stSidebar'] label:hover {color: #2563eb !important;} [data-testid='stSidebar'] [data-checked='true'] div div {color: #2563eb !important; font-weight: 600 !important;}</style>"
+st.markdown(sidebar_style, unsafe_content_html=True)
 
 nav_options = ["Fleet Rotation Analysis", "New Lease Analysis"]
-page_selection = st.sidebar.radio("", nav_options, index=0)
+page_selection = st.sidebar.radio("NAVIGATION", nav_options, index=0)
 
 # --- PAGE ROUTING ---
 current_page = str(page_selection)
 
 if current_page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
-
+    
     # --- DASHBOARD METRICS ---
     if 'df' in locals() and not df.empty:
         m_cols = st.columns(7)
