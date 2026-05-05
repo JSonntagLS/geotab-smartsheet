@@ -119,13 +119,13 @@ except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
-st.sidebar.header("LifeServe")
-st.sidebar.subheader("Fleet Management")
+# Using a single markdown block with <br> to keep titles tight and avoid the 3.14 crash
+st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 
-# Removing the custom CSS block entirely to prevent the Python 3.14 markdown crash.
-# We will use the native radio buttons which are stable in this environment.
+# Selectbox mimics the Geotab 'clickable' feel and avoids the 'red circle' radio buttons
+# It also avoids the specific CSS-injection crash you were seeing
 nav_options = ["Fleet Rotation Analysis", "New Lease Analysis"]
-page_selection = st.sidebar.radio("NAVIGATION", nav_options, index=0)
+page_selection = st.sidebar.selectbox("Go to:", nav_options, label_visibility="collapsed")
 
 # Sidebar Divider
 st.sidebar.divider()
