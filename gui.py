@@ -124,7 +124,7 @@ st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 
 # Camouflage CSS: One single line to avoid the Python 3.14 crash
 # This makes the button box and border match the sidebar background exactly
-st.markdown("<style>div[data-testid='stSidebar'] button {background-color: #f0f2f6 !important; border-color: #f0f2f6 !important; color: #4b5563 !important; text-align: left !important; display: block !important;}</style>", unsafe_allow_html=True)
+st.markdown("<style>div[data-testid='stSidebar'] button {background-color: transparent !important; border: none !important; color: #4b5563 !important; text-align: left !important; padding: 0 !important; font-weight: normal !important;} div[data-testid='stSidebar'] button:hover {color: #2563eb !important; background-color: transparent !important;} div[data-testid='stSidebar'] button:active {background-color: transparent !important;}</style>", unsafe_allow_html=True)
 
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
