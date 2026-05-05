@@ -121,11 +121,11 @@ except Exception as e:
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
 st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 
-# Initialize navigation state
+# Initialize navigation state if it doesn't exist
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-# Using secondary buttons to avoid the "Red" primary theme
+# Secondary buttons for a clean look without the red primary color
 if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
 
@@ -138,22 +138,39 @@ if st.sidebar.button("New Lease Analysis", type="secondary", use_container_width
 st.sidebar.divider()
 
 # --- PAGE ROUTING ---
-# We use st.session_state.active_page directly to ensure the content loads
-if st.session_state.active_page == "Fleet Rotation Analysis":
+current_page = st.session_state.active_page
+
+if current_page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
     
-    # Logic Integration: Re-defining m_cols here to ensure metrics appear
+    # Logic Integration: Ensure data is loaded and metrics are displayed
     if 'df' in locals() and not df.empty:
         m_cols = st.columns(7)
-        # ... (Metrics logic continues here)
+        labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
+        
+        for i, col in enumerate(m_cols):
+            label = labels[i]
+            # Ensure tier column exists before counting
+            if col_map["tier"] in df.columns:
+                count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
+            else:
+                count_val = 0
+            col.metric(label=label, value=count_val)
+        
+        # Place any additional tables or charts here
+        st.divider()
+        st.subheader("Asset Details")
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
 
 elif current_page == "Oil Changes":
     st.header("Oil Changes")
-    st.info("Placeholder for Oil Change tracking.")
+    st.info("Structure maintained. Content placeholder.")
 
 elif current_page == "New Lease Analysis":
     st.header("New Lease Analysis")
-    st.info("Placeholder for Lease Analysis.")
+    st.info("Structure maintained. Content placeholder.")
     
     # --- DASHBOARD METRICS ---
     # Logic Integration: Ensure data exists and define m_cols within this scope
