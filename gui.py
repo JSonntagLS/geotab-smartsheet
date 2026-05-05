@@ -187,43 +187,41 @@ elif current_page == "New Lease Analysis":
                 count_val = 0
             col.metric(label=label, value=count_val)
 
-    # --- USAGE HISTORY & ANALYSIS SECTION ---
-    col_btn, col_graph = st.columns([1, 2])
-    
-    with col_btn:
-        st.write("### Actions")
-        run_analysis = st.button("RUN FLEET ROTATION ANALYSIS", use_container_width=True, key="fleet_rot_final")
-        # New placement for the slider:
-        max_dist = st.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200, step=10)
-    
-    with col_graph:
-        if os.path.exists('usage_history.csv'):
-            try:
-                history_df = pd.read_csv('usage_history.csv')
-                history_df['Date'] = pd.to_datetime(history_df['Date'])
-                st.write("### Utilization Trends")
-                g_col1, g_col2 = st.columns(2)
-                with g_col1:
-                    selected_cat = st.selectbox("Select Category", labels)
-                with g_col2:
-                    time_map = {"1 month": 30, "3 months": 90, "6 months": 180, "1 year": 365, "3 years": 1095}
-                    selected_time = st.selectbox("Timeframe", list(time_map.keys()))
-    
-                cutoff = datetime.now() - pd.Timedelta(days=time_map[selected_time])
-                filtered = history_df[history_df['Date'] >= cutoff]
-                
-                if not filtered.empty and selected_cat in filtered.columns:
-                    # Check if the column actually has data to show
-                    if filtered[selected_cat].sum() > 0:
-                        st.bar_chart(filtered.set_index('Date')[selected_cat], height=250)
+    # --- ACTIONS & GRAPH SECTION ---
+        col_btn, col_graph = st.columns([1, 2])
+        
+        with col_btn:
+            st.write("### Actions")
+            run_analysis = st.button("RUN FLEET ROTATION ANALYSIS", use_container_width=True, key="fleet_rot_final")
+            max_dist = st.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200, step=10)
+        
+        with col_graph:
+            if os.path.exists('usage_history.csv'):
+                try:
+                    history_df = pd.read_csv('usage_history.csv')
+                    history_df['Date'] = pd.to_datetime(history_df['Date'])
+                    st.write("### Utilization Trends")
+                    g_col1, g_col2 = st.columns(2)
+                    with g_col1:
+                        selected_cat = st.selectbox("Select Category", labels)
+                    with g_col2:
+                        time_map = {"1 month": 30, "3 months": 90, "6 months": 180, "1 year": 365, "3 years": 1095}
+                        selected_time = st.selectbox("Timeframe", list(time_map.keys()))
+        
+                    cutoff = datetime.now() - pd.Timedelta(days=time_map[selected_time])
+                    filtered = history_df[history_df['Date'] >= cutoff]
+                    
+                    if not filtered.empty and selected_cat in filtered.columns:
+                        if filtered[selected_cat].sum() > 0:
+                            st.bar_chart(filtered.set_index('Date')[selected_cat], height=250)
+                        else:
+                            st.info("No activity recorded for this category.")
                     else:
-                        st.info("No activity recorded for this category in the selected timeframe.")
-                else:
-                    st.info("Trend log found, but no data matches the current filters.")
-            except Exception:
-                st.warning("Trend log busy or unavailable.")
-        else:
-            st.info("Usage history log will populate after the next automated sync.")
+                        st.info("No data matches current filters.")
+                except:
+                    st.warning("Trend log busy.")
+            else:
+                st.info("Usage history log will populate after sync.")
     
     # --- ACTION EXECUTION ---
     if run_analysis:
@@ -363,10 +361,10 @@ elif current_page == "New Lease Analysis":
         st.dataframe(df_display, use_container_width=True, hide_index=True)
 
 # --- NEW BLANK TABS ---
-elif page == "Oil Changes":
+elif current_page == "Oil Changes":
     st.header("Oil Change Management")
     st.info("Tracking logic for oil changes will be placed here.")
 
-elif page == "New Lease Analysis":
+elif current_page == "New Lease Analysis":
     st.header("New Lease Analysis")
     st.info("Analysis logic for new leases will be placed here.")
