@@ -130,31 +130,37 @@ with st.sidebar:
     st.sidebar.caption("Fleet Management System v2.0")
 
 # --- CUSTOM CSS FOR GEOTAB AESTHETIC ---
-st.markdown("""
-    <style>
-        /* Sidebar background and border */
-        [data-testid="stSidebar"] {
-            background-color: #f0f2f5;
-            border-right: 1px solid #d1d5db;
-        }
-        /* Sidebar text color */
-        [data-testid="stSidebar"] .stRadio > label {
-            color: #1e293b;
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.8rem;
-        }
-        /* Metric value color (Geotab Blue) */
-        [data-testid="stMetricValue"] {
-            color: #2563eb;
-        }
-        /* Header styling */
-        h1, h2, h3 {
-            color: #0f172a;
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
-""", unsafe_content_html=True)
+geotab_theme = """
+<style>
+    /* Sidebar background and border */
+    [data-testid="stSidebar"] {
+        background-color: #f0f2f5 !important;
+        border-right: 1px solid #d1d5db !important;
+    }
+    /* Sidebar text color and spacing */
+    [data-testid="stSidebar"] .stRadio > label {
+        color: #1e293b !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        font-size: 0.85rem !important;
+        margin-bottom: 10px !important;
+    }
+    /* Metric value color (Geotab Blue) */
+    [data-testid="stMetricValue"] {
+        color: #2563eb !important;
+    }
+    /* Header and Title styling */
+    h1, h2, h3 {
+        color: #0f172a !important;
+        font-family: 'Inter', sans-serif !important;
+    }
+    /* Increase sidebar top padding for logo/title */
+    [data-testid="stSidebarNav"] {
+        padding-top: 2rem !important;
+    }
+</style>
+"""
+st.markdown(geotab_theme, unsafe_content_html=True)
 
 # --- PAGE ROUTING ---
 if page == "Fleet Rotation Analysis":
