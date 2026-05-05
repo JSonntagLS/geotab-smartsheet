@@ -27,11 +27,9 @@ def harvest_data():
     devices = api.get('Device')
     diagnostics = ['DiagnosticOdometerAdjustmentId', 'DiagnosticOdometerId']
     
-    current_odo = {}
-    monday_odo = {}
-
-    # 1. GEOTAB DATA PULL (Robust Search)
     all_devices_logs = {}
+    monday_odo = {}
+    current_odo = {}
 
     for diag in diagnostics:
         # Pulling logs for all devices in the buffer range
