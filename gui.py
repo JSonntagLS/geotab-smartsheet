@@ -118,16 +118,45 @@ try:
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
-# --- SIDEBAR NAVIGATION ---
-st.sidebar.title("myGEOTAB") 
-nav_options = ["Fleet Rotation Analysis", "Oil Changes", "New Lease Analysis"]
-page_selection = st.sidebar.radio("DASHBOARD", nav_options, index=0)
+# --- SIDEBAR NAVIGATION & CUSTOM UI ---
+st.sidebar.markdown("# LifeServe\n# Fleet Management")
 
-st.sidebar.divider()
-st.sidebar.caption("Fleet Management System v2.0")
+# CSS to hide radio circles and style navigation like the Geotab example
+st.markdown("""
+    <style>
+        /* Hide the radio button circles */
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] {
+            display: none;
+        }
+        [data-testid="stSidebar"] .st-bf {
+            display: none;
+        }
+        /* Style the labels as clickable menu items */
+        [data-testid="stSidebar"] label {
+            background-color: transparent !important;
+            border: none !important;
+            padding: 10px 5px !important;
+            cursor: pointer !important;
+            color: #4b5563 !important;
+            font-size: 1.1rem !important;
+            transition: 0.2s;
+        }
+        /* Highlight on hover */
+        [data-testid="stSidebar"] label:hover {
+            color: #2563eb !important;
+        }
+        /* Style for the active selection */
+        [data-testid="stSidebar"] [data-checked="true"] div div {
+            color: #2563eb !important;
+            font-weight: 600 !important;
+        }
+    </style>
+""", unsafe_content_html=True)
+
+nav_options = ["Fleet Rotation Analysis", "New Lease Analysis"]
+page_selection = st.sidebar.radio("", nav_options, index=0)
 
 # --- PAGE ROUTING ---
-# Sanitize page selection to prevent string-comparison TypeErrors in Python 3.14
 current_page = str(page_selection)
 
 if current_page == "Fleet Rotation Analysis":
