@@ -12,12 +12,13 @@ COL_SYNC = 109802027257732
 
 def harvest_data():
     now = datetime.utcnow()
-    # Anchor to last Monday at 12:01 AM
+    # Anchor to last Monday, but create a search buffer starting 2 days prior
     days_since_monday = now.weekday()
-    monday_start = (now - timedelta(days=days_since_monday + 7)).replace(hour=0, minute=1, second=0, microsecond=0)
-    start_date_str = monday_start.isoformat()
+    monday_target = (now - timedelta(days=days_since_monday + 7)).replace(hour=0, minute=1, second=0, microsecond=0)
     
-    print(f"--- STARTING SYNC: {now} ---")
+    # We search from 2 days before Monday to find the closest "Start" reading
+    search_start_date = (monday_target - timedelta(days=2)).isoformat()
+    print(f"--- STARTING SYNC: {now} (Searching from {search_start_date}) ---")
     
     # 1. GEOTAB DATA PULL
     api = mygeotab.API(username=os.getenv("GEOTAB_USER"), password=os.getenv("GEOTAB_PASSWORD"), database=os.getenv("GEOTAB_DB"))
@@ -29,15 +30,38 @@ def harvest_data():
     current_odo = {}
     monday_odo = {}
 
+    # 1. GEOTAB DATA PULL (Robust Search)
+    all_devices_logs = {}
+
     for diag in diagnostics:
-        logs = api.get('StatusData', search={'diagnosticSearch': {'id': diag}, 'fromDate': start_date_str, 'resultsLimit': 2000})
-        for log in logs:
-            dev_id = log['device']['id']
-            val, ts = log.get('data', 0), log.get('dateTime')
-            if dev_id not in current_odo or ts > current_odo[dev_id]['ts']:
-                current_odo[dev_id] = {'val': val, 'ts': ts}
-            if dev_id not in monday_odo or ts < monday_odo[dev_id]['ts']:
-                monday_odo[dev_id] = {'val': val, 'ts': ts}
+        # Pulling logs for all devices in the buffer range
+        raw_logs = api.get('StatusData', search={
+            'diagnosticSearch': {'id': diag}, 
+            'fromDate': search_start_date, 
+            'toDate': now.isoformat()
+        })
+        
+        for log in raw_logs:
+            d_id = log['device']['id']
+            if d_id not in all_devices_logs:
+                all_devices_logs[d_id] = []
+            all_devices_logs[d_id].append(log)
+
+    # Process logs to find the "best fit" for Monday Start and Current
+    for dev_id, logs in all_devices_logs.items():
+        if not logs:
+            continue
+            
+        # Sort logs by time to identify the boundaries
+        logs.sort(key=lambda x: x['dateTime'])
+        
+        # 'start' is the first log found in our buffer (closest to Monday morning)
+        # 'curr' is the most recent log found
+        start_log = logs[0]
+        curr_log = logs[-1]
+        
+        monday_odo[dev_id] = {'val': start_log.get('data', 0), 'ts': start_log.get('dateTime')}
+        current_odo[dev_id] = {'val': curr_log.get('data', 0), 'ts': curr_log.get('dateTime')}
 
     # 2. SMARTSHEET INTEGRATION
     smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
@@ -63,9 +87,14 @@ def harvest_data():
             curr = current_odo.get(dev_id)
             start = monday_odo.get(dev_id)
             
-            curr_miles = round(curr['val'] / 1609.344, 0) if curr else 0
-            start_miles = round(start['val'] / 1609.344, 0) if start else 0
-            sync_date = curr['ts'].strftime('%Y-%m-%d') if curr else "N/A"
+            # Logic Integration: Ensure data exists before calculation
+            if curr and start:
+                curr_miles = round(curr['val'] / 1609.344, 0)
+                start_miles = round(start['val'] / 1609.344, 0)
+                sync_date = curr['ts'].strftime('%Y-%m-%d')
+            else:
+                print(f"SKIP: No Geotab data found for {d.get('name')} in this date range.")
+                continue
 
             # Build the update row
             new_row = smartsheet.models.Row()
@@ -73,12 +102,12 @@ def harvest_data():
             new_row.cells.append({'column_id': COL_MONDAY, 'value': start_miles})
             new_row.cells.append({'column_id': COL_CURRENT, 'value': curr_miles})
             new_row.cells.append({'column_id': COL_SYNC, 'value': sync_date})
-            rows_to_update.append(new_row)
             
+            # Ensure these only appear ONCE:
+            rows_to_update.append(new_row)
             print(f"MATCH: {d.get('name')} | Updating Serial {serial}")
         else:
-            # If a car is in Geotab but not Smartsheet, we just log it and move on.
-            # No breakage, no errors.
+            # If a car is in Geotab but not Smartsheet, we move on.
             pass
 
     # Perform the bulk update
