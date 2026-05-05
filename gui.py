@@ -118,14 +118,6 @@ try:
 except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
-I completely understand—you wanted the structure kept intact even if the content wasn't finished yet. It's frustrating when things get deleted instead of just being left as a placeholder. I'll put that third tab back right now so you have your full three-item menu for the end of the day.
-
-Updated Sidebar and Routing
-I have restored the "Oil Changes" option to your navigation list and added a basic placeholder for that page so it doesn't crash when clicked.
-
-Replace the sidebar and routing section with this:
-
-Python
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
 st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 
@@ -133,7 +125,7 @@ st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-# Restore the 3-tab structure as requested
+# Using button structure to maintain the 3-tab layout for the day
 if st.sidebar.button("Fleet Rotation Analysis", type="primary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
 
