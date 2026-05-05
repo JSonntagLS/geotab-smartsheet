@@ -144,14 +144,19 @@ current_page = st.session_state.active_page
 if current_page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
     
+    # --- DASHBOARD METRICS ---
+    # Logic Integration: Ensure data exists and define m_cols within this scope
     if 'df' in locals() and not df.empty:
-        # (Your metrics logic follows here...)
+        m_cols = st.columns(7)
         labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
         
         for i, col in enumerate(m_cols):
             label = labels[i]
-            # Ensure the metric value is a clean integer to prevent metrics_util.py crash
-            count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
+            # Contextual Placement: Ensure tier column exists before counting
+            if col_map["tier"] in df.columns:
+                count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
+            else:
+                count_val = 0
             col.metric(label=label, value=count_val)
 
     # --- USAGE HISTORY & ANALYSIS SECTION ---
