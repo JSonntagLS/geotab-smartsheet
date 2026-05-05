@@ -157,37 +157,9 @@ if current_page == "Fleet Rotation Analysis":
                 count_val = 0
             col.metric(label=label, value=count_val)
         
-        # Place any additional tables or charts here
         st.divider()
-        st.subheader("Asset Details")
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
-        st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
 
-elif current_page == "Oil Changes":
-    st.header("Oil Changes")
-    st.info("Structure maintained. Content placeholder.")
-
-elif current_page == "New Lease Analysis":
-    st.header("New Lease Analysis")
-    st.info("Structure maintained. Content placeholder.")
-    
-    # --- DASHBOARD METRICS ---
-    # Logic Integration: Ensure data exists and define m_cols within this scope
-    if 'df' in locals() and not df.empty:
-        m_cols = st.columns(7)
-        labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
-        
-        for i, col in enumerate(m_cols):
-            label = labels[i]
-            # Contextual Placement: Ensure tier column exists before counting
-            if col_map["tier"] in df.columns:
-                count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
-            else:
-                count_val = 0
-            col.metric(label=label, value=count_val)
-
-    # --- ACTIONS & GRAPH SECTION ---
+        # --- ACTIONS & GRAPH SECTION ---
         col_btn, col_graph = st.columns([1, 2])
         
         with col_btn:
@@ -222,9 +194,43 @@ elif current_page == "New Lease Analysis":
                     st.warning("Trend log busy.")
             else:
                 st.info("Usage history log will populate after sync.")
+
+        # --- ACTION EXECUTION ---
+        if 'run_analysis' in locals() and run_analysis:
+            with st.spinner("Analyzing trajectories..."):
+                # (The rest of your existing analysis logic remains below this)
+        
+        st.divider()
+        st.subheader("Asset Details")
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
+
+elif current_page == "Oil Changes":
+    st.header("Oil Changes")
+    st.info("Structure maintained. Content placeholder.")
+
+elif current_page == "New Lease Analysis":
+    st.header("New Lease Analysis")
+    st.info("Structure maintained. Content placeholder.")
     
-    # --- ACTION EXECUTION ---
-    if run_analysis:
+    # --- DASHBOARD METRICS ---
+    # Logic Integration: Ensure data exists and define m_cols within this scope
+    if 'df' in locals() and not df.empty:
+        m_cols = st.columns(7)
+        labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
+        
+        for i, col in enumerate(m_cols):
+
+            
+            label = labels[i]
+            # Contextual Placement: Ensure tier column exists before counting
+            if col_map["tier"] in df.columns:
+                count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
+            else:
+                count_val = 0
+            col.metric(label=label, value=count_val)
+   
         if 'df' not in locals():
             st.error("Data not found.")
         else:
