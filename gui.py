@@ -119,67 +119,30 @@ except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
 # --- SIDEBAR NAVIGATION ---
-with st.sidebar:
-    st.title("myGEOTAB") # Naming convention from image_cb7278.jpg
-    page = st.radio(
-        "DASHBOARD",
-        ["Fleet Rotation Analysis", "Oil Changes", "New Lease Analysis"],
-        index=0
-    )
-    st.sidebar.markdown("---")
-    st.sidebar.caption("Fleet Management System v2.0")
+st.sidebar.title("myGEOTAB") 
+nav_options = ["Fleet Rotation Analysis", "Oil Changes", "New Lease Analysis"]
+page_selection = st.sidebar.radio("DASHBOARD", nav_options, index=0)
 
-# --- CUSTOM CSS FOR GEOTAB AESTHETIC ---
-geotab_theme = """
-<style>
-    /* Sidebar background and border */
-    [data-testid="stSidebar"] {
-        background-color: #f0f2f5 !important;
-        border-right: 1px solid #d1d5db !important;
-    }
-    /* Sidebar text color and spacing */
-    [data-testid="stSidebar"] .stRadio > label {
-        color: #1e293b !important;
-        font-weight: 600 !important;
-        text-transform: uppercase !important;
-        font-size: 0.85rem !important;
-        margin-bottom: 10px !important;
-    }
-    /* Metric value color (Geotab Blue) */
-    [data-testid="stMetricValue"] {
-        color: #2563eb !important;
-    }
-    /* Header and Title styling */
-    h1, h2, h3 {
-        color: #0f172a !important;
-        font-family: 'Inter', sans-serif !important;
-    }
-    /* Increase sidebar top padding for logo/title */
-    [data-testid="stSidebarNav"] {
-        padding-top: 2rem !important;
-    }
-</style>
-"""
-st.markdown(geotab_theme, unsafe_content_html=True)
+st.sidebar.divider()
+st.sidebar.caption("Fleet Management System v2.0")
 
 # --- PAGE ROUTING ---
-if page == "Fleet Rotation Analysis":
+# Sanitize page selection to prevent string-comparison TypeErrors in Python 3.14
+current_page = str(page_selection)
+
+if current_page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
-    # Everything below this line in your script now belongs inside this 'with' block
 
     # --- DASHBOARD METRICS ---
-    if 'df' in locals():
-        with st.container():
-            m_cols = st.columns(7)
-            labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
-            
-            for i, col in enumerate(m_cols):
-                label = labels[i]
-                if not df.empty and col_map["tier"] in df.columns:
-                    count = len(df[df[col_map["tier"]].astype(str).str.strip() == label])
-                else:
-                    count = 0
-                col.metric(label=label, value=count)
+    if 'df' in locals() and not df.empty:
+        m_cols = st.columns(7)
+        labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
+        
+        for i, col in enumerate(m_cols):
+            label = labels[i]
+            # Ensure the metric value is a clean integer to prevent metrics_util.py crash
+            count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
+            col.metric(label=label, value=count_val)
 
     # --- USAGE HISTORY & ANALYSIS SECTION ---
     col_btn, col_graph = st.columns([1, 2])
