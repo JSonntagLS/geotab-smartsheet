@@ -14,7 +14,7 @@ def harvest_data():
     now = datetime.utcnow()
     # Anchor to last Monday, but create a search buffer starting 2 days prior
     days_since_monday = now.weekday()
-    monday_target = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=1, second=0, microsecond=0)
+    monday_target = (now - timedelta(days=now.weekday())).replace(hour=0, minute=1, second=0, microsecond=0)
     
     # We search from 2 days before Monday to find the closest "Start" reading
     search_start_date = (monday_target - timedelta(days=2)).isoformat()
