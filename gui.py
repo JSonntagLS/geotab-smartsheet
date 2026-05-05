@@ -119,32 +119,33 @@ except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
+# Keeps LifeServe and Fleet Management tight on two lines
 st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 
-# Initialize navigation state if it doesn't exist
+# Camouflage CSS: One single line to avoid the Python 3.14 crash
+# This makes the button box and border match the sidebar background exactly
+st.markdown("<style>div[data-testid='stSidebar'] button {background-color: #f0f2f6 !important; border-color: #f0f2f6 !important; color: #4b5563 !important; text-align: left !important; display: block !important;}</style>", unsafe_allow_html=True)
+
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-# Create clickable navigation buttons
-if st.sidebar.button("Fleet Rotation Analysis", use_container_width=True, type="secondary"):
+# These buttons will now appear as plain clickable text on the background
+if st.sidebar.button("Fleet Rotation Analysis", use_container_width=True):
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-if st.sidebar.button("New Lease Analysis", use_container_width=True, type="secondary"):
+if st.sidebar.button("New Lease Analysis", use_container_width=True):
     st.session_state.active_page = "New Lease Analysis"
 
-# Sidebar Divider
 st.sidebar.divider()
 
 # --- PAGE ROUTING ---
-# Using the session_state variable for routing
 current_page = st.session_state.active_page
 
 if current_page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
     
-    # --- DASHBOARD METRICS ---
     if 'df' in locals() and not df.empty:
-        m_cols = st.columns(7)
+        # (Your metrics logic follows here...)
         labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
         
         for i, col in enumerate(m_cols):
