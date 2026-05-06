@@ -62,11 +62,22 @@ def run_health_sync():
             status_val = "Offline" if is_offline else "Online"
             
             # BUILD THE UPDATE (Corrected for Smartsheet SDK)
+            # BUILD THE UPDATE (Corrected for Smartsheet SDK strictness)
             new_row = smartsheet.models.Row()
-            new_row.id = fleet_map[dev_name] # Assign ID here instead of in the constructor
+            new_row.id = fleet_map[dev_name]
             
-            new_row.cells.append(smartsheet.models.Cell(column_id=STATUS_COL_ID, value=status_val))
-            new_row.cells.append(smartsheet.models.Cell(column_id=BATTERY_COL_ID, value=battery_val))
+            # Create Status Cell
+            cell_status = smartsheet.models.Cell()
+            cell_status.column_id = STATUS_COL_ID
+            cell_status.value = status_val
+            
+            # Create Battery Cell
+            cell_battery = smartsheet.models.Cell()
+            cell_battery.column_id = BATTERY_COL_ID
+            cell_battery.value = battery_val
+            
+            new_row.cells.append(cell_status)
+            new_row.cells.append(cell_battery)
             updates.append(new_row)
 
     # 4. Push updates
