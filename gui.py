@@ -363,12 +363,3 @@ elif current_page == "New Lease Analysis":
     st.write("### Current Fleet Status")
     if 'df_display' in locals():
         st.dataframe(df_display, use_container_width=True, hide_index=True)
-
-# --- NEW BLANK TABS ---
-elif current_page == "Oil Changes":
-    st.header("Oil Change Management")
-    st.info("Tracking logic for oil changes will be placed here.")
-
-elif current_page == "New Lease Analysis":
-    st.header("New Lease Analysis")
-    st.info("Analysis logic for new leases will be placed here.")
