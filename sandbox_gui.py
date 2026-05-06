@@ -32,7 +32,9 @@ col_map = {
     "odo": "Current Odometer",
     "last_oil": "Mileage of Last Oil Change",
     "next_oil": "Mileage of Next Oil Change",
-    "interval": "Miles Between Oil Changes"
+    "interval": "Miles Between Oil Changes",
+    "status": "Status",
+    "battery": "Battery"
 }
 
 # Smartsheet Column IDs for Updates
@@ -383,39 +385,36 @@ elif current_page == "Oil Changes":
     else:
         st.error("Smartsheet data not loaded.")
 
+# --- NEW MODIFICATION START ---
 elif current_page == "Asset Health":
     st.title("Asset Health & Connectivity")
     
-    # Logic Integration: Check for the health data file
-    if os.path.exists('fleet_health.csv'):
-        try:
-            df_health = pd.read_csv('fleet_health.csv')
-            
-            # Metric Row (Mirroring the GeoTab UI)
+    if 'df' in locals() and not df.empty:
+        # Surgical check for new health columns
+        if col_map["status"] in df.columns and col_map["battery"] in df.columns:
+            # Mirror UI Output: Match the counts from your Geotab screenshot
+            df_offline = df[df[col_map["status"]].astype(str).str.contains('Offline', na=False, case=False)]
+            df_low_batt = df[df[col_map["battery"]].astype(str).str.contains('Low', na=False, case=False)]
+
             m_col1, m_col2, m_col3 = st.columns()
-            
-            # Filter for specific statuses
-            offline_count = len(df_health[df_health['Status'] == 'Offline'])
-            low_batt_count = len(df_health[df_health['Battery'] == 'Low'])
-            
-            m_col1.metric("Offline Devices", offline_count, delta_color="inverse")
-            m_col2.metric("Low Asset Battery", low_batt_count, delta_color="inverse")
+            m_col1.metric("Offline Devices", len(df_offline), delta_color="inverse")
+            m_col2.metric("Low Asset Battery", len(df_low_batt), delta_color="inverse")
+            m_col3.info("Data reflects the latest Saturday Geotab Sync.")
             
             st.divider()
             
-            # Data View
             tab_off, tab_batt = st.tabs(["Offline Assets", "Low Battery Details"])
             
             with tab_off:
                 st.subheader("Devices Not Communicating")
-                st.dataframe(df_health[df_health['Status'] == 'Offline'], use_container_width=True, hide_index=True)
+                st.dataframe(df_offline[[col_map["name"], col_map["loc"], col_map["status"]]], 
+                             use_container_width=True, hide_index=True)
                 
             with tab_batt:
                 st.subheader("Voltage Alerts")
-                st.dataframe(df_health[df_health['Battery'] == 'Low'], use_container_width=True, hide_index=True)
-                
-        except Exception as e:
-            st.error(f"Error loading health log: {e}")
+                st.dataframe(df_low_batt[[col_map["name"], col_map["odo"], col_map["battery"]]], 
+                             use_container_width=True, hide_index=True)
+        else:
+            st.warning("Health columns not detected in Smartsheet. Run the Saturday Sync first.")
     else:
-        st.info("No health data found. Ensure the weekly sync script has generated 'fleet_health.csv'.")
-        st.image("https://img.icons8.com/clouds/100/000000/battery-status-inventory.png") # Optional placeholder icon
+        st.error("Smartsheet data not loaded.")
