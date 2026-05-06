@@ -198,7 +198,8 @@ if current_page == "Fleet Rotation Analysis":
         if 'run_analysis' in locals() and run_analysis:
             with st.spinner("Analyzing trajectories..."):
                 # (The rest of your existing analysis logic remains below this)
-        
+                pass # Placeholder for your logic
+
         st.divider()
         st.subheader("Asset Details")
         st.dataframe(df, use_container_width=True, hide_index=True)
