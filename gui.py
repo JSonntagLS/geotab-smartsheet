@@ -144,12 +144,10 @@ if current_page == "Fleet Rotation Analysis":
     # --- DASHBOARD METRICS ---
     if 'df' in locals() and not df.empty:
         m_cols = st.columns(7)
-        # (Rest of your metrics logic here...)
         labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
         
         for i, col in enumerate(m_cols):
             label = labels[i]
-            # Ensure tier column exists before counting
             if col_map["tier"] in df.columns:
                 count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
             else:
@@ -187,18 +185,76 @@ if current_page == "Fleet Rotation Analysis":
                             st.bar_chart(filtered.set_index('Date')[selected_cat], height=250)
                         else:
                             st.info("No activity recorded for this category.")
-                    else:
-                        st.info("No data matches current filters.")
                 except:
                     st.warning("Trend log busy.")
             else:
                 st.info("Usage history log will populate after sync.")
 
         # --- ACTION EXECUTION ---
-        if 'run_analysis' in locals() and run_analysis:
+        if run_analysis:
             with st.spinner("Analyzing trajectories..."):
-                # (The rest of your existing analysis logic remains below this)
-                pass # Placeholder for your logic
+                try:
+                    # 1. IDENTIFY ASSETS
+                    high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
+                    low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
+                    
+                    possible_swaps = []
+                    for h_idx, high_row in high_usage_assets.iterrows():
+                        raw_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
+                        route_A_baseline = max(raw_route_A, 200.0)
+                        _, months_rem_A = calculate_runway(high_row)
+                        odo_A = force_num(high_row[col_map["odo"]])
+                        
+                        if (odo_A + (route_A_baseline * months_rem_A)) <= 103000:
+                            continue 
+    
+                        for l_idx, low_row in low_usage_assets.iterrows():
+                            if str(high_row.get(col_map["desc"], "")).strip().lower() != str(low_row.get(col_map["desc"], "")).strip().lower(): 
+                                continue
+    
+                            dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
+                            if dist > max_dist: continue
+                            
+                            odo_B = force_num(low_row[col_map["odo"]])
+                            raw_route_B = force_num(low_row[col_map["projected"]]) if force_num(low_row[col_map["projected"]]) > 0 else force_num(low_row[col_map["actual"]])
+                            route_B_baseline = max(raw_route_B, 200.0)
+                            _, months_rem_B = calculate_runway(low_row)
+    
+                            possible_swaps.append({
+                                "score": ((route_A_baseline - route_B_baseline) * 0.7) - ((dist ** 1.5) * 0.1),
+                                "h_name": high_row[col_map["name"]],
+                                "l_name": low_row[col_map["name"]],
+                                "dist": f"{dist:.1f} miles",
+                                "data_A": {"odo": odo_A, "route": route_B_baseline, "months": months_rem_A, "proj": odo_A + (route_B_baseline * months_rem_A)},
+                                "data_B": {"odo": odo_B, "route": route_A_baseline, "months": months_rem_B, "proj": odo_B + (route_A_baseline * months_rem_B)}
+                            })
+    
+                    sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
+                    final_recs = []
+                    used_vehicles = set()
+    
+                    def format_proj(proj_val, current_odo, route_val):
+                        if proj_val > 105000:
+                            return f"🔴 OVER: {proj_val:,.0f} mi (Hits limit in {max(0, (105000-current_odo)/route_val):.1f} mo)" if route_val > 0 else "🔴 OVER"
+                        return f"🔵 UNDER: {proj_val:,.0f} mi" if proj_val < 85000 else f"🟢 IDEAL: {proj_val:,.0f} mi"
+    
+                    for s in sorted_swaps:
+                        if s['h_name'] not in used_vehicles and s['l_name'] not in used_vehicles:
+                            final_recs.append({
+                                "High-Use Vehicle": s['h_name'],
+                                "Low-Use Vehicle": s['l_name'],
+                                "Distance": s['dist'],
+                                "Post-Swap High-Use": format_proj(s['data_A']['proj'], s['data_A']['odo'], s['data_A']['route']),
+                                "Post-Swap Low-Use": format_proj(s['data_B']['proj'], s['data_B']['odo'], s['data_B']['route'])
+                            })
+                            used_vehicles.add(s['h_name']); used_vehicles.add(s['l_name'])
+    
+                    if final_recs:
+                        st.table(pd.DataFrame(final_recs))
+                    else:
+                        st.info("No matching swaps found.")
+                except Exception as e:
+                    st.error(f"Analysis Error: {e}")
 
         st.divider()
         st.subheader("Asset Details")
