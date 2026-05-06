@@ -53,30 +53,39 @@ def run_health_sync():
             # Check Battery
             # --- IMPROVED BATTERY CHECK ---
             battery_val = "Normal"
+            two_days_ago = datetime.utcnow() - timedelta(days=2)
             
-            # Look for the last 2 days of battery data to ensure we don't get a null result
-            # DiagnosticDeviceBatteryVoltageId is the standard, 
-            # but some assets use DiagnosticEngineBatteryVoltageId
+            # Diagnostic IDs
+            diag_id = 'DiagnosticDeviceBatteryVoltageId'
             
             batt_logs = client.get('StatusData', search={
                 'deviceSearch': {'id': dev_id},
-                'diagnosticSearch': {'id': 'DiagnosticDeviceBatteryVoltageId'},
-                'fromDate': (datetime.utcnow() - timedelta(days=2)).isoformat(),
+                'diagnosticSearch': {'id': diag_id},
+                'fromDate': two_days_ago.isoformat(),
                 'resultsLimit': 1
             })
             
-            # If the first ID fails, try the Engine Battery ID
             if not batt_logs:
+                # Try Engine Battery ID if Device Battery is empty
                 batt_logs = client.get('StatusData', search={
                     'deviceSearch': {'id': dev_id},
                     'diagnosticSearch': {'id': 'DiagnosticEngineBatteryVoltageId'},
+                    'fromDate': two_days_ago.isoformat(),
                     'resultsLimit': 1
                 })
 
             if batt_logs:
-                voltage = batt_logs['data']
-                # Geotab typically flags the UI icon at 11.6V or lower
-                if voltage <= 11.6: 
+                log = batt_logs # Get the first record from the list
+                voltage = log.get('data', 0)
+                
+                # Check 1: Is the voltage actually low?
+                # Check 2: Is the data older than 48 hours? (Often indicates a dead unit)
+                if voltage <= 11.6:
+                    battery_val = "Low"
+            else:
+                # If no logs exist in the last 2 days, and the device is offline, 
+                # it's safer to flag as Low/Unknown rather than "Normal"
+                if is_offline:
                     battery_val = "Low"
             # --- END BATTERY CHECK ---
             
