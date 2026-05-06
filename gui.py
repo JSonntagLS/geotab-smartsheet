@@ -202,15 +202,18 @@ if current_page == "Fleet Rotation Analysis":
                     for h_idx, high_row in high_usage_assets.iterrows():
                         raw_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
                         route_A_baseline = max(raw_route_A, 200.0)
+                        
                         _, months_rem_A = calculate_runway(high_row)
                         odo_A = force_num(high_row[col_map["odo"]])
-                        
-                        if (odo_A + (route_A_baseline * months_rem_A)) <= 103000:
+                        without_swap_proj_A = odo_A + (route_A_baseline * months_rem_A)
+    
+                        if without_swap_proj_A <= 103000:
                             continue 
     
                         for l_idx, low_row in low_usage_assets.iterrows():
-                            if str(high_row.get(col_map["desc"], "")).strip().lower() != str(low_row.get(col_map["desc"], "")).strip().lower(): 
-                                continue
+                            h_desc = str(high_row.get(col_map["desc"], "")).strip().lower()
+                            l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
+                            if h_desc != l_desc: continue
     
                             dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
                             if dist > max_dist: continue
@@ -220,41 +223,58 @@ if current_page == "Fleet Rotation Analysis":
                             route_B_baseline = max(raw_route_B, 200.0)
                             _, months_rem_B = calculate_runway(low_row)
     
+                            proj_A = odo_A + (route_B_baseline * months_rem_A)
+                            proj_B = odo_B + (route_A_baseline * months_rem_B)
+                            score = ((route_A_baseline - route_B_baseline) * 0.7) - ((dist ** 1.5) * 0.1)
+    
                             possible_swaps.append({
-                                "score": ((route_A_baseline - route_B_baseline) * 0.7) - ((dist ** 1.5) * 0.1),
+                                "score": score,
                                 "h_name": high_row[col_map["name"]],
                                 "l_name": low_row[col_map["name"]],
                                 "dist": f"{dist:.1f} miles",
-                                "data_A": {"odo": odo_A, "route": route_B_baseline, "months": months_rem_A, "proj": odo_A + (route_B_baseline * months_rem_A)},
-                                "data_B": {"odo": odo_B, "route": route_A_baseline, "months": months_rem_B, "proj": odo_B + (route_A_baseline * months_rem_B)}
+                                "data_A": {"odo": odo_A, "route_in": route_B_baseline, "route_out": route_A_baseline, "months": months_rem_A, "proj": proj_A, "orig_proj": without_swap_proj_A},
+                                "data_B": {"odo": odo_B, "route_in": route_A_baseline, "route_out": route_B_baseline, "months": months_rem_B, "proj": proj_B, "orig_proj": odo_B + (route_B_baseline * months_rem_B)}
                             })
     
                     sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
                     final_recs = []
                     used_vehicles = set()
     
-                    def format_proj(proj_val, current_odo, route_val):
+                    def format_projection(proj_val, current_odo, route_val):
+                        is_stationary = route_val <= 200.0
                         if proj_val > 105000:
-                            return f"🔴 OVER: {proj_val:,.0f} mi (Hits limit in {max(0, (105000-current_odo)/route_val):.1f} mo)" if route_val > 0 else "🔴 OVER"
-                        return f"🔵 UNDER: {proj_val:,.0f} mi" if proj_val < 85000 else f"🟢 IDEAL: {proj_val:,.0f} mi"
+                            miles_to_go = 105000 - current_odo
+                            time_text = f"Hits limit in {max(0, miles_to_go / route_val):.1f} months" if route_val > 0 else "Hits limit in 0.0 months"
+                            return f"🔴 OVER: {proj_val:,.0f} mi ({time_text})"
+                        elif proj_val < 85000:
+                            status_text = "🔵 UNDER"
+                            if is_stationary:
+                                return f"{status_text}: {proj_val:,.0f} mi (Minimal Usage)"
+                            return f"{status_text}: {proj_val:,.0f} mi"
+                        return f"🟢 IDEAL: {proj_val:,.0f} mi"
     
                     for s in sorted_swaps:
                         if s['h_name'] not in used_vehicles and s['l_name'] not in used_vehicles:
                             final_recs.append({
-                                "High-Use Vehicle": s['h_name'],
-                                "Low-Use Vehicle": s['l_name'],
+                                "Over-Paced Vehicle": s['h_name'],
+                                "Under-Used Vehicle": s['l_name'],
                                 "Distance": s['dist'],
-                                "Post-Swap High-Use": format_proj(s['data_A']['proj'], s['data_A']['odo'], s['data_A']['route']),
-                                "Post-Swap Low-Use": format_proj(s['data_B']['proj'], s['data_B']['odo'], s['data_B']['route'])
+                                "Without-Swap: Current High-Use Asset": format_projection(s['data_A']['orig_proj'], s['data_A']['odo'], s['data_A']['route_out']),
+                                "Post-Swap: Current High-Use Asset": format_projection(s['data_A']['proj'], s['data_A']['odo'], s['data_A']['route_in']),
+                                "Without-Swap: Current Low-Use Asset": format_projection(s['data_B']['orig_proj'], s['data_B']['odo'], s['data_B']['route_out']),
+                                "Post-Swap: Current Low-Use Asset": format_projection(s['data_B']['proj'], s['data_B']['odo'], s['data_B']['route_in'])
                             })
-                            used_vehicles.add(s['h_name']); used_vehicles.add(s['l_name'])
+                            used_vehicles.add(s['h_name'])
+                            used_vehicles.add(s['l_name'])
     
                     if final_recs:
+                        st.write("### Fleet Rotation Analysis")
                         st.table(pd.DataFrame(final_recs))
                     else:
-                        st.info("No matching swaps found.")
+                        st.info("No matching swaps found within constraints.")
+    
                 except Exception as e:
-                    st.error(f"Analysis Error: {e}")
+                    st.error(f"Rotation Analysis Error: {e}")
 
         st.divider()
         st.subheader("Asset Details")
