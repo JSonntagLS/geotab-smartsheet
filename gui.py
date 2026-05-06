@@ -30,6 +30,18 @@ col_map = {
     "length": "Lease Length",
     "contract": "Total Contract Miles",
     "odo": "Current Odometer"
+    "last_oil": "Mileage of Last Oil Change",
+    "next_oil": "Mileage of Next Oil Change",
+    "interval": "Miles Between Oil Changes"
+}
+
+# Smartsheet Column IDs for Updates
+OIL_COL_IDS = {
+    "last_oil": 6747473612935044,
+    "next_oil": 4495673799249796,
+    "interval": 7596742668488580,
+    "odo": 8905895049465732,
+    "name": 6654095235780484
 }
 
 CITY_COORDS = {
@@ -94,16 +106,21 @@ try:
     smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
     sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
     columns = [col.title.strip() for col in sheet.columns]
-    rows = [[cell.value for cell in row.cells] for row in sheet.rows]
-    df = pd.DataFrame(rows, columns=columns)
+    rows = []
+    for row in sheet.rows:
+        row_data = [cell.value for cell in row.cells]
+        row_data.append(row.id)  # Capture Row ID for updates
+        rows.append(row_data)
+    
+    df = pd.DataFrame(rows, columns=columns + ["row_id"])
 
     # DATA CLEANING: Clean all columns first
-    for col_key in ["allowance", "projected", "actual", "odo"]:
-        col = col_map[col_key]
-        if col in df.columns:
-            # Clean and convert to float first to handle decimals/errors safely
-            df[col] = df[col].apply(lambda x: force_num(x))
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    for col_key in ["allowance", "projected", "actual", "odo", "last_oil", "next_oil", "interval"]:
+        if col_key in col_map:
+            col = col_map[col_key]
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: force_num(x))
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
     # INDENTATION FIX: Move the display and int-casting OUTSIDE the loop above
     df_display = df[[
@@ -130,8 +147,8 @@ if 'active_page' not in st.session_state:
 if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-if st.sidebar.button("New Lease Analysis", type="secondary", use_container_width=True, key="btn_lease"):
-    st.session_state.active_page = "New Lease Analysis"
+if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
+    st.session_state.active_page = "Oil Changes"
 
 st.sidebar.divider()
 
@@ -283,12 +300,72 @@ if current_page == "Fleet Rotation Analysis":
         st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
 
 elif current_page == "Oil Changes":
-    st.header("Oil Changes")
-    st.info("Structure maintained. Content placeholder.")
+    st.title("Oil Change Management")
+    
+    if 'df' in locals() and not df.empty:
+        # Filter for vehicles due (Odometer >= Next Change - 500)
+        df_due = df[df[col_map["odo"]] >= (df[col_map["next_oil"]] - 500)].copy()
+        
+        if df_due.empty:
+            st.success("All vehicles are up to date on oil changes!")
+        else:
+            st.write(f"### Vehicles Due for Service ({len(df_due)})")
+            
+            # Header Row
+            h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([2, 1, 1, 1, 1])
+            h_col1.write("**Vehicle**")
+            h_col2.write("**Current Odo**")
+            h_col3.write("**Next Due**")
+            h_col4.write("**New Service Odo**")
+            h_col5.write("**Action**")
+            st.divider()
 
-elif current_page == "New Lease Analysis":
-    st.header("New Lease Analysis")
-    st.info("Structure maintained. Content placeholder.")
+            for idx, row in df_due.iterrows():
+                v_name = row[col_map["name"]]
+                curr_odo = int(row[col_map["odo"]])
+                next_due = int(row[col_map["next_oil"]])
+                row_id = row["row_id"]
+                
+                r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([2, 1, 1, 1, 1])
+                
+                r_col1.write(v_name)
+                r_col2.write(f"{curr_odo:,}")
+                r_col3.write(f"{next_due:,}")
+                
+                # Input for new mileage
+                new_mileage = r_col4.text_input("Mileage", key=f"input_{row_id}", label_visibility="collapsed", placeholder="Enter Odo")
+                
+                if r_col5.button("UPDATE", key=f"btn_{row_id}", use_container_width=True):
+                    if new_mileage:
+                        try:
+                            # 1. Prepare Smartsheet Update
+                            new_val = force_num(new_mileage)
+                            new_row = smartsheet.models.Row()
+                            new_row.id = int(row_id)
+                            
+                            # Update the "Mileage of Last Oil Change" column
+                            cell = smartsheet.models.Cell()
+                            cell.column_id = OIL_COL_IDS["last_oil"]
+                            cell.value = new_val
+                            new_row.cells.append(cell)
+                            
+                            # 2. Push to Smartsheet
+                            smart.Sheets.update_rows(st.secrets["sheet_id"], [new_row])
+                            
+                            st.toast(f"Updated {v_name} successfully!", icon="✅")
+                            # 3. Refresh to update the list
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update Smartsheet: {e}")
+                    else:
+                        st.warning("Enter mileage first.")
+                st.divider()
+
+        st.subheader("Full Fleet Oil Status")
+        oil_display = df[[col_map["name"], col_map["last_oil"], col_map["next_oil"], col_map["odo"]]].copy()
+        st.dataframe(oil_display, use_container_width=True, hide_index=True)
+    else:
+        st.error("Smartsheet data not loaded.")
     
     # --- DASHBOARD METRICS ---
     # Logic Integration: Ensure data exists and define m_cols within this scope
