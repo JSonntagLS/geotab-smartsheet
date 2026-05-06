@@ -126,11 +126,11 @@ st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-# Using link-style buttons to get the clean text-only look without CSS hacks
-if st.sidebar.button("Fleet Rotation Analysis", type="primary", use_container_width=True, key="btn_rot"):
+# Using link-style buttons to get the clean text-only look
+if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-if st.sidebar.button("New Lease Analysis", type="primary", use_container_width=True, key="btn_lease"):
+if st.sidebar.button("New Lease Analysis", type="secondary", use_container_width=True, key="btn_lease"):
     st.session_state.active_page = "New Lease Analysis"
 
 st.sidebar.divider()
