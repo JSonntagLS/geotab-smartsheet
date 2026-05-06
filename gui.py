@@ -68,8 +68,8 @@ def get_distance_miles(loc1, loc2):
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)) * 1.2
 
-def force_num(val, fallback=0.0):
-    if val is None or str(val).strip().lower() in ["", "nan", "none"]: 
+def force_num(val, fallback=None): # Changed default fallback to None
+    if val is None or str(val).strip().lower() in ["", "nan", "none", "n/a"]: 
         return fallback
     cleaned = re.sub(r'[^0-9.]', '', str(val))
     try:
@@ -303,8 +303,12 @@ elif current_page == "Oil Changes":
     st.title("Oil Change Management")
     
     if 'df' in locals() and not df.empty:
-        # Filter for vehicles due (Odometer >= Next Change - 500)
-        df_due = df[df[col_map["odo"]] >= (df[col_map["next_oil"]] - 500)].copy()
+        # Filter for vehicles due AND omit rows where 'Last Oil Change' is missing (N/A)
+        # This allows 0 to remain for brand new vehicles.
+        mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 500))
+        mask_not_na = df[col_map["last_oil"]].notna()
+        
+        df_due = df[mask_due & mask_not_na].copy()
         
         if df_due.empty:
             st.success("All vehicles are up to date on oil changes!")
@@ -362,7 +366,8 @@ elif current_page == "Oil Changes":
                 st.divider()
 
         st.subheader("Full Fleet Oil Status")
-        oil_display = df[[col_map["name"], col_map["last_oil"], col_map["next_oil"], col_map["odo"]]].copy()
+        # Display only vehicles that have a non-null service history
+        oil_display = df[df[col_map["last_oil"]].notna()][[col_map["name"], col_map["last_oil"], col_map["next_oil"], col_map["odo"]]].copy()
         st.dataframe(oil_display, use_container_width=True, hide_index=True)
     else:
         st.error("Smartsheet data not loaded.")
