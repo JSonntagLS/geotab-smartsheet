@@ -29,7 +29,7 @@ col_map = {
     "start": "Lease Start Date",
     "length": "Lease Length",
     "contract": "Total Contract Miles",
-    "odo": "Current Odometer"
+    "odo": "Current Odometer",
     "last_oil": "Mileage of Last Oil Change",
     "next_oil": "Mileage of Next Oil Change",
     "interval": "Miles Between Oil Changes"
