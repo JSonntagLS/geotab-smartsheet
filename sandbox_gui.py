@@ -1,0 +1,381 @@
+import streamlit as st
+import smartsheet
+import pandas as pd
+from datetime import datetime
+import math
+import google.generativeai as genai
+import re
+import os
+
+# --- PAGE CONFIG ---
+st.set_page_config(layout="wide")
+# Main title removed to shift content up
+
+# --- AI SETUP ---
+genai.configure(api_key=st.secrets["gemini_api_key"])
+model = genai.GenerativeModel('models/gemini-1.5-flash')
+
+# --- MAPPINGS ---
+col_map = {
+    "projected": "Projected Monthly Usage",
+    "allowance": "Monthly Allowance",
+    "priority": "Rotation Priority",
+    "tier": "Utilization Tier",
+    "actual": "Monthly Miles Actual",
+    "trend": "Weekly Trend",
+    "name": "Vehicle Name",
+    "loc": "Current Location",
+    "desc": "Vehicle Description",
+    "start": "Lease Start Date",
+    "length": "Lease Length",
+    "contract": "Total Contract Miles",
+    "odo": "Current Odometer",
+    "last_oil": "Mileage of Last Oil Change",
+    "next_oil": "Mileage of Next Oil Change",
+    "interval": "Miles Between Oil Changes"
+}
+
+# Smartsheet Column IDs for Updates
+OIL_COL_IDS = {
+    "last_oil": 6747473612935044,
+    "next_oil": 4495673799249796,
+    "interval": 7596742668488580,
+    "odo": 8905895049465732,
+    "name": 6654095235780484
+}
+
+CITY_COORDS = {
+    "Johnston, IA": (41.6730, -93.6977), "Ames, IA": (42.0308, -93.6319),
+    "Ankeny, IA": (41.7297, -93.6058), "Cedar Falls, IA": (42.5349, -92.4455),
+    "Davenport, IA": (41.5234, -90.5776), "Des Moines, IA": (41.5868, -93.6250),
+    "Fort Dodge, IA": (42.4975, -94.1680), "Marshalltown, IA": (42.0494, -92.9080),
+    "Mason City, IA": (43.1536, -93.2010), "Pella, IA": (41.4080, -92.9163),
+    "Sioux City, IA": (42.4963, -96.4049), "Urbandale, IA": (41.6266, -93.7122),
+    "Waterloo, IA": (42.4928, -92.3425), "Aberdeen, SD": (45.4647, -98.4865),
+    "Mitchell, SD": (43.7094, -98.0298), "Pierre, SD": (44.3683, -100.3510),
+    "Yankton, SD": (42.8711, -97.3973)
+}
+
+# --- HELPERS ---
+def get_distance_miles(loc1, loc2):
+    if loc1 == loc2: return 0
+    c1, c2 = CITY_COORDS.get(loc1), CITY_COORDS.get(loc2)
+    if not c1 or not c2: return 999 
+    radius = 3958.8 
+    lat1, lon1 = math.radians(c1[0]), math.radians(c1[1])
+    lat2, lon2 = math.radians(c2[0]), math.radians(c2[1])
+    dlat, dlon = lat2 - lat1, lon2 - lon1
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)) * 1.2
+
+def force_num(val, fallback=None):
+    if val is None:
+        return fallback
+    # Convert to string and clean
+    s_val = str(val).strip().lower()
+    if s_val in ["", "nan", "none", "n/a"]: 
+        return None  # This is the key change
+    cleaned = re.sub(r'[^0-9.]', '', s_val)
+    try:
+        return float(cleaned)
+    except:
+        return fallback
+
+def calculate_runway(row):
+    try:
+        raw_contract = force_num(row.get(col_map["contract"]))
+        total_contract = raw_contract if raw_contract > 1000 else 100000.0
+        current_odo = force_num(row.get(col_map["odo"]), fallback=0.0)
+        miles_remaining = total_contract - current_odo
+        start_date = pd.to_datetime(row.get(col_map["start"]), errors='coerce')
+        raw_len = force_num(row.get(col_map["length"]), fallback=36.0)
+        
+        if pd.isnat(start_date):
+            return int(miles_remaining), 12
+            
+        end_date = start_date + pd.offsets.DateOffset(months=int(raw_len))
+        today = datetime.now()
+        months_remaining = (end_date.year - today.year) * 12 + (end_date.month - today.month)
+        
+        return int(miles_remaining), max(1, int(months_remaining))
+    except Exception:
+        return 50000, 12
+
+# --- DATA LOADING ---
+df_display = pd.DataFrame() # Initialize as empty
+labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
+
+try:
+    
+    smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+    sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
+    columns = [col.title.strip() for col in sheet.columns]
+    rows = []
+    for row in sheet.rows:
+        row_data = [cell.value for cell in row.cells]
+        row_data.append(row.id)  # Capture Row ID for updates
+        rows.append(row_data)
+    
+    df = pd.DataFrame(rows, columns=columns + ["row_id"])
+
+    # DATA CLEANING: Clean all columns first
+    # DATA CLEANING: Clean all columns
+    for col_key in ["allowance", "projected", "actual", "odo", "last_oil", "next_oil", "interval"]:
+        if col_key in col_map:
+            col = col_map[col_key]
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: force_num(x))
+                # CHANGE: Only fill with 0 for columns that AREN'T the service history
+                if col_key != "last_oil":
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                else:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # INDENTATION FIX: Move the display and int-casting OUTSIDE the loop above
+    df_display = df[[
+        col_map["name"], col_map["loc"], col_map["allowance"], 
+        col_map["projected"], col_map["actual"], col_map["priority"], col_map["tier"]
+    ]].copy()
+    
+    for col in [col_map["allowance"], col_map["projected"], col_map["actual"]]:
+        # Now that we've used force_num, casting to int will not crash
+        df_display[col] = df_display[col].astype(int)
+
+except Exception as e:
+    st.error(f"Error loading Smartsheet: {e}")
+
+# --- SIDEBAR NAVIGATION & CUSTOM UI ---
+# Tight two-line title
+st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
+
+# Initialize state
+if 'active_page' not in st.session_state:
+    st.session_state.active_page = "Fleet Rotation Analysis"
+
+# Using link-style buttons to get the clean text-only look
+if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
+    st.session_state.active_page = "Fleet Rotation Analysis"
+
+if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
+    st.session_state.active_page = "Oil Changes"
+
+st.sidebar.divider()
+
+# --- PAGE ROUTING ---
+current_page = st.session_state.active_page
+
+if current_page == "Fleet Rotation Analysis":
+    st.title("Fleet Rotation Analysis")
+    
+    # --- DASHBOARD METRICS ---
+    if 'df' in locals() and not df.empty:
+        m_cols = st.columns(7)
+        labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
+        
+        for i, col in enumerate(m_cols):
+            label = labels[i]
+            if col_map["tier"] in df.columns:
+                count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
+            else:
+                count_val = 0
+            col.metric(label=label, value=count_val)
+        
+        st.divider()
+
+        # --- ACTIONS & GRAPH SECTION ---
+        col_btn, col_graph = st.columns([1, 2])
+        
+        with col_btn:
+            st.write("### Actions")
+            run_analysis = st.button("RUN FLEET ROTATION ANALYSIS", use_container_width=True, key="fleet_rot_final")
+            max_dist = st.slider("Max Allowable Swap Distance (Miles)", 20, 500, 200, step=10)
+        
+        with col_graph:
+            if os.path.exists('usage_history.csv'):
+                try:
+                    history_df = pd.read_csv('usage_history.csv')
+                    history_df['Date'] = pd.to_datetime(history_df['Date'])
+                    st.write("### Utilization Trends")
+                    g_col1, g_col2 = st.columns(2)
+                    with g_col1:
+                        selected_cat = st.selectbox("Select Category", labels, key="trend_cat")
+                    with g_col2:
+                        time_map = {"1 month": 30, "3 months": 90, "6 months": 180, "1 year": 365, "3 years": 1095}
+                        selected_time = st.selectbox("Timeframe", list(time_map.keys()), key="trend_time")
+        
+                    cutoff = datetime.now() - pd.Timedelta(days=time_map[selected_time])
+                    filtered = history_df[history_df['Date'] >= cutoff]
+                    
+                    if not filtered.empty and selected_cat in filtered.columns:
+                        if filtered[selected_cat].sum() > 0:
+                            st.bar_chart(filtered.set_index('Date')[selected_cat], height=250)
+                        else:
+                            st.info("No activity recorded for this category.")
+                except:
+                    st.warning("Trend log busy.")
+            else:
+                st.info("Usage history log will populate after sync.")
+
+        # --- ACTION EXECUTION ---
+        if run_analysis:
+            with st.spinner("Analyzing trajectories..."):
+                try:
+                    # 1. IDENTIFY ASSETS
+                    high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
+                    low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
+                    
+                    possible_swaps = []
+                    for h_idx, high_row in high_usage_assets.iterrows():
+                        raw_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
+                        route_A_baseline = max(raw_route_A, 200.0)
+                        
+                        _, months_rem_A = calculate_runway(high_row)
+                        odo_A = force_num(high_row[col_map["odo"]])
+                        without_swap_proj_A = odo_A + (route_A_baseline * months_rem_A)
+    
+                        if without_swap_proj_A <= 103000:
+                            continue 
+    
+                        for l_idx, low_row in low_usage_assets.iterrows():
+                            h_desc = str(high_row.get(col_map["desc"], "")).strip().lower()
+                            l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
+                            if h_desc != l_desc: continue
+    
+                            dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
+                            if dist > max_dist: continue
+                            
+                            odo_B = force_num(low_row[col_map["odo"]])
+                            raw_route_B = force_num(low_row[col_map["projected"]]) if force_num(low_row[col_map["projected"]]) > 0 else force_num(low_row[col_map["actual"]])
+                            route_B_baseline = max(raw_route_B, 200.0)
+                            _, months_rem_B = calculate_runway(low_row)
+    
+                            proj_A = odo_A + (route_B_baseline * months_rem_A)
+                            proj_B = odo_B + (route_A_baseline * months_rem_B)
+                            score = ((route_A_baseline - route_B_baseline) * 0.7) - ((dist ** 1.5) * 0.1)
+    
+                            possible_swaps.append({
+                                "score": score,
+                                "h_name": high_row[col_map["name"]],
+                                "l_name": low_row[col_map["name"]],
+                                "dist": f"{dist:.1f} miles",
+                                "data_A": {"odo": odo_A, "route_in": route_B_baseline, "route_out": route_A_baseline, "months": months_rem_A, "proj": proj_A, "orig_proj": without_swap_proj_A},
+                                "data_B": {"odo": odo_B, "route_in": route_A_baseline, "route_out": route_B_baseline, "months": months_rem_B, "proj": proj_B, "orig_proj": odo_B + (route_B_baseline * months_rem_B)}
+                            })
+    
+                    sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
+                    final_recs = []
+                    used_vehicles = set()
+    
+                    def format_projection(proj_val, current_odo, route_val):
+                        is_stationary = route_val <= 200.0
+                        if proj_val > 105000:
+                            miles_to_go = 105000 - current_odo
+                            time_text = f"Hits limit in {max(0, miles_to_go / route_val):.1f} months" if route_val > 0 else "Hits limit in 0.0 months"
+                            return f"🔴 OVER: {proj_val:,.0f} mi ({time_text})"
+                        elif proj_val < 85000:
+                            status_text = "🔵 UNDER"
+                            if is_stationary:
+                                return f"{status_text}: {proj_val:,.0f} mi (Minimal Usage)"
+                            return f"{status_text}: {proj_val:,.0f} mi"
+                        return f"🟢 IDEAL: {proj_val:,.0f} mi"
+    
+                    for s in sorted_swaps:
+                        if s['h_name'] not in used_vehicles and s['l_name'] not in used_vehicles:
+                            final_recs.append({
+                                "Over-Paced Vehicle": s['h_name'],
+                                "Under-Used Vehicle": s['l_name'],
+                                "Distance": s['dist'],
+                                "Without-Swap: Current High-Use Asset": format_projection(s['data_A']['orig_proj'], s['data_A']['odo'], s['data_A']['route_out']),
+                                "Post-Swap: Current High-Use Asset": format_projection(s['data_A']['proj'], s['data_A']['odo'], s['data_A']['route_in']),
+                                "Without-Swap: Current Low-Use Asset": format_projection(s['data_B']['orig_proj'], s['data_B']['odo'], s['data_B']['route_out']),
+                                "Post-Swap: Current Low-Use Asset": format_projection(s['data_B']['proj'], s['data_B']['odo'], s['data_B']['route_in'])
+                            })
+                            used_vehicles.add(s['h_name'])
+                            used_vehicles.add(s['l_name'])
+    
+                    if final_recs:
+                        st.write("### Fleet Rotation Analysis")
+                        st.table(pd.DataFrame(final_recs))
+                    else:
+                        st.info("No matching swaps found within constraints.")
+    
+                except Exception as e:
+                    st.error(f"Rotation Analysis Error: {e}")
+
+        st.divider()
+        st.subheader("Asset Details")
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
+
+elif current_page == "Oil Changes":
+    st.title("Oil Change Management")
+    
+    if 'df' in locals() and not df.empty:
+        # Filter for vehicles due 
+        mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 500))
+        
+        # Omit those where "Last Oil Change" is actually missing/NaN
+        df_due = df[mask_due & df[col_map["last_oil"]].notna()].copy()
+        
+        if df_due.empty:
+            st.success("All vehicles are up to date on oil changes!")
+        else:
+            st.write(f"### Vehicles Due for Service ({len(df_due)})")
+            
+            # Header Row
+            h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([2, 1, 1, 1, 1])
+            h_col1.write("**Vehicle**")
+            h_col2.write("**Current Odo**")
+            h_col3.write("**Next Due**")
+            h_col4.write("**New Service Odo**")
+            h_col5.write("**Action**")
+            st.divider()
+
+            for idx, row in df_due.iterrows():
+                v_name = row[col_map["name"]]
+                curr_odo = int(row[col_map["odo"]])
+                next_due = int(row[col_map["next_oil"]])
+                row_id = row["row_id"]
+                
+                r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([2, 1, 1, 1, 1])
+                
+                r_col1.write(v_name)
+                r_col2.write(f"{curr_odo:,}")
+                r_col3.write(f"{next_due:,}")
+                
+                # Input for new mileage
+                new_mileage = r_col4.text_input("Mileage", key=f"input_{row_id}", label_visibility="collapsed", placeholder="Enter Odo")
+                
+                if r_col5.button("UPDATE", key=f"btn_{row_id}", use_container_width=True):
+                    if new_mileage:
+                        try:
+                            # 1. Prepare Smartsheet Update
+                            new_val = force_num(new_mileage)
+                            new_row = smartsheet.models.Row()
+                            new_row.id = int(row_id)
+                            
+                            # Update the "Mileage of Last Oil Change" column
+                            cell = smartsheet.models.Cell()
+                            cell.column_id = OIL_COL_IDS["last_oil"]
+                            cell.value = new_val
+                            new_row.cells.append(cell)
+                            
+                            # 2. Push to Smartsheet
+                            smart.Sheets.update_rows(st.secrets["sheet_id"], [new_row])
+                            
+                            st.toast(f"Updated {v_name} successfully!", icon="✅")
+                            # 3. Refresh to update the list
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update Smartsheet: {e}")
+                    else:
+                        st.warning("Enter mileage first.")
+                st.divider()
+
+        st.subheader("Full Fleet Oil Status")
+        # Display only vehicles that have a non-null service history
+        oil_display = df[df[col_map["last_oil"]].notna()][[col_map["name"], col_map["last_oil"], col_map["next_oil"], col_map["odo"]]].copy()
+        st.dataframe(oil_display, use_container_width=True, hide_index=True)
+    else:
+        st.error("Smartsheet data not loaded.")
