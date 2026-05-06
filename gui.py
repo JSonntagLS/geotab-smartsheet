@@ -316,7 +316,6 @@ elif current_page == "Oil Changes":
         mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 500))
         
         # Omit those where "Last Oil Change" is actually missing/NaN
-        # This keeps the '0' values for new cars but drops 'N/A'
         df_due = df[mask_due & df[col_map["last_oil"]].notna()].copy()
         
         if df_due.empty:
