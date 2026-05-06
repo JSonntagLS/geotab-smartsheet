@@ -9,7 +9,7 @@ import os
 
 # --- PAGE CONFIG ---
 st.set_page_config(layout="wide")
-st.title("Fleet Management System")
+# Main title removed to shift content up
 
 # --- AI SETUP ---
 genai.configure(api_key=st.secrets["gemini_api_key"])
@@ -139,7 +139,7 @@ st.sidebar.divider()
 current_page = st.session_state.active_page
 
 if current_page == "Fleet Rotation Analysis":
-    st.header("Fleet Rotation Analysis")
+    st.title("Fleet Rotation Analysis")
     
     # --- DASHBOARD METRICS ---
     if 'df' in locals() and not df.empty:
