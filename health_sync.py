@@ -49,15 +49,34 @@ def run_health_sync():
             is_offline = not status_data.get('isDeviceCommunicating', False)
             
             # Check Battery
+            # --- IMPROVED BATTERY CHECK ---
             battery_val = "Normal"
+            
+            # Look for the last 2 days of battery data to ensure we don't get a null result
+            # DiagnosticDeviceBatteryVoltageId is the standard, 
+            # but some assets use DiagnosticEngineBatteryVoltageId
+            
             batt_logs = client.get('StatusData', search={
                 'deviceSearch': {'id': dev_id},
                 'diagnosticSearch': {'id': 'DiagnosticDeviceBatteryVoltageId'},
+                'fromDate': (datetime.utcnow() - timedelta(days=2)).isoformat(),
                 'resultsLimit': 1
             })
             
-            if batt_logs and batt_logs['data'] < 11.57:
-                battery_val = "Low"
+            # If the first ID fails, try the Engine Battery ID
+            if not batt_logs:
+                batt_logs = client.get('StatusData', search={
+                    'deviceSearch': {'id': dev_id},
+                    'diagnosticSearch': {'id': 'DiagnosticEngineBatteryVoltageId'},
+                    'resultsLimit': 1
+                })
+
+            if batt_logs:
+                voltage = batt_logs['data']
+                # Geotab typically flags the UI icon at 11.6V or lower
+                if voltage <= 11.6: 
+                    battery_val = "Low"
+            # --- END BATTERY CHECK ---
             
             status_val = "Offline" if is_offline else "Online"
             
