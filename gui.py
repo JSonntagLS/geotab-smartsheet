@@ -68,10 +68,14 @@ def get_distance_miles(loc1, loc2):
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)) * 1.2
 
-def force_num(val, fallback=None): # Changed default fallback to None
-    if val is None or str(val).strip().lower() in ["", "nan", "none", "n/a"]: 
+def force_num(val, fallback=None):
+    if val is None:
         return fallback
-    cleaned = re.sub(r'[^0-9.]', '', str(val))
+    # Convert to string and clean
+    s_val = str(val).strip().lower()
+    if s_val in ["", "nan", "none", "n/a"]: 
+        return None  # This is the key change
+    cleaned = re.sub(r'[^0-9.]', '', s_val)
     try:
         return float(cleaned)
     except:
@@ -115,12 +119,17 @@ try:
     df = pd.DataFrame(rows, columns=columns + ["row_id"])
 
     # DATA CLEANING: Clean all columns first
+    # DATA CLEANING: Clean all columns
     for col_key in ["allowance", "projected", "actual", "odo", "last_oil", "next_oil", "interval"]:
         if col_key in col_map:
             col = col_map[col_key]
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: force_num(x))
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                # CHANGE: Only fill with 0 for columns that AREN'T the service history
+                if col_key != "last_oil":
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                else:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
     
     # INDENTATION FIX: Move the display and int-casting OUTSIDE the loop above
     df_display = df[[
@@ -303,12 +312,12 @@ elif current_page == "Oil Changes":
     st.title("Oil Change Management")
     
     if 'df' in locals() and not df.empty:
-        # Filter for vehicles due AND omit rows where 'Last Oil Change' is missing (N/A)
-        # This allows 0 to remain for brand new vehicles.
+        # Filter for vehicles due 
         mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 500))
-        mask_not_na = df[col_map["last_oil"]].notna()
         
-        df_due = df[mask_due & mask_not_na].copy()
+        # Omit those where "Last Oil Change" is actually missing/NaN
+        # This keeps the '0' values for new cars but drops 'N/A'
+        df_due = df[mask_due & df[col_map["last_oil"]].notna()].copy()
         
         if df_due.empty:
             st.success("All vehicles are up to date on oil changes!")
