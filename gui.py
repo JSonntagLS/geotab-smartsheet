@@ -119,20 +119,18 @@ except Exception as e:
     st.error(f"Error loading Smartsheet: {e}")
 
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
+# Tight two-line title
 st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 
-# Initialize navigation state if it doesn't exist
+# Initialize state
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-# Secondary buttons for a clean look without the red primary color
-if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
+# Using link-style buttons to get the clean text-only look without CSS hacks
+if st.sidebar.button("Fleet Rotation Analysis", type="primary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
-    st.session_state.active_page = "Oil Changes"
-
-if st.sidebar.button("New Lease Analysis", type="secondary", use_container_width=True, key="btn_lease"):
+if st.sidebar.button("New Lease Analysis", type="primary", use_container_width=True, key="btn_lease"):
     st.session_state.active_page = "New Lease Analysis"
 
 st.sidebar.divider()
@@ -143,9 +141,10 @@ current_page = st.session_state.active_page
 if current_page == "Fleet Rotation Analysis":
     st.header("Fleet Rotation Analysis")
     
-    # Logic Integration: Ensure data is loaded and metrics are displayed
+    # --- DASHBOARD METRICS ---
     if 'df' in locals() and not df.empty:
         m_cols = st.columns(7)
+        # (Rest of your metrics logic here...)
         labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
         
         for i, col in enumerate(m_cols):
