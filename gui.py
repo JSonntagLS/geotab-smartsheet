@@ -174,10 +174,10 @@ if current_page == "Fleet Rotation Analysis":
                     st.write("### Utilization Trends")
                     g_col1, g_col2 = st.columns(2)
                     with g_col1:
-                        selected_cat = st.selectbox("Select Category", labels)
+                        selected_cat = st.selectbox("Select Category", labels, key="trend_cat")
                     with g_col2:
                         time_map = {"1 month": 30, "3 months": 90, "6 months": 180, "1 year": 365, "3 years": 1095}
-                        selected_time = st.selectbox("Timeframe", list(time_map.keys()))
+                        selected_time = st.selectbox("Timeframe", list(time_map.keys()), key="trend_time")
         
                     cutoff = datetime.now() - pd.Timedelta(days=time_map[selected_time])
                     filtered = history_df[history_df['Date'] >= cutoff]
@@ -223,7 +223,6 @@ elif current_page == "New Lease Analysis":
 
             
             label = labels[i]
-            # Contextual Placement: Ensure tier column exists before counting
             if col_map["tier"] in df.columns:
                 count_val = int(len(df[df[col_map["tier"]].astype(str).str.strip() == label]))
             else:
