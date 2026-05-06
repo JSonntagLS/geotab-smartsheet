@@ -159,6 +159,9 @@ if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
 
+if st.sidebar.button("Asset Health", type="secondary", use_container_width=True, key="btn_health"):
+    st.session_state.active_page = "Asset Health"
+
 st.sidebar.divider()
 
 # --- PAGE ROUTING ---
@@ -379,3 +382,40 @@ elif current_page == "Oil Changes":
         st.dataframe(oil_display, use_container_width=True, hide_index=True)
     else:
         st.error("Smartsheet data not loaded.")
+
+elif current_page == "Asset Health":
+    st.title("Asset Health & Connectivity")
+    
+    # Logic Integration: Check for the health data file
+    if os.path.exists('fleet_health.csv'):
+        try:
+            df_health = pd.read_csv('fleet_health.csv')
+            
+            # Metric Row (Mirroring the GeoTab UI)
+            m_col1, m_col2, m_col3 = st.columns()
+            
+            # Filter for specific statuses
+            offline_count = len(df_health[df_health['Status'] == 'Offline'])
+            low_batt_count = len(df_health[df_health['Battery'] == 'Low'])
+            
+            m_col1.metric("Offline Devices", offline_count, delta_color="inverse")
+            m_col2.metric("Low Asset Battery", low_batt_count, delta_color="inverse")
+            
+            st.divider()
+            
+            # Data View
+            tab_off, tab_batt = st.tabs(["Offline Assets", "Low Battery Details"])
+            
+            with tab_off:
+                st.subheader("Devices Not Communicating")
+                st.dataframe(df_health[df_health['Status'] == 'Offline'], use_container_width=True, hide_index=True)
+                
+            with tab_batt:
+                st.subheader("Voltage Alerts")
+                st.dataframe(df_health[df_health['Battery'] == 'Low'], use_container_width=True, hide_index=True)
+                
+        except Exception as e:
+            st.error(f"Error loading health log: {e}")
+    else:
+        st.info("No health data found. Ensure the weekly sync script has generated 'fleet_health.csv'.")
+        st.image("https://img.icons8.com/clouds/100/000000/battery-status-inventory.png") # Optional placeholder icon
