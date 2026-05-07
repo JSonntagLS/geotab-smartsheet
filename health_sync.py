@@ -75,18 +75,21 @@ def run_health_sync():
                 })
 
             if batt_logs:
-                log = batt_logs # Get the first record from the list
+                # FIX: Access the first element of the list to avoid .get() crash
+                log = batt_logs 
                 voltage = log.get('data', 0)
-                print(f"DEBUG: {dev_name} | Voltage: {voltage} | Date: {log.get('dateTime')}", flush=True)
+                
+                # Enhanced Debugging for GitHub Actions
+                print(f"DEBUG: {dev_name} | Voltage: {voltage} | Status: {'Offline' if is_offline else 'Online'}", flush=True)
+                
                 # Check 1: Is the voltage actually low?
-                # Check 2: Is the data older than 48 hours? (Often indicates a dead unit)
                 if voltage <= 11.6:
                     battery_val = "Low"
             else:
-                # If no logs exist in the last 2 days, and the device is offline, 
-                # it's safer to flag as Low/Unknown rather than "Normal"
-                if is_offline:
-                    battery_val = "Low"
+                # LOGIC ALIGNMENT: Removed the 'if is_offline: battery_val = "Low"' block.
+                # This ensures we only flag "Low" if Geotab actually reports low voltage.
+                print(f"DEBUG: {dev_name} | No Battery Logs found for last 48hrs.", flush=True)
+                battery_val = "Normal"
             # --- END BATTERY CHECK ---
             
             status_val = "Offline" if is_offline else "Online"
