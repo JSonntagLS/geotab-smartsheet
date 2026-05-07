@@ -70,10 +70,11 @@ def run_health_sync():
                 'resultsLimit': 1
             })
             
-            # FIX: Access the first element of the list safely
+            # SAFE ACCESS: Initialize as "N/A", then extract from the list if it exists
             current_volts = "N/A"
-            if volt_log_list and len(volt_log_list) > 0:
-                current_volts = volt_log_list.get('data', 0)
+            if isinstance(volt_log_list, list) and len(volt_log_list) > 0:
+                first_log = volt_log_list # Get the dictionary from the list
+                current_volts = first_log.get('data', 0) # Now call .get() on the dictionary
 
             # 3. Decision Logic
             if health_check:
