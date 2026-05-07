@@ -75,29 +75,30 @@ def run_health_sync():
         status_infos = {si['device']['id']: si['isDeviceCommunicating'] for si in client.get('DeviceStatusInfo')}
         devices = {d['id']: d['name'].strip() for d in client.get('Device')}
 
-        # 4.5. Data Audit - Improved Fuzzy Matching
-        print("--- Target Asset Audit ---", flush=True)
-        targets = ["BUS 1", "BUS A", "VAN 2", "40", "47", "88", "CUBE 4"]
+       # discovery_debug.py logic
+        print("--- Deep Dive: 37 & Van 2 ---", flush=True)
+        targets = ["37", "VAN 2"]
         for t_search in targets:
-            # Fuzzy match: check if the target string is INSIDE the Geotab name
             matches = [(i, n) for i, n in devices.items() if t_search.upper() in n.upper()]
-            
-            if not matches:
-                print(f"\nAUDIT: {t_search} -> Device name not found in Geotab at all.")
-                continue
-
             for t_id, t_full_name in matches:
-                asset_data = df[df['device_id'] == t_id]
-                if not asset_data.empty:
-                    print(f"\nAUDIT: {t_full_name} ({t_id})")
-                    # Show the last 3 records to see what's happening
-                    for _, r in asset_data.head(3).iterrows():
-                        d_id = r['diagnostic']
-                        d_short = d_id['id'] if isinstance(d_id, dict) else str(d_id)
-                        print(f"  -> {r['dateTime']} | {d_short} | Value: {r['data']}")
-                else:
-                    print(f"\nAUDIT: {t_full_name} ({t_id}) -> Found device, but NO data in CSV.")
-        print("\n--- End Audit ---\n", flush=True)
+                # 1. Check Status Info directly
+                status = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': t_id}})
+                if status:
+                    s = status
+                    print(f"\nUNIT: {t_full_name}")
+                    print(f"  -> API Communicating: {s.get('isDeviceCommunicating')}")
+                    print(f"  -> Last Contact: {s.get('dateTime')}")
+                
+                # 2. Check for ANY diagnostic data for this unit in the last 7 days
+                # This will tell us if there's a diagnostic ID we are ignoring
+                raw_data = client.get('StatusData', search={
+                    'deviceSearch': {'id': t_id},
+                    'fromDate': seven_days_ago
+                })
+                if raw_data:
+                    # Get unique diagnostic IDs seen for this vehicle
+                    unique_diags = {d['diagnostic']['id'] for d in raw_data}
+                    print(f"  -> Diagnostics found: {unique_diags}")
         
         # 5. Build Updates
         updates = []
