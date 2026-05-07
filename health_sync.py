@@ -50,49 +50,41 @@ def run_health_sync():
                 
             is_offline = not status_data.get('isDeviceCommunicating', False)
             
-            # Check Battery
             # --- IMPROVED BATTERY CHECK ---
             battery_val = "Normal"
-            log = None
             two_days_ago = datetime.utcnow() - timedelta(days=2)
             
-            # 1. Search for Voltage (Standard then Wildcard)
-            batt_logs = client.get('StatusData', search={
+            # 1. Ask Geotab if IT thinks the battery is low (The "official" way)
+            health_check = client.get('StatusData', search={
                 'deviceSearch': {'id': dev_id},
-                'diagnosticSearch': {'id': 'DiagnosticDeviceBatteryVoltageId'},
+                'diagnosticSearch': {'id': 'DiagnosticDeviceHealthBatteryVoltageLowId'},
+                'fromDate': two_days_ago.isoformat(),
+                'resultsLimit': 1
+            })
+
+            # 2. Get the actual voltage just for our Debug logs
+            volt_log = client.get('StatusData', search={
+                'deviceSearch': {'id': dev_id},
+                'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'},
                 'fromDate': two_days_ago.isoformat(),
                 'resultsLimit': 1
             })
             
-            if batt_logs:
-                log = batt_logs
-            else:
-                # Wildcard search for any voltage-related log
-                all_logs = client.get('StatusData', search={
-                    'deviceSearch': {'id': dev_id},
-                    'fromDate': two_days_ago.isoformat(),
-                    'resultsLimit': 30
-                })
-                for entry in all_logs:
-                    if 'Voltage' in entry.get('diagnostic', {}).get('id', ''):
-                        log = entry
-                        break
+            current_volts = volt_log.get('data', 0) if volt_log else "N/A"
 
-            # 2. Evaluation Logic
-            if log:
-                voltage = log.get('data', 0)
-                # Adjusted threshold to 12.1V to capture 'drained' but not 'dead' batteries
-                if 2.0 <= voltage <= 12.1:
-                    battery_val = "Low"
-                
-                print(f"DEBUG: {dev_name} | Volts: {round(voltage, 2)} | Status: {'Offline' if is_offline else 'Online'}", flush=True)
+            # 3. Decision Logic
+            if health_check:
+                # If Geotab returned a record for this ID, it means the 'Low' flag is active
+                battery_val = "Low"
+                print(f"DEBUG: {dev_name} | Volts: {current_volts} | GEOTAB FLAG: LOW detected", flush=True)
             else:
-                # If no data and Offline, Geotab often flags this as a health issue
-                if is_offline:
+                # Fallback: Only flag Low if voltage is critically low (under 11.4V) 
+                # This catches 'Bus 1' which we know is dying.
+                if isinstance(current_volts, (int, float)) and 2.0 <= current_volts <= 11.4:
                     battery_val = "Low"
-                    print(f"DEBUG: {dev_name} | No Data + Offline | Flagging as Low", flush=True)
+                    print(f"DEBUG: {dev_name} | Volts: {current_volts} | CRITICAL VOLTAGE detected", flush=True)
                 else:
-                    print(f"DEBUG: {dev_name} | No Data | Status: Online", flush=True)
+                    print(f"DEBUG: {dev_name} | Volts: {current_volts} | Status: Normal", flush=True)
             # --- END BATTERY CHECK ---
             
             status_val = "Offline" if is_offline else "Online"
