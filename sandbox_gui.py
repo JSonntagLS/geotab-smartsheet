@@ -111,7 +111,8 @@ try:
     
     smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
     sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
-    columns = [col.title.strip() for col in sheet.columns]
+    # STRIP WHITESPACE FROM TITLES TO PREVENT KEYERRORS
+    columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
     rows = []
     for row in sheet.rows:
         row_data = [cell.value for cell in row.cells]
@@ -383,9 +384,12 @@ elif current_page == "GPS and Battery Health":
     st.title("GPS and Battery Health")
 
     if 'df' in locals() and not df.empty:
-        # 1. Identify Critical Assets
-        offline_gps = df[df[col_map["status"]] == "Offline"]
-        low_battery = df[df[col_map["battery"]] == "Low"]
+        # 1. Identify Critical Assets with Safety Checks
+        status_col = col_map["status"]
+        batt_col = col_map["battery"]
+        
+        offline_gps = df[df[status_col] == "Offline"] if status_col in df.columns else pd.DataFrame()
+        low_battery = df[df[batt_col] == "Low"] if batt_col in df.columns else pd.DataFrame()
 
         # 2. Metric Row (This fixes your st.columns() error by providing a number)
         m_col1, m_col2, m_col3 = st.columns(3)
