@@ -115,31 +115,39 @@ def run_health_sync():
         else:
             print("Could not find a vehicle named 'Van 2' in Geotab.")
         # ==========================================
+
+        # --- VAN 2 FORENSIC DEBUGGER ---
+        print("\n--- Investigating Van 2 Battery Health ---", flush=True)
+        van_2_id = next((i for i, n in devices.items() if "VAN 2" in n.upper()), None)
+        if van_2_id:
+            three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
+            # Get the raw voltage curve to check for Crank Dips
+            logs = client.get('StatusData', search={'deviceSearch': {'id': van_2_id}, 'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'}, 'fromDate': three_days_ago})
+            if logs:
+                v_list = [float(l['data']) for l in logs]
+                print(f"Van 2 Range: {min(v_list)}V to {max(v_list)}V")
+                if min(v_list) < 10.5:
+                    print(f">>> ALERT: Van 2 dropped to {min(v_list)}V. This confirms a weak battery during startup.")
+
+        # 5. Build Updates
+        updates = []
+        print("\n--- Processing Fleet Updates ---", flush=True)
         
-       # discovery_debug.py logic
-        print("--- Deep Dive: 37 & Van 2 ---", flush=True)
-        targets = ["37", "VAN 2"]
-        for t_search in targets:
-            matches = [(i, n) for i, n in devices.items() if t_search.upper() in n.upper()]
-            for t_id, t_full_name in matches:
-                # 1. Check Status Info directly
-                status = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': t_id}})
-                if status:
-                    s = status
-                    print(f"\nUNIT: {t_full_name}")
-                    print(f"  -> API Communicating: {s.get('isDeviceCommunicating')}")
-                    print(f"  -> Last Contact: {s.get('dateTime')}")
+        for dev_id, _ in status_infos.items():
+            dev_name = devices.get(dev_id)
+            if dev_name in fleet_map:
+                device_data = df[df['device_id'] == dev_id]
                 
-                # 2. Check for ANY diagnostic data for this unit in the last 7 days
-                # This will tell us if there's a diagnostic ID we are ignoring
-                raw_data = client.get('StatusData', search={
-                    'deviceSearch': {'id': t_id},
-                    'fromDate': seven_days_ago
-                })
-                if raw_data:
-                    # Get unique diagnostic IDs seen for this vehicle
-                    unique_diags = {d['diagnostic']['id'] for d in raw_data}
-                    print(f"  -> Diagnostics found: {unique_diags}")
+                # Fetch Status correctly as a list
+                status_list = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': dev_id}})
+                
+                is_actually_comm = False
+                if isinstance(status_list, list) and len(status_list) > 0:
+                    # FIX: We must access the first item of the list before calling .get()
+                    s_info = status_list
+                    is_actually_comm = s_info.get('isDeviceCommunicating', False)
+
+                status_val = "Online" if is_actually_comm else "Offline"
         
         # 5. Build Updates
         updates = []
