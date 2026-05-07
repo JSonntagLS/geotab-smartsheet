@@ -88,6 +88,11 @@ def run_health_sync():
                 
                 is_actually_comm = False
                 if isinstance(status_list, list) and len(status_list) > 0:
+                    # Geotab returns a list, so we grab the first element
+                    s_info = status_list
+                    is_actually_comm = s_info.get('isDeviceCommunicating', False)
+                elif isinstance(status_list, dict):
+                    # In case it returns a single dict instead
                     is_actually_comm = status_list.get('isDeviceCommunicating', False)
 
                 status_val = "Online" if is_actually_comm else "Offline"
