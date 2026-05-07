@@ -426,10 +426,3 @@ elif current_page == "GPS and Battery Health":
         st.dataframe(health_display.style.applymap(color_status), use_container_width=True, hide_index=True)
     else:
         st.error("Smartsheet data not loaded.")
-        
-        st.subheader("Full Fleet Oil Status")
-        # Display only vehicles that have a non-null service history
-        oil_display = df[df[col_map["last_oil"]].notna()][[col_map["name"], col_map["last_oil"], col_map["next_oil"], col_map["odo"]]].copy()
-        st.dataframe(oil_display, use_container_width=True, hide_index=True)
-    else:
-        st.error("Smartsheet data not loaded.")
