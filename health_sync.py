@@ -2,6 +2,7 @@ import mygeotab
 import smartsheet
 import os
 import pandas as pd
+import datetime
 from datetime import datetime, timedelta
 
 # --- CONFIG ---
@@ -118,16 +119,37 @@ def run_health_sync():
 
         # --- VAN 2 FORENSIC DEBUGGER ---
         print("\n--- Investigating Van 2 Battery Health ---", flush=True)
-        van_2_id = next((i for i, n in devices.items() if "VAN 2" in n.upper()), None)
-        if van_2_id:
-            three_days_ago = (datetime.utcnow() - timedelta(days=3)).isoformat()
-            # Get the raw voltage curve to check for Crank Dips
-            logs = client.get('StatusData', search={'deviceSearch': {'id': van_2_id}, 'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'}, 'fromDate': three_days_ago})
+        van_2_matches = [i for i, n in devices.items() if "VAN 2" in n.upper()]
+        
+        if van_2_matches:
+            van_2_id = van_2_matches
+            # Use the already calculated seven_days_ago from your script
+            
+            # 1. Get the Voltage Curve to look for Crank Dips
+            logs = client.get('StatusData', search={
+                'deviceSearch': {'id': van_2_id},
+                'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'},
+                'fromDate': seven_days_ago
+            })
+            
             if logs:
                 v_list = [float(l['data']) for l in logs]
-                print(f"Van 2 Range: {min(v_list)}V to {max(v_list)}V")
+                print(f"Van 2 Voltage Range: {min(v_list)}V to {max(v_list)}V")
                 if min(v_list) < 10.5:
-                    print(f">>> ALERT: Van 2 dropped to {min(v_list)}V. This confirms a weak battery during startup.")
+                    print(f">>> ALERT: Van 2 dropped to {min(v_list)}V. This is a cold-crank dip.")
+            
+            # 2. Check for the actual Fault ID
+            faults = client.get('FaultData', search={
+                'deviceSearch': {'id': van_2_id},
+                'fromDate': seven_days_ago
+            })
+            if faults:
+                for f in faults:
+                    print(f">>> GEOTAB FAULT: {f['diagnostic']['id']} at {f['dateTime']}")
+        else:
+            print("Van 2 not found in device list.")
+
+        # 5. Build Updates (Rest of your script continues here...)
 
         # 5. Build Updates
         updates = []
