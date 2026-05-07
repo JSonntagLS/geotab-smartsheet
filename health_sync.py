@@ -71,23 +71,28 @@ def run_health_sync():
         status_infos = {si['device']['id']: si['isDeviceCommunicating'] for si in client.get('DeviceStatusInfo')}
         devices = {d['id']: d['name'].strip() for d in client.get('Device')}
 
-        # 4.5. Data Audit - Debugging specific assets
+        # 4.5. Data Audit - Improved Fuzzy Matching
         print("--- Target Asset Audit ---", flush=True)
         targets = ["BUS 1", "BUS A", "VAN 2", "40", "47", "88", "CUBE 4"]
-        for t_name in targets:
-            # Find the ID for the target name
-            t_id = next((i for i, n in devices.items() if n == t_name), None)
-            if t_id:
+        for t_search in targets:
+            # Fuzzy match: check if the target string is INSIDE the Geotab name
+            matches = [(i, n) for i, n in devices.items() if t_search.upper() in n.upper()]
+            
+            if not matches:
+                print(f"\nAUDIT: {t_search} -> Device name not found in Geotab at all.")
+                continue
+
+            for t_id, t_full_name in matches:
                 asset_data = df[df['device_id'] == t_id]
                 if not asset_data.empty:
-                    print(f"\nAUDIT: {t_name} ({t_id})")
-                    for _, r in asset_data.iterrows():
+                    print(f"\nAUDIT: {t_full_name} ({t_id})")
+                    # Show the last 3 records to see what's happening
+                    for _, r in asset_data.head(3).iterrows():
                         d_id = r['diagnostic']
-                        # Simplify diagnostic display
                         d_short = d_id['id'] if isinstance(d_id, dict) else str(d_id)
                         print(f"  -> {r['dateTime']} | {d_short} | Value: {r['data']}")
                 else:
-                    print(f"\nAUDIT: {t_name} ({t_id}) -> No data found in CSV.")
+                    print(f"\nAUDIT: {t_full_name} ({t_id}) -> Found device, but NO data in CSV.")
         print("\n--- End Audit ---\n", flush=True)
         
         # 5. Build Updates
