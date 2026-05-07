@@ -107,15 +107,16 @@ def run_health_sync():
             if dev_name in fleet_map:
                 device_data = df[df['device_id'] == dev_id]
                 
-                # Fetch DeviceStatusInfo correctly (handling the list return)
+                # FIX: Handle the list returned by Geotab correctly
                 status_list = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': dev_id}})
-                s_info = status_list if status_list else {}
                 
-                # REFINED OFFLINE LOGIC: 
-                # Geotab API sets isDeviceCommunicating to False after 24 hours of silence.
-                # We'll mirror that exactly.
-                is_actually_comm = s_info.get('isDeviceCommunicating', False)
-                
+                # Check if we actually got a result back
+                if isinstance(status_list, list) and len(status_list) > 0:
+                    s_info = status_list
+                    is_actually_comm = s_info.get('isDeviceCommunicating', False)
+                else:
+                    is_actually_comm = False
+
                 status_val = "Online" if is_actually_comm else "Offline"
                 battery_val = "N/A"
                 voltage = "N/A"
@@ -132,8 +133,18 @@ def run_health_sync():
                             if ('GoDeviceVoltage' in diag_info or 'DeviceBatteryVoltage' in diag_info) and voltage == "N/A":
                                 voltage = row['data']
 
-                    # Van 2 logic: If Geotab says "Low" but volts are 12.5, 
-                    # it's the health flag triggering it.
+                    # VAN 2 CHECK: Look for specific Fault Codes if voltage looks "Normal"
+                    # This catches units that Geotab flags for "Crank Dips"
+                    if not has_health_flag and "VAN 2" in dev_name.upper():
+                        faults = client.get('FaultData', search={
+                            'deviceSearch': {'id': dev_id},
+                            'fromDate': seven_days_ago,
+                            'diagnosticSearch': {'id': 'DiagnosticLowBatteryFaultId'}
+                        })
+                        if faults:
+                            has_health_flag = True
+
+                    # Final assignment
                     if has_health_flag:
                         battery_val = "Low"
                     elif isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9:
@@ -142,17 +153,21 @@ def run_health_sync():
                 # Build Smartsheet Row
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
-                new_row.cells.append(smartsheet.models.Cell({'column_id': STATUS_COL_ID, 'value': status_val}))
-                new_row.cells.append(smartsheet.models.Cell({'column_id': BATTERY_COL_ID, 'value': battery_val}))
+                
+                c_status = smartsheet.models.Cell()
+                c_status.column_id = STATUS_COL_ID
+                c_status.value = status_val
+                
+                c_battery = smartsheet.models.Cell()
+                c_battery.column_id = BATTERY_COL_ID
+                c_battery.value = battery_val
+                
+                new_row.cells.extend([c_status, c_battery])
                 updates.append(new_row)
 
-                # Diagnostic Audit for your target vehicles
+                # TARGET AUDIT (Keep this in to see why they flip)
                 if any(x in dev_name.upper() for x in ["37", "VAN 2", "BUS 1", "BUS A"]):
-                    print(f"AUDIT: {dev_name} | API_Comm: {is_actually_comm} | Battery: {battery_val} | Volts: {voltage} | Flag: {has_health_flag}", flush=True)
-                
-                # Debugging the specific groups
-                if dev_name in ["BUS 1", "BUS A", "VAN 2", "40", "47", "88", "CUBE 4"]:
-                    print(f"SYNC: {dev_name} | Status: {status_val} | Battery: {battery_val} (V: {voltage})", flush=True)
+                    print(f"AUDIT: {dev_name} | Status: {status_val} | Battery: {battery_val} | V: {voltage}", flush=True)
 
         # 6. Push Batch
         if updates:
