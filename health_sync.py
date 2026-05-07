@@ -87,23 +87,18 @@ def run_health_sync():
                 status_list = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': dev_id}})
                 
                 is_actually_comm = False
-                if isinstance(status_list, list) and len(status_list) > 0:
-                    # Access the first element of the list to get the dictionary
-                    is_actually_comm = status_list[0].get('isDeviceCommunicating', False)
-                elif isinstance(status_list, dict):
-                    is_actually_comm = status_list.get('isDeviceCommunicating', False)
+                if isinstance(status_list, list) and len(status_list) > 0:
+                    # Access the dictionary inside the list
+                    is_actually_comm = status_list[0].get('isDeviceCommunicating', False)
 
                 status_val = "Online" if is_actually_comm else "Offline"
                 battery_val = "Normal" if is_actually_comm else "N/A"
-                voltage_str = "N/A"
+                voltage = "N/A"
                 
                 if not device_data.empty:
-                    # Access the first row of the filtered dataframe
-                    latest = device_data.iloc[0]
-                    voltage = latest['voltage']
-                    voltage_str = str(voltage)
-                    if 'Health' in str(latest['diagnostic']) or (isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9):
-                        battery_val = "Low"
+                    # Index into the row specifically
+                    latest = device_data.iloc[0]
+                    voltage = latest['voltage']
                     if 'Health' in str(latest['diagnostic']) or (isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9):
                         battery_val = "Low"
 
