@@ -106,38 +106,37 @@ def run_health_sync():
             if dev_name in fleet_map:
                 device_data = df[df['device_id'] == dev_id]
                 
-                has_health_flag = False
+                # Default values
+                status_val = "Online" if is_online else "Offline"
+                battery_val = "N/A" # Default to N/A for Offline units
                 voltage = "N/A"
-                
-                if not device_data.empty:
-                    # Sort by time so we get the ABSOLUTE latest record
-                    device_data = device_data.sort_values('dateTime', ascending=False)
-                    for _, row in device_data.iterrows():
-                        diag_info = str(row['diagnostic'])
-                        if 'HealthBatteryVoltageLow' in diag_info:
-                            has_health_flag = True
-                        if ('GoDeviceVoltage' in diag_info or 'DeviceBatteryVoltage' in diag_info) and voltage == "N/A":
-                            voltage = row['data']
+                has_health_flag = False
 
-                # FINAL ALIGNMENT LOGIC
-                battery_val = "Normal"
-                # 1. Catch the flag (Van 2 / Bus A fallback)
-                if has_health_flag:
-                    battery_val = "Low"
-                # 2. Catch the actual low voltage (Bus 1 at 11.7V)
-                elif isinstance(voltage, (int, float)) and 2.0 <= voltage <= 12.1:
-                    battery_val = "Low"
-                # 3. Handle the "Truly Dead" (Offline + no data for 7 days)
-                elif not is_online and voltage == "N/A":
-                    battery_val = "Low"
+                # Only calculate battery health if the device is Online
+                if is_online:
+                    battery_val = "Normal" # Default to Normal if Online
+                    if not device_data.empty:
+                        device_data = device_data.sort_values('dateTime', ascending=False)
+                        for _, row in device_data.iterrows():
+                            diag_info = str(row['diagnostic'])
+                            if 'HealthBatteryVoltageLow' in diag_info:
+                                has_health_flag = True
+                            if ('GoDeviceVoltage' in diag_info or 'DeviceBatteryVoltage' in diag_info) and voltage == "N/A":
+                                voltage = row['data']
 
-                # Row Prep
+                    # Check for Low conditions
+                    if has_health_flag:
+                        battery_val = "Low"
+                    elif isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9:
+                        battery_val = "Low"
+
+                # Build Smartsheet Row
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
                 
                 c_status = smartsheet.models.Cell()
                 c_status.column_id = STATUS_COL_ID
-                c_status.value = "Online" if is_online else "Offline"
+                c_status.value = status_val
                 
                 c_battery = smartsheet.models.Cell()
                 c_battery.column_id = BATTERY_COL_ID
@@ -145,6 +144,10 @@ def run_health_sync():
                 
                 new_row.cells.extend([c_status, c_battery])
                 updates.append(new_row)
+                
+                # Debugging the specific groups
+                if dev_name in ["BUS 1", "BUS A", "VAN 2", "40", "47", "88", "CUBE 4"]:
+                    print(f"SYNC: {dev_name} | Status: {status_val} | Battery: {battery_val} (V: {voltage})", flush=True)
 
         # 6. Push Batch
         if updates:
