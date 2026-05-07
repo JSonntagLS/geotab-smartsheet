@@ -31,7 +31,7 @@ def run_health_sync():
                 fleet_map[str(name_cell).strip()] = row.id
         print(f"Mapped {len(fleet_map)} vehicles from Smartsheet.", flush=True)
 
-        # 2. Setup Dates (FIXED: Using the imported datetime class directly)
+        # 2. Setup Dates
         seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
         two_days_ago = (datetime.utcnow() - timedelta(days=2)).isoformat()
         
@@ -88,11 +88,7 @@ def run_health_sync():
                 
                 is_actually_comm = False
                 if isinstance(status_list, list) and len(status_list) > 0:
-                    # Geotab returns a list, so we grab the first element
-                    s_info = status_list
-                    is_actually_comm = s_info.get('isDeviceCommunicating', False)
-                elif isinstance(status_list, dict):
-                    # In case it returns a single dict instead
+                    # FIXED: Added to access the dictionary inside the list
                     is_actually_comm = status_list.get('isDeviceCommunicating', False)
 
                 status_val = "Online" if is_actually_comm else "Offline"
@@ -100,6 +96,7 @@ def run_health_sync():
                 voltage = "N/A"
                 
                 if not device_data.empty:
+                    # FIXED: Changed .iloc to .iloc
                     latest = device_data.iloc
                     voltage = latest['voltage']
                     if 'Health' in str(latest['diagnostic']) or (isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9):
