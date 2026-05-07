@@ -59,9 +59,16 @@ def run_health_sync():
             print("CRITICAL: No voltage data found in Geotab.", flush=True)
             df = pd.DataFrame(columns=['dateTime', 'data', 'device', 'diagnostic'])
         else:
-            df['device_id'] = df['device'].apply(lambda x: x['id'] if isinstance(x, dict) else (x['id'] if isinstance(x, list) else None))
-            df['voltage'] = df['data']
-            df = df.sort_values('dateTime', ascending=False).drop_duplicates('device_id')
+            # Convert 'data' column to actual numbers, ignoring errors
+            df['voltage'] = pd.to_numeric(df['data'], errors='coerce')
+            df['device_id'] = df['device'].apply(lambda x: x['id'] if isinstance(x, dict) else None)
+            
+            # SORT: Lowest voltage at the top. 
+            # If Van 2 has [14.2, 12.1, 7.1], 7.1 moves to index 0.
+            df = df.sort_values(['device_id', 'voltage'], ascending=[True, True])
+            
+            # KEEP the lowest one per device
+            df = df.drop_duplicates('device_id')
 
         # 4. Get Devices and Status
         status_infos = {si['device']['id']: si['isDeviceCommunicating'] for si in client.get('DeviceStatusInfo')}
@@ -95,11 +102,18 @@ def run_health_sync():
                 battery_val = "Normal" if is_actually_comm else "N/A"
                 voltage = "N/A"
                 
+                # ... (Status logic stays the same) ...
+                
                 if not device_data.empty:
-                    # Index into the row specifically
-                    latest = device_data.iloc[0]
-                    voltage = latest['voltage']
-                    if 'Health' in str(latest['diagnostic']) or (isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9):
+                    worst_case = device_data.iloc[0]
+                    voltage = worst_case['voltage']
+                    
+                    # Logic Check:
+                    # Is 7.1 <= 11.9? YES. -> battery_val = "Low"
+                    # Is Bus A (e.g., 11.2) <= 11.9? YES. -> battery_val = "Low"
+                    is_low = (voltage <= 11.9) or ('Health' in str(worst_case['diagnostic']))
+                    
+                    if is_low:
                         battery_val = "Low"
 
                 new_row = smartsheet.models.Row()
