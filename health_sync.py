@@ -56,7 +56,7 @@ def run_health_sync():
             log = None
             two_days_ago = datetime.utcnow() - timedelta(days=2)
             
-            # 1. Try the standard IDs first
+            # 1. Search for Voltage (Standard then Wildcard)
             batt_logs = client.get('StatusData', search={
                 'deviceSearch': {'id': dev_id},
                 'diagnosticSearch': {'id': 'DiagnosticDeviceBatteryVoltageId'},
@@ -67,45 +67,36 @@ def run_health_sync():
             if batt_logs:
                 log = batt_logs
             else:
-                # Try Engine Battery ID
-                batt_logs = client.get('StatusData', search={
-                    'deviceSearch': {'id': dev_id},
-                    'diagnosticSearch': {'id': 'DiagnosticEngineBatteryVoltageId'},
-                    'fromDate': two_days_ago.isoformat(),
-                    'resultsLimit': 1
-                })
-                if batt_logs:
-                    log = batt_logs
-
-            # 2. WILDCARD FALLBACK: If still nothing, search for anything with "Voltage"
-            if not log:
+                # Wildcard search for any voltage-related log
                 all_logs = client.get('StatusData', search={
                     'deviceSearch': {'id': dev_id},
                     'fromDate': two_days_ago.isoformat(),
-                    'resultsLimit': 50
+                    'resultsLimit': 30
                 })
                 for entry in all_logs:
-                    diag_id = entry.get('diagnostic', {}).get('id', '')
-                    if 'Voltage' in diag_id:
+                    if 'Voltage' in entry.get('diagnostic', {}).get('id', ''):
                         log = entry
                         break
 
-            # 3. Final Evaluation
+            # 2. Evaluation Logic
             if log:
                 voltage = log.get('data', 0)
-                # Filter out garbage data; flag Low if between 2V and 11.6V
-                if 2.0 <= voltage <= 11.6:
+                # Adjusted threshold to 12.1V to capture 'drained' but not 'dead' batteries
+                if 2.0 <= voltage <= 12.1:
                     battery_val = "Low"
                 
-                diag_name = log.get('diagnostic', {}).get('id', 'Unknown')
-                print(f"DEBUG: {dev_name} | Volts: {voltage} | ID: {diag_name} | Status: {'Offline' if is_offline else 'Online'}", flush=True)
+                print(f"DEBUG: {dev_name} | Volts: {round(voltage, 2)} | Status: {'Offline' if is_offline else 'Online'}", flush=True)
             else:
-                print(f"DEBUG: {dev_name} | No Voltage Data found | Status: {'Offline' if is_offline else 'Online'}", flush=True)
+                # If no data and Offline, Geotab often flags this as a health issue
+                if is_offline:
+                    battery_val = "Low"
+                    print(f"DEBUG: {dev_name} | No Data + Offline | Flagging as Low", flush=True)
+                else:
+                    print(f"DEBUG: {dev_name} | No Data | Status: Online", flush=True)
             # --- END BATTERY CHECK ---
             
             status_val = "Offline" if is_offline else "Online"
             
-            # BUILD THE UPDATE (Corrected for Smartsheet SDK)
             # BUILD THE UPDATE (Corrected for Smartsheet SDK strictness)
             new_row = smartsheet.models.Row()
             new_row.id = fleet_map[dev_name]
