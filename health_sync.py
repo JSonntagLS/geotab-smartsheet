@@ -31,9 +31,13 @@ def run_health_sync():
                 fleet_map[str(name_cell).strip()] = row.id
         print(f"Mapped {len(fleet_map)} vehicles from Smartsheet.", flush=True)
 
-        # 2. Bulk Fetch Voltage Data
+        # 2. Bulk Fetch Voltage Data (Updated to include Health Flag)
         two_days_ago = (datetime.utcnow() - timedelta(days=2)).isoformat()
-        diags = ['DiagnosticGoDeviceVoltageId', 'DiagnosticDeviceBatteryVoltageId', 'DiagnosticEngineBatteryVoltageId']
+        diags = [
+            'DiagnosticGoDeviceVoltageId', 
+            'DiagnosticDeviceBatteryVoltageId', 
+            'DiagnosticDeviceHealthBatteryVoltageLowId' # The Geotab "Flag"
+        ]
         all_raw_data = []
 
         for diag in diags:
@@ -67,44 +71,66 @@ def run_health_sync():
         status_infos = {si['device']['id']: si['isDeviceCommunicating'] for si in client.get('DeviceStatusInfo')}
         devices = {d['id']: d['name'].strip() for d in client.get('Device')}
 
+        # 4.5. Data Audit - Debugging specific assets
+        print("--- Target Asset Audit ---", flush=True)
+        targets = ["BUS 1", "BUS A", "VAN 2", "40", "47", "88", "CUBE 4"]
+        for t_name in targets:
+            # Find the ID for the target name
+            t_id = next((i for i, n in devices.items() if n == t_name), None)
+            if t_id:
+                asset_data = df[df['device_id'] == t_id]
+                if not asset_data.empty:
+                    print(f"\nAUDIT: {t_name} ({t_id})")
+                    for _, r in asset_data.iterrows():
+                        d_id = r['diagnostic']
+                        # Simplify diagnostic display
+                        d_short = d_id['id'] if isinstance(d_id, dict) else str(d_id)
+                        print(f"  -> {r['dateTime']} | {d_short} | Value: {r['data']}")
+                else:
+                    print(f"\nAUDIT: {t_name} ({t_id}) -> No data found in CSV.")
+        print("\n--- End Audit ---\n", flush=True)
+        
         # 5. Build Updates
         updates = []
         for dev_id, is_online in status_infos.items():
             dev_name = devices.get(dev_id)
             if dev_name in fleet_map:
-                # Look up voltage from our CSV/DataFrame
-                row_match = df[df['device_id'] == dev_id]
-                voltage = row_match['voltage'].values if not row_match.empty else "N/A"
+                device_data = df[df['device_id'] == dev_id]
                 
-                # REVISED LOGIC: 
-                # 1. Battery is ONLY "Low" if voltage is between 2.0 and 11.4V
-                # (This catches Bus 1, Bus A, and Van 2 without catching the 12.0V healthy ones)
-                battery_val = "Normal"
-                if isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.4:
-                    battery_val = "Low"
+                # Precise Flag Detection
+                has_health_flag = False
+                voltage = "N/A"
                 
-                # 2. Status is strictly what Geotab reports
-                status_val = "Online" if is_online else "Offline"
+                if not device_data.empty:
+                    for _, row in device_data.iterrows():
+                        diag_info = str(row['diagnostic'])
+                        if 'HealthBatteryVoltageLow' in diag_info:
+                            has_health_flag = True
+                        if 'GoDeviceVoltage' in diag_info or 'DeviceBatteryVoltage' in diag_info:
+                            if voltage == "N/A": # Grab the most recent one
+                                voltage = row['data']
 
-                # Build Smartsheet Row
+                # Final Health Logic
+                battery_val = "Normal"
+                if has_health_flag:
+                    battery_val = "Low"
+                elif isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.5:
+                    battery_val = "Low"
+
+                # Row Prep
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
                 
                 c_status = smartsheet.models.Cell()
                 c_status.column_id = STATUS_COL_ID
-                c_status.value = status_val
+                c_status.value = "Online" if is_online else "Offline"
                 
                 c_battery = smartsheet.models.Cell()
                 c_battery.column_id = BATTERY_COL_ID
                 c_battery.value = battery_val
                 
-                new_row.cells.append(c_status)
-                new_row.cells.append(c_battery)
+                new_row.cells.extend([c_status, c_battery])
                 updates.append(new_row)
-                
-                # Improved Debugging to see why 37, 40, etc., are behaving
-                if dev_name in ["37", "40", "47", "88", "CUBE 4", "BUS 1", "BUS A", "VAN 2"]:
-                    print(f"CHECK: {dev_name} | Volts: {voltage} | Status: {status_val} | Result: {battery_val}", flush=True)
 
         # 6. Push Batch
         if updates:
