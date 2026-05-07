@@ -54,7 +54,7 @@ def run_health_sync():
             battery_val = "Normal"
             two_days_ago = datetime.utcnow() - timedelta(days=2)
             
-            # 1. Ask Geotab if IT thinks the battery is low (The "official" way)
+            # 1. Ask Geotab if IT thinks the battery is low
             health_check = client.get('StatusData', search={
                 'deviceSearch': {'id': dev_id},
                 'diagnosticSearch': {'id': 'DiagnosticDeviceHealthBatteryVoltageLowId'},
@@ -62,29 +62,32 @@ def run_health_sync():
                 'resultsLimit': 1
             })
 
-            # 2. Get the actual voltage just for our Debug logs
-            volt_log = client.get('StatusData', search={
+            # 2. Get the actual voltage for our Debug logs
+            volt_log_list = client.get('StatusData', search={
                 'deviceSearch': {'id': dev_id},
                 'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'},
                 'fromDate': two_days_ago.isoformat(),
                 'resultsLimit': 1
             })
             
-            current_volts = volt_log.get('data', 0) if volt_log else "N/A"
+            # FIX: Access the first element of the list safely
+            current_volts = "N/A"
+            if volt_log_list and len(volt_log_list) > 0:
+                current_volts = volt_log_list.get('data', 0)
 
             # 3. Decision Logic
             if health_check:
-                # If Geotab returned a record for this ID, it means the 'Low' flag is active
                 battery_val = "Low"
-                print(f"DEBUG: {dev_name} | Volts: {current_volts} | GEOTAB FLAG: LOW detected", flush=True)
+                v_display = round(current_volts, 2) if isinstance(current_volts, (int, float)) else current_volts
+                print(f"DEBUG: {dev_name} | Volts: {v_display} | GEOTAB FLAG: LOW detected", flush=True)
             else:
-                # Fallback: Only flag Low if voltage is critically low (under 11.4V) 
-                # This catches 'Bus 1' which we know is dying.
+                # Critical Safety Net (under 11.4V)
                 if isinstance(current_volts, (int, float)) and 2.0 <= current_volts <= 11.4:
                     battery_val = "Low"
-                    print(f"DEBUG: {dev_name} | Volts: {current_volts} | CRITICAL VOLTAGE detected", flush=True)
+                    print(f"DEBUG: {dev_name} | Volts: {round(current_volts, 2)} | CRITICAL VOLTAGE detected", flush=True)
                 else:
-                    print(f"DEBUG: {dev_name} | Volts: {current_volts} | Status: Normal", flush=True)
+                    v_display = round(current_volts, 2) if isinstance(current_volts, (int, float)) else current_volts
+                    print(f"DEBUG: {dev_name} | Volts: {v_display} | Status: Normal", flush=True)
             # --- END BATTERY CHECK ---
             
             status_val = "Offline" if is_offline else "Online"
