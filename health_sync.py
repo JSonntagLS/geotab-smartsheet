@@ -87,10 +87,17 @@ def run_health_sync():
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
                 
-                c_status = smartsheet.models.Cell(column_id=STATUS_COL_ID, value="Online" if is_online else "Offline")
-                c_battery = smartsheet.models.Cell(column_id=BATTERY_COL_ID, value=battery_val)
+                # FIX: Assign properties AFTER creating the cell object
+                c_status = smartsheet.models.Cell()
+                c_status.column_id = STATUS_COL_ID
+                c_status.value = "Online" if is_online else "Offline"
                 
-                new_row.cells.extend([c_status, c_battery])
+                c_battery = smartsheet.models.Cell()
+                c_battery.column_id = BATTERY_COL_ID
+                c_battery.value = battery_val
+                
+                new_row.cells.append(c_status)
+                new_row.cells.append(c_battery)
                 updates.append(new_row)
                 print(f"PREP: {dev_name} | V: {voltage} | Batt: {battery_val}", flush=True)
 
