@@ -102,17 +102,20 @@ def run_health_sync():
         
         # 5. Build Updates
         updates = []
+        print("--- Processing Fleet Updates ---", flush=True)
+        
         for dev_id, is_online in status_infos.items():
             dev_name = devices.get(dev_id)
             if dev_name in fleet_map:
                 device_data = df[df['device_id'] == dev_id]
                 
-                # FIX: Handle the list returned by Geotab correctly
+                # REFIX: Safely handle the list return from Geotab
                 status_list = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': dev_id}})
                 
-                # Check if we actually got a result back
+                # Check if we have a valid list with at least one item
                 if isinstance(status_list, list) and len(status_list) > 0:
                     s_info = status_list
+                    # Use the API's actual communication status
                     is_actually_comm = s_info.get('isDeviceCommunicating', False)
                 else:
                     is_actually_comm = False
@@ -133,18 +136,18 @@ def run_health_sync():
                             if ('GoDeviceVoltage' in diag_info or 'DeviceBatteryVoltage' in diag_info) and voltage == "N/A":
                                 voltage = row['data']
 
-                    # VAN 2 CHECK: Look for specific Fault Codes if voltage looks "Normal"
-                    # This catches units that Geotab flags for "Crank Dips"
+                    # VAN 2 SPECIAL CHECK: Look for 'Low Battery' Faults specifically
                     if not has_health_flag and "VAN 2" in dev_name.upper():
-                        faults = client.get('FaultData', search={
+                        # Check for the specific Low Battery Fault ID
+                        fault_search = client.get('FaultData', search={
                             'deviceSearch': {'id': dev_id},
                             'fromDate': seven_days_ago,
                             'diagnosticSearch': {'id': 'DiagnosticLowBatteryFaultId'}
                         })
-                        if faults:
+                        if fault_search:
                             has_health_flag = True
 
-                    # Final assignment
+                    # Final assignment based on flags or raw voltage
                     if has_health_flag:
                         battery_val = "Low"
                     elif isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9:
@@ -154,21 +157,20 @@ def run_health_sync():
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
                 
-                c_status = smartsheet.models.Cell()
-                c_status.column_id = STATUS_COL_ID
-                c_status.value = status_val
-                
-                c_battery = smartsheet.models.Cell()
-                c_battery.column_id = BATTERY_COL_ID
-                c_battery.value = battery_val
-                
-                new_row.cells.extend([c_status, c_battery])
+                new_row.cells.append(smartsheet.models.Cell({'column_id': STATUS_COL_ID, 'value': status_val}))
+                new_row.cells.append(smartsheet.models.Cell({'column_id': BATTERY_COL_ID, 'value': battery_val}))
                 updates.append(new_row)
 
-                # TARGET AUDIT (Keep this in to see why they flip)
+                # Monitor targets in console
                 if any(x in dev_name.upper() for x in ["37", "VAN 2", "BUS 1", "BUS A"]):
-                    print(f"AUDIT: {dev_name} | Status: {status_val} | Battery: {battery_val} | V: {voltage}", flush=True)
+                    print(f"DEBUG: {dev_name} | Status: {status_val} | Battery: {battery_val} | V: {voltage}", flush=True)
 
+        # 6. Push to Smartsheet
+        if updates:
+            print(f"Pushing {len(updates)} updates to Smartsheet...", flush=True)
+            # Smartsheet allows 500 rows per request, so we are safe with 73
+            ss_client.Sheets.update_rows(SHEET_ID, updates)
+            print("Sync Complete.", flush=True)
         # 6. Push Batch
         if updates:
             for i in range(0, len(updates), 500):
