@@ -107,15 +107,22 @@ def run_health_sync():
             if dev_name in fleet_map:
                 device_data = df[df['device_id'] == dev_id]
                 
-                # Default values
-                status_val = "Online" if is_online else "Offline"
-                battery_val = "N/A" # Default to N/A for Offline units
+                # Fetch DeviceStatusInfo correctly (handling the list return)
+                status_list = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': dev_id}})
+                s_info = status_list if status_list else {}
+                
+                # REFINED OFFLINE LOGIC: 
+                # Geotab API sets isDeviceCommunicating to False after 24 hours of silence.
+                # We'll mirror that exactly.
+                is_actually_comm = s_info.get('isDeviceCommunicating', False)
+                
+                status_val = "Online" if is_actually_comm else "Offline"
+                battery_val = "N/A"
                 voltage = "N/A"
                 has_health_flag = False
 
-                # Only calculate battery health if the device is Online
-                if is_online:
-                    battery_val = "Normal" # Default to Normal if Online
+                if is_actually_comm:
+                    battery_val = "Normal"
                     if not device_data.empty:
                         device_data = device_data.sort_values('dateTime', ascending=False)
                         for _, row in device_data.iterrows():
@@ -125,7 +132,8 @@ def run_health_sync():
                             if ('GoDeviceVoltage' in diag_info or 'DeviceBatteryVoltage' in diag_info) and voltage == "N/A":
                                 voltage = row['data']
 
-                    # Check for Low conditions
+                    # Van 2 logic: If Geotab says "Low" but volts are 12.5, 
+                    # it's the health flag triggering it.
                     if has_health_flag:
                         battery_val = "Low"
                     elif isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9:
@@ -134,17 +142,13 @@ def run_health_sync():
                 # Build Smartsheet Row
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
-                
-                c_status = smartsheet.models.Cell()
-                c_status.column_id = STATUS_COL_ID
-                c_status.value = status_val
-                
-                c_battery = smartsheet.models.Cell()
-                c_battery.column_id = BATTERY_COL_ID
-                c_battery.value = battery_val
-                
-                new_row.cells.extend([c_status, c_battery])
+                new_row.cells.append(smartsheet.models.Cell({'column_id': STATUS_COL_ID, 'value': status_val}))
+                new_row.cells.append(smartsheet.models.Cell({'column_id': BATTERY_COL_ID, 'value': battery_val}))
                 updates.append(new_row)
+
+                # Diagnostic Audit for your target vehicles
+                if any(x in dev_name.upper() for x in ["37", "VAN 2", "BUS 1", "BUS A"]):
+                    print(f"AUDIT: {dev_name} | API_Comm: {is_actually_comm} | Battery: {battery_val} | Volts: {voltage} | Flag: {has_health_flag}", flush=True)
                 
                 # Debugging the specific groups
                 if dev_name in ["BUS 1", "BUS A", "VAN 2", "40", "47", "88", "CUBE 4"]:
