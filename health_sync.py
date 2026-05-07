@@ -84,51 +84,44 @@ def run_health_sync():
                 print(f"Van 2 Range: {min(v_list)}V - {max(v_list)}V")
                 if min(v_list) < 10.5: print(">>> CRANK DIP DETECTED")
 
-        # 6. EXPANDED PATTERN FINDER
+        # 6. Build Updates with Pattern Logic
         updates = []
-        print("\n--- PATTERN ANALYSIS START ---", flush=True)
-        print(f"{'VEHICLE':<30} | {'NOW':<6} | {'MIN':<6} | {'AVG':<6} | {'DIP?':<6}", flush=True)
-        print("-" * 70)
-
-        for dev_id, _ in status_infos.items():
+        print("\n--- Processing Fleet Updates ---", flush=True)
+        for dev_id, is_comm in status_infos.items():
+            dev_name = devices.get(dev_id)
             if dev_name in fleet_map:
                 device_data = df[df['device_id'] == dev_id]
-                status_list = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': dev_id}})
                 
-                # 1. Get Connection Status
-                is_actually_comm = False
-                if isinstance(status_list, list) and len(status_list) > 0:
-                    is_actually_comm = status_list[0].get('isDeviceCommunicating', False)
-
-                # 2. Get Data for Logic (Current and Average)
+                # 1. Variables for Logic
                 current_v = "N/A"
                 avg_v = 0
                 if not device_data.empty:
                     current_v = device_data.iloc[0]['voltage']
                 
-                # We pull the 7-day history to get the "Pattern"
+                # 2. Pull 7-day history to check for the "Van 2" pattern
                 history = client.get('StatusData', search={'deviceSearch': {'id': dev_id}, 'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'}, 'fromDate': seven_days_ago})
                 if history:
                     v_list = [float(l['data']) for l in history if l['data']]
                     avg_v = sum(v_list) / len(v_list) if v_list else 0
 
-                # --- THE NEW SURGICAL LOGIC ---
-                # Flag as LOW if the Average is garbage (< 12.2) OR current is critical (< 11.0)
+                # 3. SURGICAL LOGIC: 
+                # - Flag Low if the Average is garbage (< 12.2) 
+                # - Flag Low if the current voltage is critical (< 11.0)
                 is_low_by_avg = (avg_v < 12.2 and avg_v > 0)
                 is_low_by_now = (isinstance(current_v, (int, float)) and current_v < 11.0)
 
                 if is_low_by_avg or is_low_by_now:
                     battery_val = "Low"
                 else:
-                    battery_val = "Normal" if is_actually_comm else "N/A"
+                    battery_val = "Normal" if is_comm else "N/A"
                 
-                status_val = "Online" if is_actually_comm else "Offline"
-                # --- END LOGIC ---
+                status_val = "Online" if is_comm else "Offline"
 
-                # DEBUG PRINT: This tells us if our theory is working
+                # 4. Debug Output for the "Target 4"
                 if battery_val == "Low" or any(x in dev_name.upper() for x in ["VAN 2", "BUS 1", "BUS A", "CUBE 4"]):
-                    print(f"VERIFICATION: {dev_name} | Status: {battery_val} | Avg: {round(avg_v, 2)} | Now: {current_v}")
+                    print(f"RESULT: {dev_name[:30]:<30} | Status: {battery_val:<7} | Avg: {round(avg_v, 2):<5} | Now: {current_v}")
 
+                # 5. Prepare Smartsheet Row
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
                 new_row.cells.append(smartsheet.models.Cell({'column_id': STATUS_COL_ID, 'value': status_val}))
