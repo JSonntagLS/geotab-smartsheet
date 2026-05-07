@@ -101,6 +101,26 @@ def run_health_sync():
                 status_val = "Online" if is_actually_comm else "Offline"
                 battery_val = "Normal" if is_actually_comm else "N/A"
                 voltage = "N/A"
+
+                # --- START G-NATIVE DEBUGGER ---
+                # We are checking if Geotab has already flagged this device for us
+                gn_is_low = False
+                
+                # Search specifically for the "Health Battery Voltage Low" fault in the last 48 hours
+                # This uses Geotab's internal logic instead of our math
+                gn_faults = client.get('StatusData', search={
+                    'deviceSearch': {'id': dev_id},
+                    'diagnosticSearch': {'id': 'DiagnosticDeviceHealthBatteryVoltageLowId'},
+                    'fromDate': (datetime.utcnow() - timedelta(days=2)).isoformat()
+                })
+                
+                if gn_faults:
+                    gn_is_low = True
+                
+                # This only prints to your console; it doesn't change the Smartsheet yet
+                if gn_is_low or any(x in dev_name.upper() for x in ["VAN 2", "BUS 1", "BUS A"]):
+                    print(f"SIMULATION: {dev_name} | Geotab-Native Flag: {gn_is_low}", flush=True)
+                # --- END G-NATIVE DEBUGGER ---
                 
                 # ... (Status logic stays the same) ...
                 
