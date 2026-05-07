@@ -75,6 +75,47 @@ def run_health_sync():
         status_infos = {si['device']['id']: si['isDeviceCommunicating'] for si in client.get('DeviceStatusInfo')}
         devices = {d['id']: d['name'].strip() for d in client.get('Device')}
 
+        # INSERT THE VAN 2 DEBUGGER HERE
+        # ==========================================
+        print("\n--- Investigating Van 2 Battery Health ---", flush=True)
+        # Find the specific ID for Van 2 from the devices we just fetched
+        van_2_matches = [i for i, n in devices.items() if "VAN 2" in n.upper()]
+        
+        if van_2_matches:
+            van_2_id = van_2_matches
+            import datetime
+            three_days_ago = datetime.datetime.now() - datetime.timedelta(days=3)
+        
+            # 1. Get the Voltage Curve
+            logs = client.get('StatusData', search={
+                'deviceSearch': {'id': van_2_id},
+                'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'},
+                'fromDate': three_days_ago
+            })
+        
+            # 2. Get any specific Battery Faults
+            faults = client.get('FaultData', search={
+                'deviceSearch': {'id': van_2_id},
+                'fromDate': three_days_ago
+            })
+        
+            if logs:
+                voltages = [float(l['data']) for l in logs]
+                print(f"Van 2 Min Voltage (72h): {min(voltages)}V")
+                print(f"Van 2 Max Voltage (72h): {max(voltages)}V")
+                if min(voltages) < 10.0:
+                    print(">>> DETECTED CRANK DIP: Voltage dropped significantly during start.")
+        
+            if faults:
+                for f in faults:
+                    # This identifies if Geotab explicitly threw a "Low Battery" flag
+                    print(f">>> GEOTAB FAULT: {f['diagnostic']['id']} logged at {f['dateTime']}")
+            else:
+                print("No specific Geotab Faults found for Van 2 in the last 3 days.")
+        else:
+            print("Could not find a vehicle named 'Van 2' in Geotab.")
+        # ==========================================
+        
        # discovery_debug.py logic
         print("--- Deep Dive: 37 & Van 2 ---", flush=True)
         targets = ["37", "VAN 2"]
