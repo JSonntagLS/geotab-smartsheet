@@ -420,13 +420,20 @@ elif current_page == "GPS and Battery Health":
         
         # 4. Full Fleet Health Table
         st.subheader("Full Fleet Health Log")
-        health_display = df[[col_map["name"], col_map["status"], col_map["battery"], col_map["loc"]]].copy()
         
-        # Highlight logic for the dataframe
-        def color_status(val):
-            if val == "Offline" or val == "Low": return 'color: red'
-            return ''
+        # Build list of columns to display, only if they exist in df
+        desired_cols = [col_map["name"], col_map["status"], col_map["battery"], col_map["loc"]]
+        available_cols = [c for c in desired_cols if c in df.columns]
+        
+        if available_cols:
+            health_display = df[available_cols].copy()
             
-        st.dataframe(health_display.style.applymap(color_status), use_container_width=True, hide_index=True)
-    else:
-        st.error("Smartsheet data not loaded.")
+            # Highlight logic for the dataframe
+            def color_status(val):
+                if val == "Offline" or val == "Low": 
+                    return 'color: red'
+                return ''
+                
+            st.dataframe(health_display.style.applymap(color_status), use_container_width=True, hide_index=True)
+        else:
+            st.warning("Health columns (Status/Battery) were not found in the sheet.")
