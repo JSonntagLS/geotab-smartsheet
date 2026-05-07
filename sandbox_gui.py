@@ -120,7 +120,8 @@ try:
         rows.append(row_data)
     
     df = pd.DataFrame(rows, columns=columns + ["row_id"])
-
+    st.sidebar.write("Debug - Actual Columns:", df.columns.tolist())
+    
     # DATA CLEANING: Clean all columns first
     # DATA CLEANING: Clean all columns
     for col_key in ["allowance", "projected", "actual", "odo", "last_oil", "next_oil", "interval"]:
