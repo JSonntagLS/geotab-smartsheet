@@ -52,21 +52,19 @@ def run_health_sync():
             
             # Check Battery
             # --- IMPROVED BATTERY CHECK ---
+            # --- IMPROVED BATTERY CHECK ---
             battery_val = "Normal"
             two_days_ago = datetime.utcnow() - timedelta(days=2)
             
-            # Diagnostic IDs
-            diag_id = 'DiagnosticDeviceBatteryVoltageId'
-            
+            # 1. Try the standard IDs first
             batt_logs = client.get('StatusData', search={
                 'deviceSearch': {'id': dev_id},
-                'diagnosticSearch': {'id': diag_id},
+                'diagnosticSearch': {'id': 'DiagnosticDeviceBatteryVoltageId'},
                 'fromDate': two_days_ago.isoformat(),
                 'resultsLimit': 1
             })
             
             if not batt_logs:
-                # Try Engine Battery ID if Device Battery is empty
                 batt_logs = client.get('StatusData', search={
                     'deviceSearch': {'id': dev_id},
                     'diagnosticSearch': {'id': 'DiagnosticEngineBatteryVoltageId'},
@@ -74,22 +72,34 @@ def run_health_sync():
                     'resultsLimit': 1
                 })
 
+            # 2. WILDCARD FALLBACK: If still nothing, search by the 'Voltage' unit/name
+            # Some newer Nissans/Hyundais report voltage under custom manufacturer IDs
+            if not batt_logs:
+                all_logs = client.get('StatusData', search={
+                    'deviceSearch': {'id': dev_id},
+                    'fromDate': two_days_ago.isoformat(),
+                    'resultsLimit': 50
+                })
+                # Filter through the last 50 logs for anything that looks like voltage
+                for log in all_logs:
+                    diag = log.get('diagnostic', {})
+                    diag_id = diag.get('id', '')
+                    if 'Voltage' in diag_id:
+                        batt_logs = [log]
+                        break
+
+            # 3. Final Evaluation
             if batt_logs:
-                # FIX: Access the first element of the list to avoid .get() crash
-                log = batt_logs 
+                log = batt_logs
                 voltage = log.get('data', 0)
-                
-                # Enhanced Debugging for GitHub Actions
-                print(f"DEBUG: {dev_name} | Voltage: {voltage} | Status: {'Offline' if is_offline else 'Online'}", flush=True)
-                
-                # Check 1: Is the voltage actually low?
-                if voltage <= 11.6:
+                # Filter out garbage data (like 0V or 255V)
+                if 2.0 <= voltage <= 11.6:
                     battery_val = "Low"
+                
+                print(f"DEBUG: {dev_name} | Voltage: {voltage} | ID: {log.get('diagnostic', {}).get('id')}", flush=True)
             else:
-                # LOGIC ALIGNMENT: Removed the 'if is_offline: battery_val = "Low"' block.
-                # This ensures we only flag "Low" if Geotab actually reports low voltage.
-                print(f"DEBUG: {dev_name} | No Battery Logs found for last 48hrs.", flush=True)
-                battery_val = "Normal"
+                # If still no logs, we leave it as "Normal" to avoid false alarms
+                print(f"DEBUG: {dev_name} | No Voltage Data found in Geotab for last 48h.", flush=True)
             # --- END BATTERY CHECK ---
             
             status_val = "Offline" if is_offline else "Online"
