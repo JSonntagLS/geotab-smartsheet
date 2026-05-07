@@ -33,8 +33,8 @@ col_map = {
     "last_oil": "Mileage of Last Oil Change",
     "next_oil": "Mileage of Next Oil Change",
     "interval": "Miles Between Oil Changes",
-    "status": "Status",
-    "battery": "Battery"
+    "status": "GPS Status",
+    "battery": "Battery Status"
 }
 
 # Smartsheet Column IDs for Updates
@@ -161,8 +161,8 @@ if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
 
-if st.sidebar.button("Asset Health", type="secondary", use_container_width=True, key="btn_health"):
-    st.session_state.active_page = "Asset Health"
+if st.sidebar.button("GPS and Battery Health", type="secondary", use_container_width=True, key="btn_gps"):
+    st.session_state.active_page = "GPS and Battery Health"
 
 st.sidebar.divider()
 
@@ -378,43 +378,58 @@ elif current_page == "Oil Changes":
                         st.warning("Enter mileage first.")
                 st.divider()
 
+
+elif current_page == "GPS and Battery Health":
+    st.title("GPS and Battery Health")
+
+    if 'df' in locals() and not df.empty:
+        # 1. Identify Critical Assets
+        offline_gps = df[df[col_map["status"]] == "Offline"]
+        low_battery = df[df[col_map["battery"]] == "Low"]
+
+        # 2. Metric Row (This fixes your st.columns() error by providing a number)
+        m_col1, m_col2, m_col3 = st.columns(3)
+        m_col1.metric("Offline GPS Units", len(offline_gps), delta=len(offline_gps), delta_color="inverse")
+        m_col2.metric("Low Battery Alerts", len(low_battery), delta=len(low_battery), delta_color="inverse")
+        m_col3.metric("Total Assets Monitored", len(df))
+
+        st.divider()
+
+        # 3. Critical Attention Lists
+        col_gps, col_bat = st.columns(2)
+        
+        with col_gps:
+            st.subheader("📡 Offline GPS Status")
+            if not offline_gps.empty:
+                st.dataframe(offline_gps[[col_map["name"], col_map["loc"]]], use_container_width=True, hide_index=True)
+            else:
+                st.success("All GPS units are online.")
+
+        with col_bat:
+            st.subheader("🪫 Low Battery Status")
+            if not low_battery.empty:
+                st.dataframe(low_battery[[col_map["name"], col_map["loc"]]], use_container_width=True, hide_index=True)
+            else:
+                st.success("All batteries reporting normal levels.")
+
+        st.divider()
+        
+        # 4. Full Fleet Health Table
+        st.subheader("Full Fleet Health Log")
+        health_display = df[[col_map["name"], col_map["status"], col_map["battery"], col_map["loc"]]].copy()
+        
+        # Highlight logic for the dataframe
+        def color_status(val):
+            if val == "Offline" or val == "Low": return 'color: red'
+            return ''
+            
+        st.dataframe(health_display.style.applymap(color_status), use_container_width=True, hide_index=True)
+    else:
+        st.error("Smartsheet data not loaded.")
+        
         st.subheader("Full Fleet Oil Status")
         # Display only vehicles that have a non-null service history
         oil_display = df[df[col_map["last_oil"]].notna()][[col_map["name"], col_map["last_oil"], col_map["next_oil"], col_map["odo"]]].copy()
         st.dataframe(oil_display, use_container_width=True, hide_index=True)
-    else:
-        st.error("Smartsheet data not loaded.")
-
-# --- NEW MODIFICATION START ---
-elif current_page == "Asset Health":
-    st.title("Asset Health & Connectivity")
-    
-    if 'df' in locals() and not df.empty:
-        # Surgical check for new health columns
-        if col_map["status"] in df.columns and col_map["battery"] in df.columns:
-            # Mirror UI Output: Match the counts from your Geotab screenshot
-            df_offline = df[df[col_map["status"]].astype(str).str.contains('Offline', na=False, case=False)]
-            df_low_batt = df[df[col_map["battery"]].astype(str).str.contains('Low', na=False, case=False)]
-
-            m_col1, m_col2, m_col3 = st.columns()
-            m_col1.metric("Offline Devices", len(df_offline), delta_color="inverse")
-            m_col2.metric("Low Asset Battery", len(df_low_batt), delta_color="inverse")
-            m_col3.info("Data reflects the latest Saturday Geotab Sync.")
-            
-            st.divider()
-            
-            tab_off, tab_batt = st.tabs(["Offline Assets", "Low Battery Details"])
-            
-            with tab_off:
-                st.subheader("Devices Not Communicating")
-                st.dataframe(df_offline[[col_map["name"], col_map["loc"], col_map["status"]]], 
-                             use_container_width=True, hide_index=True)
-                
-            with tab_batt:
-                st.subheader("Voltage Alerts")
-                st.dataframe(df_low_batt[[col_map["name"], col_map["odo"], col_map["battery"]]], 
-                             use_container_width=True, hide_index=True)
-        else:
-            st.warning("Health columns not detected in Smartsheet. Run the Saturday Sync first.")
     else:
         st.error("Smartsheet data not loaded.")
