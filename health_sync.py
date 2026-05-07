@@ -77,7 +77,7 @@ def run_health_sync():
             if batt_logs:
                 log = batt_logs # Get the first record from the list
                 voltage = log.get('data', 0)
-                print(f"DEBUG: {dev_name} | Voltage: {voltage} | Date: {log.get('dateTime')}")
+                print(f"DEBUG: {dev_name} | Voltage: {voltage} | Date: {log.get('dateTime')}", flush=True)
                 # Check 1: Is the voltage actually low?
                 # Check 2: Is the data older than 48 hours? (Often indicates a dead unit)
                 if voltage <= 11.6:
