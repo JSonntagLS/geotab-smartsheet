@@ -434,6 +434,6 @@ elif current_page == "GPS and Battery Health":
                     return 'color: red'
                 return ''
                 
-            st.dataframe(health_display.style.applymap(color_status), use_container_width=True, hide_index=True)
+            st.dataframe(health_display.style.map(color_status), use_container_width=True, hide_index=True)
         else:
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
