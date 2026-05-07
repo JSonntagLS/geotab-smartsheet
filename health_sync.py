@@ -87,18 +87,23 @@ def run_health_sync():
                 status_list = client.get('DeviceStatusInfo', search={'deviceSearch': {'id': dev_id}})
                 
                 is_actually_comm = False
+                # FIX: Access index because Geotab returns a list
                 if isinstance(status_list, list) and len(status_list) > 0:
-                    # FIXED: Added to access the dictionary inside the list
+                    is_actually_comm = status_list.get('isDeviceCommunicating', False)
+                elif isinstance(status_list, dict):
                     is_actually_comm = status_list.get('isDeviceCommunicating', False)
 
                 status_val = "Online" if is_actually_comm else "Offline"
                 battery_val = "Normal" if is_actually_comm else "N/A"
-                voltage = "N/A"
+                voltage_str = "N/A"
                 
                 if not device_data.empty:
-                    # FIXED: Changed .iloc to .iloc
+                    # FIX: Access the first row with .iloc
                     latest = device_data.iloc
                     voltage = latest['voltage']
+                    voltage_str = str(voltage)
+                    if 'Health' in str(latest['diagnostic']) or (isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9):
+                        battery_val = "Low"
                     if 'Health' in str(latest['diagnostic']) or (isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.9):
                         battery_val = "Low"
 
