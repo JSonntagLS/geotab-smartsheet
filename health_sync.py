@@ -76,21 +76,23 @@ def run_health_sync():
                 row_match = df[df['device_id'] == dev_id]
                 voltage = row_match['voltage'].values if not row_match.empty else "N/A"
                 
-                # Logic: Low if <= 12.1V or (Offline + No recent data)
+                # REVISED LOGIC: 
+                # 1. Battery is ONLY "Low" if voltage is between 2.0 and 11.4V
+                # (This catches Bus 1, Bus A, and Van 2 without catching the 12.0V healthy ones)
                 battery_val = "Normal"
-                if isinstance(voltage, (int, float)) and voltage <= 12.1:
+                if isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.4:
                     battery_val = "Low"
-                elif not is_online and voltage == "N/A":
-                    battery_val = "Low"
+                
+                # 2. Status is strictly what Geotab reports
+                status_val = "Online" if is_online else "Offline"
 
                 # Build Smartsheet Row
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
                 
-                # FIX: Assign properties AFTER creating the cell object
                 c_status = smartsheet.models.Cell()
                 c_status.column_id = STATUS_COL_ID
-                c_status.value = "Online" if is_online else "Offline"
+                c_status.value = status_val
                 
                 c_battery = smartsheet.models.Cell()
                 c_battery.column_id = BATTERY_COL_ID
@@ -99,7 +101,10 @@ def run_health_sync():
                 new_row.cells.append(c_status)
                 new_row.cells.append(c_battery)
                 updates.append(new_row)
-                print(f"PREP: {dev_name} | V: {voltage} | Batt: {battery_val}", flush=True)
+                
+                # Improved Debugging to see why 37, 40, etc., are behaving
+                if dev_name in ["37", "40", "47", "88", "CUBE 4", "BUS 1", "BUS A", "VAN 2"]:
+                    print(f"CHECK: {dev_name} | Volts: {voltage} | Status: {status_val} | Result: {battery_val}", flush=True)
 
         # 6. Push Batch
         if updates:
