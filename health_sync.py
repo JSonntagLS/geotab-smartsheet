@@ -31,20 +31,24 @@ def run_health_sync():
                 fleet_map[str(name_cell).strip()] = row.id
         print(f"Mapped {len(fleet_map)} vehicles from Smartsheet.", flush=True)
 
-        # 2. Bulk Fetch Voltage Data (Updated to include Health Flag)
+        # 2. Bulk Fetch Voltage Data (Expanded to 7 days for Offline assets)
+        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
         two_days_ago = (datetime.utcnow() - timedelta(days=2)).isoformat()
+        
         diags = [
             'DiagnosticGoDeviceVoltageId', 
             'DiagnosticDeviceBatteryVoltageId', 
-            'DiagnosticDeviceHealthBatteryVoltageLowId' # The Geotab "Flag"
+            'DiagnosticDeviceHealthBatteryVoltageLowId'
         ]
         all_raw_data = []
 
         for diag in diags:
             print(f"Fetching {diag}...", flush=True)
+            # Use 7 days for voltage, 2 days for the health flag
+            search_date = two_days_ago if 'Health' in diag else seven_days_ago
             batch = client.get('StatusData', search={
                 'diagnosticSearch': {'id': diag},
-                'fromDate': two_days_ago
+                'fromDate': search_date
             })
             if batch:
                 all_raw_data.extend(batch)
@@ -102,24 +106,29 @@ def run_health_sync():
             if dev_name in fleet_map:
                 device_data = df[df['device_id'] == dev_id]
                 
-                # Precise Flag Detection
                 has_health_flag = False
                 voltage = "N/A"
                 
                 if not device_data.empty:
+                    # Sort by time so we get the ABSOLUTE latest record
+                    device_data = device_data.sort_values('dateTime', ascending=False)
                     for _, row in device_data.iterrows():
                         diag_info = str(row['diagnostic'])
                         if 'HealthBatteryVoltageLow' in diag_info:
                             has_health_flag = True
-                        if 'GoDeviceVoltage' in diag_info or 'DeviceBatteryVoltage' in diag_info:
-                            if voltage == "N/A": # Grab the most recent one
-                                voltage = row['data']
+                        if ('GoDeviceVoltage' in diag_info or 'DeviceBatteryVoltage' in diag_info) and voltage == "N/A":
+                            voltage = row['data']
 
-                # Final Health Logic
+                # FINAL ALIGNMENT LOGIC
                 battery_val = "Normal"
+                # 1. Catch the flag (Van 2 / Bus A fallback)
                 if has_health_flag:
                     battery_val = "Low"
-                elif isinstance(voltage, (int, float)) and 2.0 <= voltage <= 11.5:
+                # 2. Catch the actual low voltage (Bus 1 at 11.7V)
+                elif isinstance(voltage, (int, float)) and 2.0 <= voltage <= 12.1:
+                    battery_val = "Low"
+                # 3. Handle the "Truly Dead" (Offline + no data for 7 days)
+                elif not is_online and voltage == "N/A":
                     battery_val = "Low"
 
                 # Row Prep
