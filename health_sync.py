@@ -104,18 +104,22 @@ def run_health_sync():
                     v_list = [float(l['data']) for l in history if l['data']]
                     avg_v = sum(v_list) / len(v_list) if v_list else 0
 
-                # 3. SURGICAL LOGIC: 
-                # - Flag Low if the Average is garbage (< 12.2) 
-                # - Flag Low if the current voltage is critical (< 11.0)
-                is_low_by_avg = (avg_v < 12.2 and avg_v > 0)
-                is_low_by_now = (isinstance(current_v, (int, float)) and current_v < 11.0)
+                # 3. SURGICAL LOGIC (The Double-Lock)
+                # Lock 1: Is the average truly poor? (Lowered to 12.1 to clear 17 and 73A)
+                is_poor_avg = (avg_v < 12.1 and avg_v > 0)
+                
+                # Lock 2: Is the current voltage a total blackout? (Lowered to 9.0 to clear Cube 1/6)
+                is_critical_now = (isinstance(current_v, (int, float)) and current_v < 9.0)
+                
+                # Lock 3: The "Van 2" Safety (Deep dip + Low-ish average)
+                # If it hits a floor below 10V AND the average is struggling under 12.3
+                v_min = min(v_list) if history and v_list else 15.0
+                is_deep_dip_fail = (v_min < 10.0 and avg_v < 12.3)
 
-                if is_low_by_avg or is_low_by_now:
+                if is_poor_avg or is_critical_now or is_deep_dip_fail:
                     battery_val = "Low"
                 else:
                     battery_val = "Normal" if is_comm else "N/A"
-                
-                status_val = "Online" if is_comm else "Offline"
 
                 # 4. Debug Output for the "Target 4"
                 if battery_val == "Low" or any(x in dev_name.upper() for x in ["VAN 2", "BUS 1", "BUS A", "CUBE 4"]):
