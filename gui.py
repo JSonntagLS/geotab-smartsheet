@@ -461,14 +461,14 @@ elif current_page == "GPS and Battery Health":
         col_gps, col_bat = st.columns(2)
         
         with col_gps:
-            st.subheader("📡 Offline GPS Status")
+            st.subheader("Offline GPS Status")
             if not offline_gps.empty:
                 st.dataframe(offline_gps[[col_map["name"], col_map["loc"]]], use_container_width=True, hide_index=True)
             else:
                 st.success("All GPS units are online.")
 
         with col_bat:
-            st.subheader("🪫 Low Battery Status")
+            st.subheader("Low Battery Status")
             if not low_battery.empty:
                 st.dataframe(low_battery[[col_map["name"], col_map["loc"]]], use_container_width=True, hide_index=True)
             else:
