@@ -340,8 +340,10 @@ elif current_page == "Oil Changes":
         # 1. 6000 miles over next_oil (Implied by next_oil logic)
         # 2. Within 1000 of next_oil
         # 3. Over 6 months due
-        mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 1000)) | \
-                   ((df['Date of Last Oil Change'].notnull()) & (df['Date of Last Oil Change'] < six_months_ago))
+        mask_due = (
+            (df[col_map["next_oil"]].notnull() & (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 1000))) | 
+            ((df['Date of Last Oil Change'].notnull()) & (df['Date of Last Oil Change'] < six_months_ago))
+        )
         
         df_due = df[mask_due].copy()
         
