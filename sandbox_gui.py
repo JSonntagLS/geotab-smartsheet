@@ -385,8 +385,8 @@ elif current_page == "Oil Changes":
                 # New Service Odo - using the sanitized string row_id
                 new_mileage = r_col5.text_input("Mileage", key=f"odo_{row_id}", label_visibility="collapsed", placeholder="Odo")
                 
-                # New Service Date
-                new_service_date = r_col6.date_input("Date", value=None, key=f"date_{row_id}", label_visibility="collapsed")
+                # New Service Date - Set to US Format
+                new_service_date = r_col6.date_input("Date", value=None, key=f"date_{row_id}", label_visibility="collapsed", format="MM/DD/YYYY")
                 
                 if r_col7.button("UPDATE", key=f"btn_{row_id}", use_container_width=True):
                     if new_mileage or new_service_date:
@@ -422,13 +422,21 @@ elif current_page == "Oil Changes":
             col_map["name"], 
             col_map["loc"], 
             col_map["odo"], 
-            "Date of Last Oil Change", # New Column
+            "Date of Last Oil Change", 
             col_map["last_oil"], 
             col_map["next_oil"], 
             col_map["interval"]
         ]
+        
+        # --- SURGICAL EDIT START: Format Date for Display ---
         available_oil_cols = [c for c in oil_table_cols if c in df.columns or c == "Date of Last Oil Change"]
-        st.dataframe(df[available_oil_cols], use_container_width=True, hide_index=True)
+        df_display_oil = df[available_oil_cols].copy()
+        
+        if "Date of Last Oil Change" in df_display_oil.columns:
+            df_display_oil["Date of Last Oil Change"] = df_display_oil["Date of Last Oil Change"].dt.strftime('%m/%d/%Y').fillna("N/A")
+            
+        st.dataframe(df_display_oil, use_container_width=True, hide_index=True)
+        # --- SURGICAL EDIT END ---
 
 elif current_page == "GPS and Battery Health":
     st.title("GPS and Battery Health")
