@@ -310,7 +310,15 @@ if current_page == "Fleet Rotation Analysis":
 
         st.divider()
         st.subheader("Asset Details")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        # Filter for specific columns requested
+        rotation_cols = [
+            col_map["name"], col_map["loc"], col_map["desc"], 
+            col_map["odo"], col_map["actual"], col_map["projected"], 
+            col_map["allowance"], col_map["trend"], col_map["priority"], col_map["tier"]
+        ]
+        # Only display columns that exist in the dataframe
+        available_rot_cols = [c for c in rotation_cols if c in df.columns]
+        st.dataframe(df[available_rot_cols], use_container_width=True, hide_index=True)
     else:
         st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
 
@@ -318,8 +326,8 @@ elif current_page == "Oil Changes":
     st.title("Oil Change Management")
     
     if 'df' in locals() and not df.empty:
-        # Filter for vehicles due 
-        mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 500))
+        # 2. CHANGE: Threshold updated from 500 to 1000
+        mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 1000))
         
         # Omit those where "Last Oil Change" is actually missing/NaN
         df_due = df[mask_due & df[col_map["last_oil"]].notna()].copy()
@@ -379,6 +387,14 @@ elif current_page == "Oil Changes":
                         st.warning("Enter mileage first.")
                 st.divider()
 
+        # 3. ADDED: Full Fleet Oil Service Log Table
+        st.subheader("Full Fleet Oil Service Log")
+        oil_table_cols = [
+            col_map["name"], col_map["loc"], col_map["odo"], 
+            col_map["last_oil"], col_map["next_oil"], col_map["interval"]
+        ]
+        available_oil_cols = [c for c in oil_table_cols if c in df.columns]
+        st.dataframe(df[available_oil_cols], use_container_width=True, hide_index=True)
 
 elif current_page == "GPS and Battery Health":
     st.title("GPS and Battery Health")
