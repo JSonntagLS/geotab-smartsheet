@@ -339,13 +339,16 @@ elif current_page == "Oil Changes":
         # Updated Filtering Logic:
         # 1. 6000 miles over next_oil (Implied by next_oil logic)
         # 2. Within 1000 of next_oil
-        # 3. Over 6 months due
+        # 3. Over 6 months due (ONLY if date is known/not N/A)
         mask_due = (
             (df[col_map["next_oil"]].notnull() & (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 1000))) | 
             ((df['Date of Last Oil Change'].notnull()) & (df['Date of Last Oil Change'] < six_months_ago))
         )
         
+        # FILTER: Exclude rows where Last Date is N/A if they aren't triggered by mileage
+        # This ensures 'N/A' dates don't clutter the service due list during initial rollout
         df_due = df[mask_due].copy()
+        df_due = df_due[df_due['Date of Last Oil Change'].notnull()]
         
         if df_due.empty:
             st.success("All vehicles are up to date on oil changes!")
