@@ -363,11 +363,12 @@ elif current_page == "Oil Changes":
             st.divider()
 
             for idx, row in df_due.iterrows():
-                v_name = row[col_map["name"]]
-                # Surgical Fix: Use 0 if Odometer is N/A to prevent crash
-                curr_odo = int(row[col_map["odo"]]) if pd.notnull(row[col_map["odo"]]) else 0
-                next_due = int(row[col_map["next_oil"]]) if pd.notnull(row[col_map["next_oil"]]) else 0
-                last_date = row['Date of Last Oil Change']
+            v_name = row[col_map["name"]]
+            curr_odo = int(row[col_map["odo"]]) if pd.notnull(row[col_map["odo"]]) else 0
+            next_due = int(row[col_map["next_oil"]]) if pd.notnull(row[col_map["next_oil"]]) else 0
+            last_date = row['Date of Last Oil Change']
+            # Surgical Fix: Cast row_id to string and handle potential NaNs
+            row_id = str(int(row["row_id"])) if pd.notnull(row["row_id"]) else str(idx)
                 
                 r_col1, r_col2, r_col3, r_col4, r_col5, r_col6, r_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
                 
@@ -376,10 +377,10 @@ elif current_page == "Oil Changes":
                 r_col3.write(last_date.strftime('%m/%d/%Y') if pd.notnull(last_date) else "N/A")
                 r_col4.write(f"{next_due:,}")
                 
-                # New Service Odo - label hidden to remove "Press Enter" message
+                # New Service Odo - using the sanitized string row_id
                 new_mileage = r_col5.text_input("Mileage", key=f"odo_{row_id}", label_visibility="collapsed", placeholder="Odo")
                 
-                # New Service Date - Blank by default
+                # New Service Date
                 new_service_date = r_col6.date_input("Date", value=None, key=f"date_{row_id}", label_visibility="collapsed")
                 
                 if r_col7.button("UPDATE", key=f"btn_{row_id}", use_container_width=True):
