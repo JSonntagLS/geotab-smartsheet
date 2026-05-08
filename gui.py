@@ -32,7 +32,9 @@ col_map = {
     "odo": "Current Odometer",
     "last_oil": "Mileage of Last Oil Change",
     "next_oil": "Mileage of Next Oil Change",
-    "interval": "Miles Between Oil Changes"
+    "interval": "Miles Between Oil Changes",
+    "status": "GPS Status",
+    "battery": "Battery Status"
 }
 
 # Smartsheet Column IDs for Updates
@@ -41,7 +43,8 @@ OIL_COL_IDS = {
     "next_oil": 4495673799249796,
     "interval": 7596742668488580,
     "odo": 8905895049465732,
-    "name": 6654095235780484
+    "name": 6654095235780484,
+    "last_service_date": 8061461955121028    
 }
 
 CITY_COORDS = {
@@ -109,7 +112,8 @@ try:
     
     smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
     sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
-    columns = [col.title.strip() for col in sheet.columns]
+    # STRIP WHITESPACE FROM TITLES TO PREVENT KEYERRORS
+    columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
     rows = []
     for row in sheet.rows:
         row_data = [cell.value for cell in row.cells]
@@ -118,7 +122,12 @@ try:
     
     df = pd.DataFrame(rows, columns=columns + ["row_id"])
 
-    # DATA CLEANING: Clean all columns first
+    # --- NEW: Map the Date ID to the actual Column Title ---
+    date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None)
+    # If found, rename it to a friendly key for the rest of the script
+    if date_col_title:
+        df = df.rename(columns={date_col_title: "Date of Last Oil Change"})
+    
     # DATA CLEANING: Clean all columns
     for col_key in ["allowance", "projected", "actual", "odo", "last_oil", "next_oil", "interval"]:
         if col_key in col_map:
@@ -158,6 +167,9 @@ if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_
 
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
+
+if st.sidebar.button("GPS and Battery Health", type="secondary", use_container_width=True, key="btn_gps"):
+    st.session_state.active_page = "GPS and Battery Health"
 
 st.sidebar.divider()
 
@@ -304,7 +316,15 @@ if current_page == "Fleet Rotation Analysis":
 
         st.divider()
         st.subheader("Asset Details")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        # Filter for specific columns requested
+        rotation_cols = [
+            col_map["name"], col_map["loc"], col_map["desc"], 
+            col_map["odo"], col_map["actual"], col_map["projected"], 
+            col_map["allowance"], col_map["trend"], col_map["priority"], col_map["tier"]
+        ]
+        # Only display columns that exist in the dataframe
+        available_rot_cols = [c for c in rotation_cols if c in df.columns]
+        st.dataframe(df[available_rot_cols], use_container_width=True, hide_index=True)
     else:
         st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
 
@@ -312,11 +332,23 @@ elif current_page == "Oil Changes":
     st.title("Oil Change Management")
     
     if 'df' in locals() and not df.empty:
-        # Filter for vehicles due 
-        mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 500))
+        # Fixed: Accessing the column we renamed during data loading
+        df['Date of Last Oil Change'] = pd.to_datetime(df['Date of Last Oil Change'], errors='coerce')
+        six_months_ago = pd.Timestamp.now() - pd.DateOffset(months=6)
+
+        # Updated Filtering Logic:
+        # 1. 6000 miles over next_oil (Implied by next_oil logic)
+        # 2. Within 1000 of next_oil
+        # 3. Over 6 months due (ONLY if date is known/not N/A)
+        mask_due = (
+            (df[col_map["next_oil"]].notnull() & (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 1000))) | 
+            ((df['Date of Last Oil Change'].notnull()) & (df['Date of Last Oil Change'] < six_months_ago))
+        )
         
-        # Omit those where "Last Oil Change" is actually missing/NaN
-        df_due = df[mask_due & df[col_map["last_oil"]].notna()].copy()
+        # FILTER: Exclude rows where Last Date is N/A if they aren't triggered by mileage
+        # This ensures 'N/A' dates don't clutter the service due list during initial rollout
+        df_due = df[mask_due].copy()
+        df_due = df_due[df_due['Date of Last Oil Change'].notnull()]
         
         if df_due.empty:
             st.success("All vehicles are up to date on oil changes!")
@@ -324,58 +356,142 @@ elif current_page == "Oil Changes":
             st.write(f"### Vehicles Due for Service ({len(df_due)})")
             
             # Header Row
-            h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([2, 1, 1, 1, 1])
+            # Header Row - Added Date Columns
+            h_col1, h_col2, h_col3, h_col4, h_col5, h_col6, h_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
             h_col1.write("**Vehicle**")
             h_col2.write("**Current Odo**")
-            h_col3.write("**Next Due**")
-            h_col4.write("**New Service Odo**")
-            h_col5.write("**Action**")
+            h_col3.write("**Date of Last Service**")
+            h_col4.write("**Next Service Due (Mi)**")
+            h_col5.write("**New Odo at Service**")
+            h_col6.write("**Date of New Service**")
+            h_col7.write("**Action**")
             st.divider()
 
             for idx, row in df_due.iterrows():
                 v_name = row[col_map["name"]]
-                curr_odo = int(row[col_map["odo"]])
-                next_due = int(row[col_map["next_oil"]])
-                row_id = row["row_id"]
+                curr_odo = int(row[col_map["odo"]]) if pd.notnull(row[col_map["odo"]]) else 0
+                next_due = int(row[col_map["next_oil"]]) if pd.notnull(row[col_map["next_oil"]]) else 0
+                last_date = row['Date of Last Oil Change']
+                # Surgical Fix: Cast row_id to string and handle potential NaNs
+                row_id = str(int(row["row_id"])) if pd.notnull(row["row_id"]) else str(idx)
                 
-                r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([2, 1, 1, 1, 1])
+                r_col1, r_col2, r_col3, r_col4, r_col5, r_col6, r_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
                 
                 r_col1.write(v_name)
                 r_col2.write(f"{curr_odo:,}")
-                r_col3.write(f"{next_due:,}")
+                r_col3.write(last_date.strftime('%m/%d/%Y') if pd.notnull(last_date) else "N/A")
+                r_col4.write(f"{next_due:,}")
                 
-                # Input for new mileage
-                new_mileage = r_col4.text_input("Mileage", key=f"input_{row_id}", label_visibility="collapsed", placeholder="Enter Odo")
+                # New Service Odo - using the sanitized string row_id
+                new_mileage = r_col5.text_input("Mileage", key=f"odo_{row_id}", label_visibility="collapsed", placeholder="Odo")
                 
-                if r_col5.button("UPDATE", key=f"btn_{row_id}", use_container_width=True):
-                    if new_mileage:
+                # New Service Date - Set to US Format
+                new_service_date = r_col6.date_input("Date", value=None, key=f"date_{row_id}", label_visibility="collapsed", format="MM/DD/YYYY")
+                
+                if r_col7.button("UPDATE", key=f"btn_{row_id}", use_container_width=True):
+                    if new_mileage or new_service_date:
                         try:
-                            # 1. Prepare Smartsheet Update
-                            new_val = force_num(new_mileage)
                             new_row = smartsheet.models.Row()
                             new_row.id = int(row_id)
                             
-                            # Update the "Mileage of Last Oil Change" column
-                            cell = smartsheet.models.Cell()
-                            cell.column_id = OIL_COL_IDS["last_oil"]
-                            cell.value = new_val
-                            new_row.cells.append(cell)
+                            # Logic: Only update fields that are NOT blank
+                            if new_mileage:
+                                cell_odo = smartsheet.models.Cell()
+                                cell_odo.column_id = OIL_COL_IDS["last_oil"]
+                                cell_odo.value = force_num(new_mileage)
+                                new_row.cells.append(cell_odo)
                             
-                            # 2. Push to Smartsheet
+                            if new_service_date:
+                                cell_date = smartsheet.models.Cell()
+                                cell_date.column_id = OIL_COL_IDS["last_service_date"]
+                                cell_date.value = new_service_date.strftime('%Y-%m-%d')
+                                new_row.cells.append(cell_date)
+                            
                             smart.Sheets.update_rows(st.secrets["sheet_id"], [new_row])
-                            
                             st.toast(f"Updated {v_name} successfully!", icon="✅")
-                            # 3. Refresh to update the list
                             st.rerun()
                         except Exception as e:
                             st.error(f"Failed to update Smartsheet: {e}")
                     else:
-                        st.warning("Enter mileage first.")
+                        st.warning("Enter data before updating.")
                 st.divider()
 
-        st.subheader("Full Fleet Oil Status")
-        # Display only vehicles that have a non-null service history
-        oil_display = df[df[col_map["last_oil"]].notna()][[col_map["name"], col_map["last_oil"], col_map["next_oil"], col_map["odo"]]].copy()
-        st.dataframe(oil_display, use_container_width=True, hide_index=True)
-    else:
-        st.error("Smartsheet data not loaded.")
+        # 3. Full Fleet Oil Service Log Table
+        st.subheader("Full Fleet Oil Service Log")
+        oil_table_cols = [
+            col_map["name"], 
+            col_map["loc"], 
+            col_map["odo"], 
+            "Date of Last Oil Change", 
+            col_map["last_oil"], 
+            col_map["next_oil"], 
+            col_map["interval"]
+        ]
+        
+        # --- SURGICAL EDIT START: Format Date for Display ---
+        available_oil_cols = [c for c in oil_table_cols if c in df.columns or c == "Date of Last Oil Change"]
+        df_display_oil = df[available_oil_cols].copy()
+        
+        if "Date of Last Oil Change" in df_display_oil.columns:
+            df_display_oil["Date of Last Oil Change"] = df_display_oil["Date of Last Oil Change"].dt.strftime('%m/%d/%Y').fillna("N/A")
+            
+        st.dataframe(df_display_oil, use_container_width=True, hide_index=True)
+        # --- SURGICAL EDIT END ---
+
+elif current_page == "GPS and Battery Health":
+    st.title("GPS and Battery Health")
+
+    if 'df' in locals() and not df.empty:
+        # 1. Identify Critical Assets with Safety Checks
+        status_col = col_map["status"]
+        batt_col = col_map["battery"]
+        
+        offline_gps = df[df[status_col] == "Offline"] if status_col in df.columns else pd.DataFrame()
+        low_battery = df[df[batt_col] == "Low"] if batt_col in df.columns else pd.DataFrame()
+
+        # 2. Metric Row (This fixes your st.columns() error by providing a number)
+        m_col1, m_col2, m_col3 = st.columns(3)
+        m_col1.metric("Offline GPS Units", len(offline_gps), delta=len(offline_gps), delta_color="inverse")
+        m_col2.metric("Low Battery Alerts", len(low_battery), delta=len(low_battery), delta_color="inverse")
+        m_col3.metric("Total Assets Monitored", len(df))
+
+        st.divider()
+
+        # 3. Critical Attention Lists
+        col_gps, col_bat = st.columns(2)
+        
+        with col_gps:
+            st.subheader("📡 Offline GPS Status")
+            if not offline_gps.empty:
+                st.dataframe(offline_gps[[col_map["name"], col_map["loc"]]], use_container_width=True, hide_index=True)
+            else:
+                st.success("All GPS units are online.")
+
+        with col_bat:
+            st.subheader("🪫 Low Battery Status")
+            if not low_battery.empty:
+                st.dataframe(low_battery[[col_map["name"], col_map["loc"]]], use_container_width=True, hide_index=True)
+            else:
+                st.success("All batteries reporting normal levels.")
+
+        st.divider()
+        
+        # 4. Full Fleet Health Table
+        st.subheader("Full Fleet Health Log")
+        
+        # Build list of columns to display, only if they exist in df
+        desired_cols = [col_map["name"], col_map["status"], col_map["battery"], col_map["loc"]]
+        available_cols = [c for c in desired_cols if c in df.columns]
+        
+        if available_cols:
+            health_display = df[available_cols].copy()
+            
+            # Highlight logic for the dataframe
+            def color_status(val):
+                if val == "Offline" or val == "Low": 
+                    return 'color: red'
+                return ''
+                
+            st.dataframe(health_display.style.map(color_status), use_container_width=True, hide_index=True)
+        else:
+            st.warning("Health columns (Status/Battery) were not found in the sheet.")
