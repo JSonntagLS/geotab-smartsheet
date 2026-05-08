@@ -121,8 +121,13 @@ try:
         rows.append(row_data)
     
     df = pd.DataFrame(rows, columns=columns + ["row_id"])
+
+    # --- NEW: Map the Date ID to the actual Column Title ---
+    date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None)
+    # If found, rename it to a friendly key for the rest of the script
+    if date_col_title:
+        df = df.rename(columns={date_col_title: "Date of Last Oil Change"})
     
-    # DATA CLEANING: Clean all columns first
     # DATA CLEANING: Clean all columns
     for col_key in ["allowance", "projected", "actual", "odo", "last_oil", "next_oil", "interval"]:
         if col_key in col_map:
@@ -327,8 +332,8 @@ elif current_page == "Oil Changes":
     st.title("Oil Change Management")
     
     if 'df' in locals() and not df.empty:
-        # Convert Smartsheet date column to datetime objects
-        df['Date of Last Oil Change'] = pd.to_datetime(df[OIL_COL_IDS["last_service_date"]], errors='coerce')
+        # Fixed: Accessing the column we renamed during data loading
+        df['Date of Last Oil Change'] = pd.to_datetime(df['Date of Last Oil Change'], errors='coerce')
         six_months_ago = pd.Timestamp.now() - pd.DateOffset(months=6)
 
         # Updated Filtering Logic:
