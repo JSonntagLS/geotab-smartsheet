@@ -341,7 +341,7 @@ elif current_page == "Oil Changes":
         # 2. Within 1000 of next_oil
         # 3. Over 6 months due
         mask_due = (df[col_map["odo"]] >= (df[col_map["next_oil"]] - 1000)) | \
-                   (df['Date of Last Oil Change'] < six_months_ago)
+                   ((df['Date of Last Oil Change'].notnull()) & (df['Date of Last Oil Change'] < six_months_ago))
         
         df_due = df[mask_due].copy()
         
@@ -364,10 +364,10 @@ elif current_page == "Oil Changes":
 
             for idx, row in df_due.iterrows():
                 v_name = row[col_map["name"]]
-                curr_odo = int(row[col_map["odo"]])
-                next_due = int(row[col_map["next_oil"]])
+                # Surgical Fix: Use 0 if Odometer is N/A to prevent crash
+                curr_odo = int(row[col_map["odo"]]) if pd.notnull(row[col_map["odo"]]) else 0
+                next_due = int(row[col_map["next_oil"]]) if pd.notnull(row[col_map["next_oil"]]) else 0
                 last_date = row['Date of Last Oil Change']
-                row_id = row["row_id"]
                 
                 r_col1, r_col2, r_col3, r_col4, r_col5, r_col6, r_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
                 
