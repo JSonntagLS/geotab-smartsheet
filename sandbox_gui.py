@@ -533,54 +533,24 @@ elif current_page == "Recalls":
             status_text = st.empty()
             
             for idx, row in ent_df.iterrows():
-            vin = str(row.get('VIN', '')).strip()
-            camp_id = str(row.get('Campaign', '')).strip()
-            v_name = row.get('Vehicle', 'Unknown')
-            # Surgical Fix: Ensure we catch the correct description column
-            desc = row.get('Description', row.get('Campaign Description', 'N/A'))
-            
-            if (vin + camp_id) not in fixed_keys:
-                active_alerts.append({
-                    "Vehicle": v_name, 
-                    "VIN": vin, 
-                    "CampaignID": camp_id,
-                    "Description": desc
-                })
-
-        if active_alerts:
-            st.warning(f"Total Active Recalls: {len(active_alerts)}")
-            
-            # Header Row
-            h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
-            h1.write("**Vehicle**")
-            h2.write("**Campaign ID**")
-            h3.write("**Description**")
-            h4.write("**Action**")
-            st.divider()
-
-            for alert in active_alerts:
-                c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
-                
-                c1.write(alert['Vehicle'])
-                c2.write(alert['CampaignID'])
-                c3.write(alert['Description'])
-                
-                if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}", use_container_width=True):
+                vin = str(row.get('VIN', '')).strip()
+                camp_id = str(row.get('Campaign', '')).strip()
                 
                 if len(vin) == 17:
                     try:
+                        # Decode VIN to get Make/Model/Year for NHTSA check
                         vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
                         res = requests.get(vpic_url, timeout=5).json()
-                        # VPIC 'Results' is a list; take the first entry
-                        specs = res['Results'][0] if res['Results'] else {}
+                        specs = res['Results'] if res['Results'] else {}
                         
                         recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
                         for r in recalls:
-                            camp_id = str(r.get('NHTSACampaignNumber')).strip()
-                            # If this NHTSA recall is NOT in the Enterprise "Open" list, mark it as FIXED
-                            if (vin + camp_id) not in open_keys:
-                                all_fixed.append({"VIN": vin, "CampaignID": camp_id})
-                    except: continue
+                            nhtsa_id = str(r.get('NHTSACampaignNumber')).strip()
+                            # If NHTSA says there's a recall, but Enterprise says it's NOT open, mark as FIXED
+                            if (vin + nhtsa_id) not in open_keys:
+                                all_fixed.append({"VIN": vin, "CampaignID": nhtsa_id})
+                    except: 
+                        continue
             
             pd.DataFrame(all_fixed).drop_duplicates().to_csv(CSV_PATH, index=False)
             st.success(f"History Created! Found {len(all_fixed)} historical fixes. 24 recalls should remain.")
@@ -621,10 +591,8 @@ elif current_page == "Recalls":
             st.rerun()
 
     # --- MAIN DISPLAY LOGIC ---
-    # --- MAIN DISPLAY LOGIC ---
     try:
         fixed_df = pd.read_csv(CSV_PATH)
-        # Ensure we are matching strings and cleaning whitespace
         fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
     except Exception:
         fixed_keys = set()
@@ -637,43 +605,37 @@ elif current_page == "Recalls":
             vin = str(row.get('VIN', '')).strip()
             camp_id = str(row.get('Campaign', '')).strip()
             v_name = row.get('Vehicle', 'Unknown')
-            # Check for the specific column name in your CSV
-            desc = row.get('Campaign Description', 'No Description Provided')
+            # Surgical Fix: Check multiple possible column names for description
+            desc = row.get('Campaign Description', row.get('Description', 'No Description Provided'))
             
-            # Show if in Enterprise list but NOT in our local Fixed list
             if (vin + camp_id) not in fixed_keys:
                 active_alerts.append({
-                    "Vehicle": v_name, "VIN": vin, "CampaignID": camp_id,
-                    "Description": desc
+                    "Vehicle": v_name, "VIN": vin, "CampaignID": camp_id, "Description": desc
                 })
 
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
+            
+            # Table Headers
             h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
             h1.write("**Vehicle**")
             h2.write("**Campaign ID**")
             h3.write("**Description**")
             h4.write("**Action**")
             st.divider()
+
             for alert in active_alerts:
-                # Assign specific column ratios to handle long descriptions
                 c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
                 
                 c1.write(f"**{alert['Vehicle']}**")
                 c2.write(f"**ID:** {alert['CampaignID']}")
                 c3.write(alert['Description'])
                 
-                # Button logic to update the local fixed list
-                if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}"):
-                    new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
-                    if os.path.exists(CSV_PATH):
-                        new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
-                    else:
-                        new_fix.to_csv(CSV_PATH, index=False)
-                    st.toast("Marked as fixed!")
+                # Button Logic: Adds the VIN+ID to fixed_recalls.csv and reloads
+                if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}", use_container_width=True):
+                    new_fix = pd.DataFrame([{"VIN": alert['VIN'], "CampaignID": alert['CampaignID']}])
+                    new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                    st.toast(f"Marked {alert['CampaignID']} as fixed.")
                     st.rerun()
-                st.divider()
-        else:
-            st.success("All recalls from the Enterprise list have been marked as fixed!")
     else:
-        st.error(f"File {ENTERPRISE_FILE} not found. Please ensure it is in your GitHub folder.")
+        st.info(f"Awaiting source file: {ENTERPRISE_FILE}")
