@@ -123,6 +123,11 @@ try:
     
     df = pd.DataFrame(rows, columns=columns + ["row_id"])
 
+    date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None)
+    # If found, rename it to a friendly key for the rest of the script
+    if date_col_title:
+        df = df.rename(columns={date_col_title: "Date of Last Oil Change"})
+    
     # --- NEW: Map the Date ID to the actual Column Title ---
     date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None)
     # If found, rename it to a friendly key for the rest of the script
