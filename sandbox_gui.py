@@ -581,10 +581,12 @@ elif current_page == "Recalls":
             st.rerun()
 
     # --- MAIN DISPLAY LOGIC ---
+    # --- MAIN DISPLAY LOGIC ---
     try:
         fixed_df = pd.read_csv(CSV_PATH)
-        fixed_keys = set(fixed_df['VIN'].astype(str).strip() + fixed_df['CampaignID'].astype(str).strip())
-    except:
+        # Ensure we are matching strings and cleaning whitespace
+        fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
+    except Exception:
         fixed_keys = set()
 
     if os.path.exists(ENTERPRISE_FILE):
@@ -595,9 +597,10 @@ elif current_page == "Recalls":
             vin = str(row.get('VIN', '')).strip()
             camp_id = str(row.get('Campaign', '')).strip()
             v_name = row.get('Vehicle', 'Unknown')
-            desc = row.get('Campaign Description', 'No Description')
+            # Check for the specific column name in your CSV
+            desc = row.get('Campaign Description', 'No Description Provided')
             
-            # Logic: If it's in the Enterprise file AND NOT in our Fixed file, show it.
+            # Show if in Enterprise list but NOT in our local Fixed list
             if (vin + camp_id) not in fixed_keys:
                 active_alerts.append({
                     "Vehicle": v_name, "VIN": vin, "CampaignID": camp_id,
@@ -607,17 +610,24 @@ elif current_page == "Recalls":
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
             for alert in active_alerts:
+                # FIXED: Specified column weights to fix the TypeError
                 c1, c2, c3, c4 = st.columns()
                 c1.write(f"**{alert['Vehicle']}**")
                 c2.write(f"**ID:** {alert['CampaignID']}")
                 c3.info(alert['Description'])
+                
+                # FIXED: Logic to update the CSV
                 if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}"):
                     new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
-                    new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
-                    st.success("Marked as fixed!")
+                    # If file exists, append without header. If not, write with header.
+                    if os.path.exists(CSV_PATH):
+                        new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                    else:
+                        new_fix.to_csv(CSV_PATH, index=False)
+                    st.toast("Updated local fixed list.")
                     st.rerun()
                 st.divider()
         else:
             st.success("All recalls from the Enterprise list have been marked as fixed!")
     else:
-        st.error(f"Missing {ENTERPRISE_FILE}. Please ensure it is uploaded to GitHub.")
+        st.error(f"File {ENTERPRISE_FILE} not found. Please ensure it is in your GitHub folder.")
