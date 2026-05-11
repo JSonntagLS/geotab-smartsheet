@@ -519,6 +519,41 @@ elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
     CSV_PATH = 'fixed_recalls.csv'
+
+    if st.button("🚀 Auto-Sync Recall History"):
+    CSV_PATH = 'fixed_recalls.csv'
+    ENTERPRISE_FILE = 'Recalls_389911_05112026.csv'
+    
+    if os.path.exists(ENTERPRISE_FILE):
+        ent_df = pd.read_csv(ENTERPRISE_FILE)
+        # Create a set of VIN+Campaign that Enterprise says are OPEN
+        open_keys = set(ent_df['VIN'].astype(str).str.strip() + ent_df['Campaign'].astype(str).str.strip())
+        
+        all_fixed = []
+        progress = st.progress(0)
+        
+        # Scan your Smartsheet fleet
+        for i, (idx, row) in enumerate(df.iterrows()):
+            vin = str(row.get('VIN', '')).strip()
+            progress.progress((i + 1) / len(df))
+            if len(vin) == 17:
+                try:
+                    vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+                    specs = requests.get(vpic_url, timeout=5).json()['Results']
+                    # Get all recalls for this model
+                    recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
+                    for r in recalls:
+                        camp_id = str(r.get('NHTSACampaignNumber')).strip()
+                        # If NOT in Enterprise open list, it's fixed.
+                        if (vin + camp_id) not in open_keys:
+                            all_fixed.append({"VIN": vin, "CampaignID": camp_id})
+                except: continue
+        
+        pd.DataFrame(all_fixed).drop_duplicates().to_csv(CSV_PATH, index=False)
+        st.success(f"Created {CSV_PATH} with {len(all_fixed)} historical records. 24 active recalls should now show up!")
+        st.rerun()
+    else:
+        st.error("Enterprise CSV not found. Please upload it to the directory first.")
     
     # Ensure file exists and has headers
     if not os.path.exists(CSV_PATH) or os.stat(CSV_PATH).st_size == 0:
