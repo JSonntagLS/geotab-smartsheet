@@ -515,7 +515,6 @@ elif current_page == "GPS and Battery Health":
         else:
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
 
-# 2. REPLACE YOUR 'elif current_page == "Recalls":' BLOCK WITH THIS:
 elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
@@ -523,58 +522,69 @@ elif current_page == "Recalls":
     if not os.path.exists(CSV_PATH):
         pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
     
+    # --- ADMIN SECTION: ONE-TIME SETUP ---
+    with st.expander("⚙️ System Administration (Seed Data)"):
+        st.write("Click this to generate a master list of all historical recalls for the fleet.")
+        if st.button("Generate Master Fixed List"):
+            all_found = []
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i, (idx, row) in enumerate(df.iterrows()):
+                vin = str(row.get('VIN', '')).strip()
+                status_text.text(f"Scanning {vin}...")
+                progress_bar.progress((i + 1) / len(df))
+                
+                if len(vin) == 17:
+                    try:
+                        vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+                        specs = requests.get(vpic_url, timeout=5).json()['Results']
+                        recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
+                        
+                        for r in recalls:
+                            all_found.append({"VIN": vin, "CampaignID": r.get('NHTSACampaignNumber')})
+                    except: continue
+            
+            seed_df = pd.DataFrame(all_found).drop_duplicates()
+            seed_df.to_csv(CSV_PATH, index=False)
+            st.success(f"Generated {len(seed_df)} entries in {CSV_PATH}. You can now edit this file manually.")
+
+    # --- MAIN DISPLAY LOGIC ---
     fixed_df = pd.read_csv(CSV_PATH)
     fixed_keys = set(fixed_df['VIN'].astype(str) + fixed_df['CampaignID'].astype(str))
 
     if 'df' in locals() and not df.empty:
         active_alerts = []
-        vin_col = "VIN"
-        
-        if vin_col in df.columns:
-            with st.spinner("Checking Fleet Safety Status..."):
-                for idx, row in df.iterrows():
-                    vin = str(row[vin_col]).strip()
-                    v_name = row[col_map["name"]]
-                    
-                    if len(vin) == 17:
-                        try:
-                            # Step 1: Decode VIN to get Make/Model/Year (VPIC is stable)
-                            vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-                            specs = requests.get(vpic_url, timeout=5).json()['Results'][0]
-                            
-                            make = specs.get('Make')
-                            model = specs.get('Model')
-                            year = specs.get('ModelYear')
+        with st.spinner("Checking fleet for active recalls..."):
+            for idx, row in df.iterrows():
+                vin = str(row.get('VIN', '')).strip()
+                v_name = row[col_map["name"]]
+                if len(vin) == 17:
+                    try:
+                        vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+                        specs = requests.get(vpic_url, timeout=5).json()['Results']
+                        recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
+                        for r in recalls:
+                            camp_id = r.get('NHTSACampaignNumber')
+                            if (vin + str(camp_id)) not in fixed_keys:
+                                active_alerts.append({
+                                    "Vehicle": v_name, "VIN": vin, "CampaignID": camp_id,
+                                    "Description": r.get('Summary', 'No Summary'),
+                                    "Component": r.get('Component', 'General')
+                                })
+                    except: continue
 
-                            if make and model and year:
-                                # Step 2: Use our cached function to get recalls
-                                recalls = check_vehicle_recall(make, model, year)
-                                
-                                for r in recalls:
-                                    camp_id = r.get('NHTSACampaignNumber')
-                                    if camp_id and (vin + str(camp_id)) not in fixed_keys:
-                                        active_alerts.append({
-                                            "Vehicle": v_name,
-                                            "VIN": vin,
-                                            "CampaignID": camp_id,
-                                            "Description": r.get('Summary', 'Safety Alert'),
-                                            "Component": r.get('Component', 'General')
-                                        })
-                        except: continue
-
-            if active_alerts:
-                st.write(f"### Active Fleet Recalls ({len(active_alerts)})")
-                for alert in active_alerts:
-                    c1, c2, c3, c4 = st.columns([2, 2, 4, 1])
-                    c1.write(f"**{alert['Vehicle']}**")
-                    c2.write(f"**ID:** {alert['CampaignID']}\n\n*({alert['Component']})*")
-                    c3.info(alert['Description'])
-                    
-                    if c4.button("FIXED", key=f"fix_{alert['VIN']}_{alert['CampaignID']}"):
-                        new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
-                        new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
-                        st.cache_data.clear() # Clear cache so the fixed item disappears immediately
-                        st.rerun()
-                    st.divider()
-            else:
-                st.success("No open recalls detected for the current fleet.")
+        if active_alerts:
+            st.warning(f"Total Active Recalls: {len(active_alerts)}")
+            for alert in active_alerts:
+                c1, c2, c3, c4 = st.columns()
+                c1.write(f"**{alert['Vehicle']}**")
+                c2.write(f"**ID:** {alert['CampaignID']}")
+                c3.info(alert['Description'])
+                if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}"):
+                    new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
+                    new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                    st.rerun()
+                st.divider()
+        else:
+            st.success("No active recalls found.")
