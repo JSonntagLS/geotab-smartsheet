@@ -1,9 +1,7 @@
 name: Sync Geotab VINs to Smartsheet
 
 on:
-  workflow_dispatch: # Allows you to run it manually via the Actions tab
-  schedule:
-    - cron: '0 0 * * *' # Runs automatically every day at midnight UTC
+  workflow_dispatch: # This allows the manual "Run workflow" button to appear
 
 jobs:
   build:
