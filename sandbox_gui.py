@@ -8,6 +8,16 @@ import re
 import os
 import requests
 
+@st.cache_data(ttl=3600)  # Caches results for 1 hour to prevent 30-second lag
+def check_vehicle_recall(make, model, year):
+    try:
+        # Using the specific 'recallsByVehicle' endpoint which avoids the Auth Token error
+        url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={make}&model={model}&modelYear={year}"
+        res = requests.get(url, timeout=10).json()
+        return res.get('results', [])
+    except Exception:
+        return []
+
 # --- PAGE CONFIG ---
 st.set_page_config(layout="wide")
 # Main title removed to shift content up
@@ -504,17 +514,6 @@ elif current_page == "GPS and Battery Health":
             st.dataframe(health_display.style.map(color_status), use_container_width=True, hide_index=True)
         else:
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
-
-# 1. ADD THIS FUNCTION AT THE TOP OF YOUR SCRIPT (Below imports)
-@st.cache_data(ttl=3600)  # Caches results for 1 hour to prevent 30-second lag
-def check_vehicle_recall(make, model, year):
-    try:
-        # Using the specific 'recallsByVehicle' endpoint which avoids the Auth Token error
-        url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={make}&model={model}&modelYear={year}"
-        res = requests.get(url, timeout=10).json()
-        return res.get('results', [])
-    except Exception:
-        return []
 
 # 2. REPLACE YOUR 'elif current_page == "Recalls":' BLOCK WITH THIS:
 elif current_page == "Recalls":
