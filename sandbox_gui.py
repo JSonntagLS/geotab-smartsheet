@@ -6,6 +6,7 @@ import math
 import google.generativeai as genai
 import re
 import os
+import requests
 
 # --- PAGE CONFIG ---
 st.set_page_config(layout="wide")
@@ -170,6 +171,9 @@ if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, 
 
 if st.sidebar.button("GPS and Battery Health", type="secondary", use_container_width=True, key="btn_gps"):
     st.session_state.active_page = "GPS and Battery Health"
+
+if st.sidebar.button("Recalls", type="secondary", use_container_width=True, key="btn_recall"):
+    st.session_state.active_page = "Recalls"
 
 st.sidebar.divider()
 
@@ -495,3 +499,73 @@ elif current_page == "GPS and Battery Health":
             st.dataframe(health_display.style.map(color_status), use_container_width=True, hide_index=True)
         else:
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
+
+elif current_page == "Recalls":
+    st.title("Safety Recall Management")
+    
+    # 1. Load the Fixed Recalls CSV
+    CSV_PATH = 'fixed_recalls.csv'
+    if not os.path.exists(CSV_PATH):
+        pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+    
+    fixed_df = pd.read_csv(CSV_PATH)
+    # Create a set of keys (VIN+ID) that should be hidden
+    fixed_keys = set(fixed_df['VIN'].astype(str) + fixed_df['CampaignID'].astype(str))
+
+    if 'df' in locals() and not df.empty:
+        active_alerts = []
+        
+        # Only check vehicles that have a 17-digit VIN in Smartsheet
+        # We assume the VIN column is in your sheet; if not mapped, use df[col_map["name"]] logic
+        vin_col = "VIN" # Update this to your actual Smartsheet VIN column title if different
+        
+        if vin_col in df.columns:
+            with st.spinner("Checking NHTSA database..."):
+                for idx, row in df.iterrows():
+                    vin = str(row[vin_col]).strip()
+                    if len(vin) == 17:
+                        try:
+                            # Ping NHTSA API
+                            res = requests.get(f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json", timeout=5).json()
+                            results = res['Results'][0]
+                            
+                            # Note: Public NHTSA Decode API provides basic recall flags. 
+                            # For full descriptions, we check the 'AdditionalErrorText' or 'RecallDescription'
+                            # If a recall exists, the API typically populates these fields.
+                            campaign_id = results.get('NHTSACampaignNumber')
+                            
+                            if campaign_id:
+                                lookup_key = vin + str(campaign_id)
+                                if lookup_key not in fixed_keys:
+                                    active_alerts.append({
+                                        "Vehicle": row[col_map["name"]],
+                                        "VIN": vin,
+                                        "CampaignID": campaign_id,
+                                        "Description": results.get('RecallDescription', 'Safety Recall Detected'),
+                                        "Date": datetime.now().strftime("%m/%d/%Y")
+                                    })
+                        except Exception:
+                            continue
+
+            if active_alerts:
+                st.write(f"### Active Fleet Recalls ({len(active_alerts)})")
+                
+                # Display Table with Action Buttons
+                for alert in active_alerts:
+                    c1, c2, c3, c4 = st.columns([2, 2, 4, 1])
+                    c1.write(f"**{alert['Vehicle']}**")
+                    c2.write(f"ID: {alert['CampaignID']}")
+                    c3.info(alert['Description'])
+                    
+                    # The "Mark Fixed" Button
+                    if c4.button("FIXED", key=f"fix_{alert['VIN']}_{alert['CampaignID']}"):
+                        # Append to CSV
+                        new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
+                        new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                        st.toast(f"Recall cleared for {alert['Vehicle']}")
+                        st.rerun()
+                    st.divider()
+            else:
+                st.success("No open recalls detected for the current fleet.")
+        else:
+            st.warning(f"Could not find a column titled '{vin_col}' in Smartsheet to pull VINs.")
