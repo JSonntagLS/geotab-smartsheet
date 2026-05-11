@@ -611,6 +611,60 @@ elif current_page == "GPS and Battery Health":
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
 
 elif current_page == "Recalls":
+    st.write("DEBUG: RECALL PAGE LOADED") # This should appear immediately
+    st.title("Safety Recall Management")
+    
+    CSV_PATH = 'fixed_recalls.csv'
+    SOURCE_FILE = 'Recalls_38991_05112026.csv' 
+
+    # --- ACTION BUTTONS ---
+    # Placing these in columns at the top to ensure they are high-level
+    btn_col1, btn_col2 = st.columns(2)
+    
+    with btn_col1:
+        if st.button("🔄 Refresh Active List", use_container_width=True):
+            st.rerun()
+
+    with btn_col2:
+        # We are moving this out of the expander temporarily to ensure it works
+        seed_trigger = st.button("RUN HISTORICAL SEED", type="primary", use_container_width=True)
+
+    if seed_trigger:
+        st.write("DEBUG: SEED BUTTON CLICKED") # If this doesn't show, the button logic is broken
+        if 'df' in locals() and not df.empty:
+            with st.spinner("Processing..."):
+                # Call the diagnostic function
+                count = seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
+                if count > 0:
+                    st.success(f"Added {count} historical recalls!")
+                    st.rerun()
+        else:
+            st.error("Cannot find fleet data. Refresh the page.")
+
+    # --- DATA LOADING & FILTERING ---
+    try:
+        if not os.path.exists(CSV_PATH):
+            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+            
+        fixed_df = pd.read_csv(CSV_PATH)
+        fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
+        
+        if os.path.exists(SOURCE_FILE):
+            open_recalls_df = pd.read_csv(SOURCE_FILE)
+            # Filter logic
+            active_alerts = open_recalls_df[~((open_recalls_df['VIN'].astype(str).str.strip() + 
+                                              open_recalls_df['Campaign'].astype(str).str.strip()).isin(fixed_keys))]
+            
+            st.write(f"### Current Active Recalls ({len(active_alerts)})")
+            
+            if not active_alerts.empty:
+                st.table(active_alerts[['Vehicle', 'VIN', 'Campaign', 'Campaign Description']].head(25))
+            else:
+                st.success("No active recalls found!")
+    except Exception as e:
+        st.error(f"Page Error: {e}")
+
+elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
     CSV_PATH = 'fixed_recalls.csv'
