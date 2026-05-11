@@ -26,47 +26,51 @@ def sync_geotab_vins():
         serial_val = ""
         for cell in row.cells:
             if cell.column_id == COL_SERIAL:
-                serial_val = str(cell.value).strip() if cell.value is not None else ""
+                # Ensure we are capturing the value as a clean string
+                serial_val = str(cell.value).strip().upper() if cell.value else ""
                 break
         if serial_val:
             row_map[serial_val] = row.id
     
-    print(f"--- DIAGNOSTICS ---")
-    print(f"Smartsheet: Found {len(row_map)} serials.")
-    print(f"Smartsheet Samples: {list(row_map.keys())[:5]}")
+    print(f"Mapped {len(row_map)} serials from Smartsheet.")
 
     # 2. GET GEOTAB DATA
     devices = api.get('Device')
-    print(f"Geotab: Found {len(devices)} devices.")
-    
-    # Print sample Geotab serials for comparison
-    geotab_samples = [str(d.get('serialNumber', '')).strip() for d in devices[:5]]
-    print(f"Geotab Samples: {geotab_samples}")
+    print(f"Retrieved {len(devices)} devices from Geotab.")
     
     smartsheet_updates = []
 
     # 3. MATCHING LOGIC
     for device in devices:
-        # Geotab serials can sometimes have hyphens or different casing
         geotab_serial = str(device.get('serialNumber', '')).strip().upper()
         vin = device.get('vin', '')
 
-        # Check for a match by stripping non-alphanumeric characters if necessary
-        # But first, try the direct uppercase match
-        match_key = next((s for s in row_map.keys() if s.strip().upper() == geotab_serial), None)
-
-        if match_key and vin:
+        # Check if this Geotab serial exists in our Smartsheet map
+        if geotab_serial in row_map and vin:
+            # Create a proper Smartsheet Row object
             new_row = smartsheet.models.Row()
-            new_row.id = row_map[match_key]
-            new_row.cells.append({'column_id': COL_VIN, 'value': vin})
+            new_row.id = row_map[geotab_serial]
+            
+            # Create a proper Smartsheet Cell object
+            new_cell = smartsheet.models.Cell()
+            new_cell.column_id = COL_VIN
+            new_cell.value = vin
+            new_cell.strict = False  # Allows standard string entry
+            
+            new_row.cells.append(new_cell)
             smartsheet_updates.append(new_row)
 
     # 4. EXECUTE
     if smartsheet_updates:
-        print(f"SUCCESS: Found {len(smartsheet_updates)} matches. Updating...")
-        smart.Sheets.update_rows(sheet_id, smartsheet_updates)
+        print(f"Found {len(smartsheet_updates)} matches. Sending updates to Smartsheet...")
+        try:
+            # Update in chunks of 500 (Smartsheet limit, though you only have ~72)
+            smart.Sheets.update_rows(sheet_id, smartsheet_updates)
+            print("SUCCESS: Smartsheet updated with VIN numbers.")
+        except Exception as e:
+            print(f"Smartsheet API Error: {e}")
     else:
-        print("RESULT: Still no matches. Compare the 'Samples' printed above to see the difference.")
+        print("RESULT: No matching Serial/VIN pairs found. Check if the VINs are populated in Geotab.")
 
 if __name__ == "__main__":
     sync_geotab_vins()
