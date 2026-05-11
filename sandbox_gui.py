@@ -610,12 +610,11 @@ elif current_page == "Recalls":
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
             for alert in active_alerts:
-                # This specific line below fixes the error on line 614
+                # REPLACE THE LINE BELOW:
                 c1, c2, c3, c4 = st.columns() 
                 
                 c1.write(f"**{alert['Vehicle']}**")
                 c2.write(f"**ID:** {alert['CampaignID']}")
-                c3.info(alert['Description'])
                 
                 # Button logic to update the local fixed list
                 if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}"):
