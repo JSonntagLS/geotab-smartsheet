@@ -518,39 +518,34 @@ elif current_page == "Recalls":
     if 'df' in locals() and not df.empty:
         active_alerts = []
         vin_col = "VIN"
-        debug_logs = [] 
         
         if vin_col in df.columns:
-            with st.spinner("Deep Scanning NHTSA Databases..."):
-                # For testing, let's just do the first 10 or a specific known vehicle
+            with st.spinner("Analyzing Fleet Safety Data..."):
                 for idx, row in df.iterrows():
                     v_name = row[col_map["name"]]
                     vin = str(row[vin_col]).strip()
                     
                     if len(vin) == 17:
                         try:
-                            # Dedicated Recall Endpoint
-                            url = f"https://api.nhtsa.gov/recalls/recallinfo?vin={vin}"
-                            response = requests.get(url, timeout=10)
-                            data = response.json()
+                            # STEP 1: Get Make/Model/Year from VIN
+                            vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+                            vpic_res = requests.get(vpic_url, timeout=10).json()
+                            specs = vpic_res['Results'][0]
                             
-                            count = data.get('Count', 0)
-                            results = data.get('results', [])
-                            
-                            # DEBUG: Capture the exact JSON for the first few vehicles
-                            debug_logs.append({
-                                "vehicle": v_name,
-                                "vin": vin,
-                                "status_code": response.status_code,
-                                "count_reported": count,
-                                "raw_json": data
-                            })
+                            make = specs.get('Make')
+                            model = specs.get('Model')
+                            year = specs.get('ModelYear')
 
-                            if count > 0:
-                                for recall in results:
-                                    camp_id = recall.get('NHTSACampaignNumber')
-                                    if camp_id:
+                            if make and model and year:
+                                # STEP 2: Get Recalls for that Make/Model/Year
+                                recall_url = f"https://api.nhtsa.gov/recalls/recallinfo?make={make}&model={model}&modelYear={year}"
+                                recall_res = requests.get(recall_url, timeout=10).json()
+                                
+                                if recall_res.get('Count', 0) > 0:
+                                    for recall in recall_res.get('results', []):
+                                        camp_id = recall.get('NHTSACampaignNumber')
                                         lookup_key = vin + str(camp_id)
+                                        
                                         if lookup_key not in fixed_keys:
                                             active_alerts.append({
                                                 "Vehicle": v_name,
@@ -559,32 +554,22 @@ elif current_page == "Recalls":
                                                 "Description": recall.get('Summary', 'No Summary'),
                                                 "Component": recall.get('Component', 'General')
                                             })
-                        except Exception as e:
-                            debug_logs.append({"vehicle": v_name, "error": str(e)})
-
-            # --- THE "TELL-ALL" DEBUGGER ---
-            with st.expander("🔍 RAW DATA INSPECTOR (Look here for the error)"):
-                st.write("This shows exactly what the NHTSA server sent back:")
-                for log in debug_logs:
-                    if "error" in log:
-                        st.error(f"{log['vehicle']}: {log['error']}")
-                    else:
-                        st.text(f"🚗 {log['vehicle']} | Count: {log['count_reported']}")
-                        # This prints the actual JSON structure
-                        if log['count_reported'] == 0:
-                            st.json(log['raw_json']) 
+                        except Exception:
+                            continue
 
             if active_alerts:
                 st.write(f"### Active Fleet Recalls ({len(active_alerts)})")
                 for alert in active_alerts:
                     c1, c2, c3, c4 = st.columns([2, 2, 4, 1])
                     c1.write(f"**{alert['Vehicle']}**")
-                    c2.write(f"**ID:** {alert['CampaignID']}")
+                    c2.write(f"**ID:** {alert['CampaignID']}\n\n*Component: {alert['Component']}*")
                     c3.info(alert['Description'])
+                    
                     if c4.button("FIXED", key=f"fix_{alert['VIN']}_{alert['CampaignID']}"):
                         new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
                         new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                        st.toast(f"Marked as fixed.")
                         st.rerun()
                     st.divider()
             else:
-                st.success("No open recalls detected. Check the Raw Data Inspector above if this seems wrong.")
+                st.success("No open recalls detected for the current fleet.")
