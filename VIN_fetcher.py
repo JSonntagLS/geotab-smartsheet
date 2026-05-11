@@ -38,22 +38,19 @@ def sync_geotab_vins():
     print(f"Retrieved {len(devices)} devices from Geotab.")
     
     smartsheet_updates = []
-    potential_matches = 0
 
-    # 3. MATCHING & DATA VERIFICATION
+    # 3. MATCHING & DATA EXTRACTION
     for device in devices:
         geotab_serial = str(device.get('serialNumber', '')).strip().upper()
-        vin = device.get('vin', '').strip() if device.get('vin') else ""
+        
+        # Check standard VIN field first, then fall back to engine-detected VIN
+        vin = device.get('vin', '')
+        if not vin or vin == "":
+            vin = device.get('engineVehicleIdentificationNumber', '')
 
-        if geotab_serial in row_map:
-            potential_matches += 1
-            # If we have a match but no VIN, print it so we know why it's skipping
-            if not vin:
-                if potential_matches <= 5:
-                    print(f"Match found for {geotab_serial}, but Geotab VIN field is EMPTY.")
-                continue
+        vin = str(vin).strip() if vin else ""
 
-            # If we have both, prepare the update
+        if geotab_serial in row_map and vin:
             new_row = smartsheet.models.Row()
             new_row.id = row_map[geotab_serial]
             
@@ -65,19 +62,16 @@ def sync_geotab_vins():
             new_row.cells.append(new_cell)
             smartsheet_updates.append(new_row)
 
-    print(f"Total potential Serial matches: {potential_matches}")
-    print(f"Total matches with actual VIN data: {len(smartsheet_updates)}")
-
     # 4. EXECUTE
     if smartsheet_updates:
-        print(f"Sending {len(smartsheet_updates)} updates to Smartsheet...")
+        print(f"SUCCESS: Found {len(smartsheet_updates)} VIN matches. Updating Smartsheet...")
         try:
             smart.Sheets.update_rows(sheet_id, smartsheet_updates)
-            print("SUCCESS: Smartsheet updated.")
+            print("Smartsheet has been successfully updated.")
         except Exception as e:
             print(f"Smartsheet API Error: {e}")
     else:
-        print("RESULT: No data to update. Either no serials matched, or matched serials have no VIN in Geotab.")
+        print("RESULT: No VIN data found. Ensure Geotab is returning 'engineVehicleIdentificationNumber'.")
 
 if __name__ == "__main__":
     sync_geotab_vins()
