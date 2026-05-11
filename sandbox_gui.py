@@ -581,12 +581,17 @@ elif current_page == "Recalls":
             vin = str(row.get('VIN', '')).strip()
             camp_id = str(row.get('Campaign', '')).strip()
             v_name = row.get('Vehicle', 'Unknown')
-            # Surgical Fix: Check multiple possible column names for description
+            
+            # Logic Integration: Check for 'Campaign Description' (New CSV) or 'Description' (Original)
             desc = row.get('Campaign Description', row.get('Description', 'No Description Provided'))
             
+            # Show if in Enterprise list but NOT in our local Fixed list
             if (vin + camp_id) not in fixed_keys:
                 active_alerts.append({
-                    "Vehicle": v_name, "VIN": vin, "CampaignID": camp_id, "Description": desc
+                    "Vehicle": v_name, 
+                    "VIN": vin, 
+                    "CampaignID": camp_id,
+                    "Description": desc
                 })
 
         if active_alerts:
@@ -609,8 +614,20 @@ elif current_page == "Recalls":
                 
                 # Button Logic: Adds the VIN+ID to fixed_recalls.csv and reloads
                 if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}", use_container_width=True):
+                    # 1. Permanent Log: Add to fixed_recalls.csv
                     new_fix = pd.DataFrame([{"VIN": alert['VIN'], "CampaignID": alert['CampaignID']}])
                     new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                    
+                    # 2. Update Active File: Remove this specific recall from the Enterprise CSV
+                    if os.path.exists(ENTERPRISE_FILE):
+                        current_ent = pd.read_csv(ENTERPRISE_FILE)
+                        # Filter out the specific VIN + Campaign ID match
+                        current_ent['VIN'] = current_ent['VIN'].astype(str).str.strip()
+                        current_ent['Campaign'] = current_ent['Campaign'].astype(str).str.strip()
+                        
+                        mask = ~((current_ent['VIN'] == alert['VIN']) & (current_ent['Campaign'] == alert['CampaignID']))
+                        current_ent[mask].to_csv(ENTERPRISE_FILE, index=False)
+                    
                     st.toast(f"Marked {alert['CampaignID']} as fixed.")
                     st.rerun()
     else:
