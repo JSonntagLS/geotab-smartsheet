@@ -1,0 +1,33 @@
+name: Sync Geotab VINs to Smartsheet
+
+on:
+  workflow_dispatch: # Allows you to run it manually via the Actions tab
+  schedule:
+    - cron: '0 0 * * *' # Runs automatically every day at midnight UTC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install mygeotab smartsheet-python-sdk
+
+      - name: Run VIN Sync Script
+        env:
+          GEOTAB_USER: ${{ secrets.GEOTAB_USER }}
+          GEOTAB_PASSWORD: ${{ secrets.GEOTAB_PASSWORD }}
+          GEOTAB_DB: ${{ secrets.GEOTAB_DB }}
+          SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
+          SMARTSHEET_ID: ${{ secrets.SMARTSHEET_ID }}
+        run: python VIN_fetcher.py
