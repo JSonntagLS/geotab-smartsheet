@@ -505,6 +505,18 @@ elif current_page == "GPS and Battery Health":
         else:
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
 
+# 1. ADD THIS FUNCTION AT THE TOP OF YOUR SCRIPT (Below imports)
+@st.cache_data(ttl=3600)  # Caches results for 1 hour to prevent 30-second lag
+def check_vehicle_recall(make, model, year):
+    try:
+        # Using the specific 'recallsByVehicle' endpoint which avoids the Auth Token error
+        url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={make}&model={model}&modelYear={year}"
+        res = requests.get(url, timeout=10).json()
+        return res.get('results', [])
+    except Exception:
+        return []
+
+# 2. REPLACE YOUR 'elif current_page == "Recalls":' BLOCK WITH THIS:
 elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
@@ -520,55 +532,49 @@ elif current_page == "Recalls":
         vin_col = "VIN"
         
         if vin_col in df.columns:
-            with st.spinner("Analyzing Fleet Safety Data..."):
+            with st.spinner("Checking Fleet Safety Status..."):
                 for idx, row in df.iterrows():
-                    v_name = row[col_map["name"]]
                     vin = str(row[vin_col]).strip()
+                    v_name = row[col_map["name"]]
                     
                     if len(vin) == 17:
                         try:
-                            # STEP 1: Get Make/Model/Year from VIN
+                            # Step 1: Decode VIN to get Make/Model/Year (VPIC is stable)
                             vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-                            vpic_res = requests.get(vpic_url, timeout=10).json()
-                            specs = vpic_res['Results'][0]
+                            specs = requests.get(vpic_url, timeout=5).json()['Results'][0]
                             
                             make = specs.get('Make')
                             model = specs.get('Model')
                             year = specs.get('ModelYear')
 
                             if make and model and year:
-                                # STEP 2: Get Recalls for that Make/Model/Year
-                                recall_url = f"https://api.nhtsa.gov/recalls/recallinfo?make={make}&model={model}&modelYear={year}"
-                                recall_res = requests.get(recall_url, timeout=10).json()
+                                # Step 2: Use our cached function to get recalls
+                                recalls = check_vehicle_recall(make, model, year)
                                 
-                                if recall_res.get('Count', 0) > 0:
-                                    for recall in recall_res.get('results', []):
-                                        camp_id = recall.get('NHTSACampaignNumber')
-                                        lookup_key = vin + str(camp_id)
-                                        
-                                        if lookup_key not in fixed_keys:
-                                            active_alerts.append({
-                                                "Vehicle": v_name,
-                                                "VIN": vin,
-                                                "CampaignID": camp_id,
-                                                "Description": recall.get('Summary', 'No Summary'),
-                                                "Component": recall.get('Component', 'General')
-                                            })
-                        except Exception:
-                            continue
+                                for r in recalls:
+                                    camp_id = r.get('NHTSACampaignNumber')
+                                    if camp_id and (vin + str(camp_id)) not in fixed_keys:
+                                        active_alerts.append({
+                                            "Vehicle": v_name,
+                                            "VIN": vin,
+                                            "CampaignID": camp_id,
+                                            "Description": r.get('Summary', 'Safety Alert'),
+                                            "Component": r.get('Component', 'General')
+                                        })
+                        except: continue
 
             if active_alerts:
                 st.write(f"### Active Fleet Recalls ({len(active_alerts)})")
                 for alert in active_alerts:
                     c1, c2, c3, c4 = st.columns([2, 2, 4, 1])
                     c1.write(f"**{alert['Vehicle']}**")
-                    c2.write(f"**ID:** {alert['CampaignID']}\n\n*Component: {alert['Component']}*")
+                    c2.write(f"**ID:** {alert['CampaignID']}\n\n*({alert['Component']})*")
                     c3.info(alert['Description'])
                     
                     if c4.button("FIXED", key=f"fix_{alert['VIN']}_{alert['CampaignID']}"):
                         new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
                         new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
-                        st.toast(f"Marked as fixed.")
+                        st.cache_data.clear() # Clear cache so the fixed item disappears immediately
                         st.rerun()
                     st.divider()
             else:
