@@ -150,23 +150,33 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
 
     if fixed_history:
         debug_df = pd.DataFrame(fixed_history)
-        # Use standard column names
-        debug_df.columns = ['VIN', 'CampaignID']
+        st.write(f"DEBUG: Attempting to save {len(debug_df)} items to {fixed_csv_path}")
         
         try:
-            # Drop duplicates just in case
+            # 1. Clean data
             debug_df = debug_df.drop_duplicates()
             
-            # Use 'w' mode to ensure a fresh overwrite of the 172 items
-            debug_df.to_csv(fixed_csv_path, index=False, mode='w')
+            # 2. Force Write
+            debug_df.to_csv(fixed_csv_path, index=False)
             
-            # Crucial: verify the file size is > 0
-            if os.path.getsize(fixed_csv_path) > 0:
-                return len(debug_df)
+            # 3. VERIFICATION: Immediately try to read it back
+            if os.path.exists(fixed_csv_path):
+                check_size = os.path.getsize(fixed_csv_path)
+                if check_size > 0:
+                    st.write(f"DEBUG: File verified on disk ({check_size} bytes)")
+                    return len(debug_df)
+                else:
+                    st.error("FATAL: File exists but is 0 bytes. Check folder permissions.")
+            else:
+                st.error("FATAL: to_csv command finished but file was not found on disk.")
+                
             return 0
         except Exception as e:
-            st.error(f"Save Error: {e}")
+            st.error(f"HARD WRITE FAILURE: {e}")
             return 0
+    else:
+        st.warning("Scan finished, but 0 historical recalls were found.")
+        return 0
 
 def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
     """
