@@ -532,12 +532,40 @@ elif current_page == "Recalls":
             progress = st.progress(0)
             status_text = st.empty()
             
-            for i, (idx, row) in enumerate(df.iterrows()):
-                # Handle cases where VIN might be None or NaN
-                vin_raw = row.get('VIN')
-                vin = str(vin_raw).strip() if pd.notnull(vin_raw) else ""
-                status_text.text(f"Syncing History: {vin}")
-                progress.progress((i + 1) / len(df))
+            for idx, row in ent_df.iterrows():
+            vin = str(row.get('VIN', '')).strip()
+            camp_id = str(row.get('Campaign', '')).strip()
+            v_name = row.get('Vehicle', 'Unknown')
+            # Surgical Fix: Ensure we catch the correct description column
+            desc = row.get('Description', row.get('Campaign Description', 'N/A'))
+            
+            if (vin + camp_id) not in fixed_keys:
+                active_alerts.append({
+                    "Vehicle": v_name, 
+                    "VIN": vin, 
+                    "CampaignID": camp_id,
+                    "Description": desc
+                })
+
+        if active_alerts:
+            st.warning(f"Total Active Recalls: {len(active_alerts)}")
+            
+            # Header Row
+            h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
+            h1.write("**Vehicle**")
+            h2.write("**Campaign ID**")
+            h3.write("**Description**")
+            h4.write("**Action**")
+            st.divider()
+
+            for alert in active_alerts:
+                c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
+                
+                c1.write(alert['Vehicle'])
+                c2.write(alert['CampaignID'])
+                c3.write(alert['Description'])
+                
+                if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}", use_container_width=True):
                 
                 if len(vin) == 17:
                     try:
@@ -621,6 +649,12 @@ elif current_page == "Recalls":
 
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
+            h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
+            h1.write("**Vehicle**")
+            h2.write("**Campaign ID**")
+            h3.write("**Description**")
+            h4.write("**Action**")
+            st.divider()
             for alert in active_alerts:
                 # Assign specific column ratios to handle long descriptions
                 c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
