@@ -145,26 +145,23 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
 
     if fixed_history:
         debug_df = pd.DataFrame(fixed_history)
-        st.write("### Debug: Data Found")
-        st.write(f"Total items found: {len(debug_df)}")
-        st.dataframe(debug_df.head()) # Show first 5 rows in the UI
+        # Use standard column names
+        debug_df.columns = ['VIN', 'CampaignID']
         
         try:
-            # Force write using absolute path to ensure it's not saving in a weird temp folder
-            abs_path = os.path.abspath(fixed_csv_path)
-            debug_df.to_csv(abs_path, index=False)
+            # Drop duplicates just in case
+            debug_df = debug_df.drop_duplicates()
             
-            # Double check by reading it back immediately
-            verify_df = pd.read_csv(abs_path)
-            st.success(f"Success! File saved to: {abs_path}")
-            st.write(f"Verified rows in file: {len(verify_df)}")
-            return len(verify_df)
-        except Exception as e:
-            st.error(f"HARD WRITE FAILURE: {e}")
+            # Use 'w' mode to ensure a fresh overwrite of the 172 items
+            debug_df.to_csv(fixed_csv_path, index=False, mode='w')
+            
+            # Crucial: verify the file size is > 0
+            if os.path.getsize(fixed_csv_path) > 0:
+                return len(debug_df)
             return 0
-    else:
-        st.warning("Scan finished, but 0 historical recalls were found.")
-        return 0
+        except Exception as e:
+            st.error(f"Save Error: {e}")
+            return 0
 
 def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
     """
