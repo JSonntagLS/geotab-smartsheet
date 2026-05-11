@@ -610,21 +610,21 @@ elif current_page == "Recalls":
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
             for alert in active_alerts:
-                # FIXED: Specified column weights to fix the TypeError
-                c1, c2, c3, c4 = st.columns()
+                # This specific line below fixes the error on line 614
+                c1, c2, c3, c4 = st.columns() 
+                
                 c1.write(f"**{alert['Vehicle']}**")
                 c2.write(f"**ID:** {alert['CampaignID']}")
                 c3.info(alert['Description'])
                 
-                # FIXED: Logic to update the CSV
+                # Button logic to update the local fixed list
                 if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}"):
                     new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
-                    # If file exists, append without header. If not, write with header.
                     if os.path.exists(CSV_PATH):
                         new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
                     else:
                         new_fix.to_csv(CSV_PATH, index=False)
-                    st.toast("Updated local fixed list.")
+                    st.toast("Marked as fixed!")
                     st.rerun()
                 st.divider()
         else:
