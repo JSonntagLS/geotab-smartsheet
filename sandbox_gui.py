@@ -115,6 +115,50 @@ def calculate_runway(row):
     except Exception:
         return 50000, 12
 
+def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
+    """
+    Checks NHTSA for every VIN in the fleet and updates the master CSV.
+    """
+    new_active_list = []
+    
+    # Check fixed history
+    try:
+        fixed_df = pd.read_csv(fixed_path)
+        fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
+    except Exception:
+        fixed_keys = set()
+
+    for _, row in fleet_df.iterrows():
+        vin = str(row.get('VIN', '')).strip()
+        v_name = row.get(col_map["name"], "Unknown")
+        
+        if len(vin) == 17:
+            try:
+                # Decode VIN to get Make/Model/Year
+                vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+                res = requests.get(vpic_url, timeout=5).json()
+                specs = res['Results'] if res['Results'] else {}
+                
+                # Check NHTSA for recalls
+                recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
+                for r in recalls:
+                    camp_id = str(r.get('NHTSACampaignNumber', r.get('NHTSACampaignNumber', ''))).strip()
+                    if (vin + camp_id) not in fixed_keys:
+                        new_active_list.append({
+                            "Vehicle": v_name,
+                            "VIN": vin,
+                            "Campaign": camp_id,
+                            "Campaign Description": r.get('Summary', 'No description available.')
+                        })
+            except Exception:
+                continue
+
+    # Update the master file
+    updated_df = pd.DataFrame(new_active_list)
+    updated_df.to_csv(enterprise_path, index=False)
+    
+    return len(new_active_list)
+
 # --- DATA LOADING ---
 df_display = pd.DataFrame() # Initialize as empty
 labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
