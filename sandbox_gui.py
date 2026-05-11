@@ -647,16 +647,19 @@ elif current_page == "Recalls":
         seed_trigger = st.button("RUN HISTORICAL SEED", type="primary", use_container_width=True)
 
     if seed_trigger:
-        if 'df' in locals() and not df.empty:
+        # Use the persistent session state data
+        fleet_to_scan = st.session_state.get('df', pd.DataFrame())
+        
+        if not fleet_to_scan.empty:
             with st.status("Syncing with NHTSA Database...") as status:
-                count = seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
+                # Pass the persistent dataframe here
+                count = seed_fixed_recalls(fleet_to_scan, SOURCE_FILE, CSV_PATH)
                 if count > 0:
-                    # Save the result to a "sticky note"
                     st.session_state.sync_message = f"Successfully locked in {count} historical recalls."
                     status.update(label="Sync Complete!", state="complete")
                     st.rerun()
         else:
-            st.error("Cannot find fleet data. Refresh the page.")
+            st.error("Fleet data is missing from memory. Try clicking 'Refresh Active List' first.")
 
     # This part shows the message AFTER the rerun
     if 'sync_message' in st.session_state:
