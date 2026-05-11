@@ -617,9 +617,17 @@ elif current_page == "Recalls":
 
     if os.path.exists(ENTERPRISE_FILE):
         active_alerts = []
-        ent_df = pd.read_csv(ENTERPRISE_FILE)
+        try:
+            # Check if file size is greater than 0 to avoid EmptyDataError
+            if os.path.getsize(ENTERPRISE_FILE) > 0:
+                ent_df = pd.read_csv(ENTERPRISE_FILE, keep_default_na=False)
+            else:
+                ent_df = pd.DataFrame()
+        except Exception:
+            ent_df = pd.DataFrame()
         
-        for idx, row in ent_df.iterrows():
+        if not ent_df.empty:
+            for idx, row in ent_df.iterrows():
             vin = str(row.get('VIN', '')).strip()
             camp_id = str(row.get('Campaign', '')).strip()
             v_name = row.get('Vehicle', 'Unknown')
