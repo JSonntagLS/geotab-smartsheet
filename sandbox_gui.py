@@ -226,19 +226,24 @@ def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
 df_display = pd.DataFrame() # Initialize as empty
 labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
 
-try:
-    
-    smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
-    sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
-    # STRIP WHITESPACE FROM TITLES TO PREVENT KEYERRORS
-    columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
-    rows = []
-    for row in sheet.rows:
-        row_data = [cell.value for cell in row.cells]
-        row_data.append(row.id)  # Capture Row ID for updates
-        rows.append(row_data)
-    
-    df = pd.DataFrame(rows, columns=columns + ["row_id"])
+if 'df' not in st.session_state:
+    try:
+        smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+        sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
+        columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
+        rows = []
+        for row in sheet.rows:
+            row_data = [cell.value for cell in row.cells]
+            row_data.append(row.id)
+            rows.append(row_data)
+        
+        # Save directly to session state
+        st.session_state.df = pd.DataFrame(rows, columns=columns + ["row_id"])
+    except Exception as e:
+        st.error(f"Error loading Smartsheet: {e}")
+
+# Always point 'df' to the session state version
+df = st.session_state.get('df', pd.DataFrame())
 
     date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None)
     # If found, rename it to a friendly key for the rest of the script
