@@ -562,22 +562,16 @@ elif current_page == "GPS and Battery Health":
 elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
-    CSV_PATH = 'fixed_recalls.csv'
-    ENTERPRISE_FILE = 'Recalls_389911_05112026.csv'
+    CSV_PATH = 'fixed_recalls.csv'             # Your list of completed recalls
+    SOURCE_FILE = 'Recalls_389911_05112026.csv' # Your list of open/incomplete recalls
 
-    # --- AUTO-SYNC SECTION ---
-    if st.button("🔄 Refresh Fleet Recall Status", help="Searches NHTSA for all vehicles and updates the master CSV"):
-        if 'df' in locals() and not df.empty:
-            with st.spinner("Scanning NHTSA database for the entire fleet..."):
-                # Logic check: Ensure the master file path exists before syncing
-                if not os.path.exists(ENTERPRISE_FILE):
-                    pd.DataFrame(columns=['Vehicle', 'VIN', 'Campaign', 'Campaign Description']).to_csv(ENTERPRISE_FILE, index=False)
-                
-                count = sync_master_recall_file(df, ENTERPRISE_FILE, CSV_PATH)
-                st.success(f"Sync Complete! Found {count} active recalls across the fleet.")
-                st.rerun()
+    # --- REFRESH BUTTON LOGIC ---
+    if st.button("🔄 Refresh Fleet Recall Status", help="Filters the master list against your fixed history"):
+        if os.path.exists(SOURCE_FILE):
+            st.success("List refreshed and filtered.")
+            st.rerun()
         else:
-            st.error("Smartsheet data (df) not found. Cannot sync recalls without fleet VINs.")
+            st.error(f"Source file {SOURCE_FILE} not found.")
 
     # Ensure fixed_recalls.csv exists
     if not os.path.exists(CSV_PATH):
@@ -617,32 +611,27 @@ elif current_page == "Recalls":
 
     if os.path.exists(ENTERPRISE_FILE):
         active_alerts = []
+    if os.path.exists(SOURCE_FILE):
         try:
-            # Check if file size is greater than 0 to avoid EmptyDataError
-            if os.path.getsize(ENTERPRISE_FILE) > 0:
-                ent_df = pd.read_csv(ENTERPRISE_FILE, keep_default_na=False)
-            else:
-                ent_df = pd.DataFrame()
-        except Exception:
-            ent_df = pd.DataFrame()
-        
-        if not ent_df.empty:
-            for idx, row in ent_df.iterrows():
+            # Read the file containing the OPEN recalls
+            open_recalls_df = pd.read_csv(SOURCE_FILE, keep_default_na=False)
+            
+            for idx, row in open_recalls_df.iterrows():
                 vin = str(row.get('VIN', '')).strip()
                 camp_id = str(row.get('Campaign', '')).strip()
                 v_name = row.get('Vehicle', 'Unknown')
+                desc = row.get('Campaign Description', 'No Description')
                 
-                # Logic Integration: Check for 'Campaign Description' (New CSV) or 'Description' (Original)
-                desc = row.get('Campaign Description', row.get('Description', 'No Description Provided'))
-                
-                # Show if in Enterprise list but NOT in our local Fixed list
+                # Only show it if VIN + Campaign is NOT in our fixed_recalls.csv
                 if (vin + camp_id) not in fixed_keys:
                     active_alerts.append({
-                        "Vehicle": v_name, 
-                        "VIN": vin, 
+                        "Vehicle": v_name,
+                        "VIN": vin,
                         "CampaignID": camp_id,
                         "Description": desc
                     })
+        except Exception as e:
+            st.error(f"Error reading {SOURCE_FILE}: {e}")
 
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
@@ -664,19 +653,9 @@ elif current_page == "Recalls":
                 
                 # Button Logic: Adds the VIN+ID to fixed_recalls.csv and reloads
                 if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}", use_container_width=True):
-                    # 1. Permanent Log: Add to fixed_recalls.csv
+                    # 1. Add this specific recall to our permanent "Fixed" log
                     new_fix = pd.DataFrame([{"VIN": alert['VIN'], "CampaignID": alert['CampaignID']}])
-                    new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
-                    
-                    # 2. Update Active File: Remove this specific recall from the Enterprise CSV
-                    if os.path.exists(ENTERPRISE_FILE):
-                        current_ent = pd.read_csv(ENTERPRISE_FILE)
-                        # Filter out the specific VIN + Campaign ID match
-                        current_ent['VIN'] = current_ent['VIN'].astype(str).str.strip()
-                        current_ent['Campaign'] = current_ent['Campaign'].astype(str).str.strip()
-                        
-                        mask = ~((current_ent['VIN'] == alert['VIN']) & (current_ent['Campaign'] == alert['CampaignID']))
-                        current_ent[mask].to_csv(ENTERPRISE_FILE, index=False)
+                    new_fix.to_csv(CSV_PATH, mode='a', header=not os.path.exists(CSV_PATH), index=False)
                     
                     st.toast(f"Marked {alert['CampaignID']} as fixed.")
                     st.rerun()
