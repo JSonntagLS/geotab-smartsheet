@@ -632,14 +632,23 @@ elif current_page == "Recalls":
         seed_trigger = st.button("RUN HISTORICAL SEED", type="primary", use_container_width=True)
 
     if seed_trigger:
-        st.write("DEBUG: SEED BUTTON CLICKED") # If this doesn't show, the button logic is broken
         if 'df' in locals() and not df.empty:
-            with st.spinner("Processing..."):
-                # Call the diagnostic function
+            with st.status("Syncing with NHTSA Database...") as status:
                 count = seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
                 if count > 0:
-                    st.success(f"Added {count} historical recalls!")
+                    # Save the result to a "sticky note"
+                    st.session_state.sync_message = f"Successfully locked in {count} historical recalls."
+                    status.update(label="Sync Complete!", state="complete")
                     st.rerun()
+        else:
+            st.error("Cannot find fleet data. Refresh the page.")
+
+    # This part shows the message AFTER the rerun
+    if 'sync_message' in st.session_state:
+        st.success(st.session_state.sync_message)
+        if st.button("Dismiss Message"):
+            del st.session_state.sync_message
+            st.rerun()
         else:
             st.error("Cannot find fleet data. Refresh the page.")
 
