@@ -548,23 +548,21 @@ elif current_page == "Recalls":
             pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
     
     # --- ADMIN SEED SECTION ---
-    with st.expander("⚙️ System Administration (Manual Seed)"):
-        if st.button("Generate Master Fixed List (Full Clear)"):
-            all_found = []
-            pb = st.progress(0)
-            for i, (idx, row) in enumerate(df.iterrows()):
-                vin = str(row.get('VIN', '')).strip()
-                pb.progress((i + 1) / len(df))
-                if len(vin) == 17:
-                    try:
-                        vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-                        specs = requests.get(vpic_url, timeout=5).json()['Results']
-                        recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
-                        for r in recalls:
-                            all_found.append({"VIN": vin, "CampaignID": r.get('NHTSACampaignNumber')})
-                    except: continue
-            pd.DataFrame(all_found).drop_duplicates().to_csv(CSV_PATH, index=False)
-            st.rerun()
+    with st.expander("System Administration (Manual Seed)"):
+        st.write("This tool will wipe the current Master Recall CSV and perform a fresh scan of the entire fleet.")
+        if st.button("REGENERATE MASTER LIST (FULL RESET)"):
+            if 'df' in locals() and not df.empty:
+                with st.spinner("Clearing local data and re-scanning NHTSA..."):
+                    # 1. Clear the enterprise file by creating a blank one with headers
+                    pd.DataFrame(columns=['Vehicle', 'VIN', 'Campaign', 'Campaign Description']).to_csv(ENTERPRISE_FILE, index=False)
+                    
+                    # 2. Run the full sync
+                    count = sync_master_recall_file(df, ENTERPRISE_FILE, CSV_PATH)
+                    
+                    st.success(f"Reset Complete. {count} active recalls found.")
+                    st.rerun()
+            else:
+                st.error("No fleet data found to scan.")
 
     # --- MAIN DISPLAY LOGIC ---
     try:
