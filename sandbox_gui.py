@@ -115,6 +115,43 @@ def calculate_runway(row):
     except Exception:
         return 50000, 12
 
+def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
+    """
+    Initial one-time seed: Scans NHTSA for all history (173) 
+    minus current Enterprise active (24) = Fixed History.
+    """
+    # 1. Load current Enterprise Active list to know what NOT to mark as fixed
+    try:
+        active_df = pd.read_csv(active_csv_path)
+        active_keys = set(active_df['VIN'].astype(str).str.strip() + active_df['Campaign'].astype(str).str.strip())
+    except:
+        active_keys = set()
+
+    fixed_history = []
+    
+    # 2. Scan every VIN in the fleet via NHTSA API
+    for _, row in fleet_df.iterrows():
+        vin = str(row.get('VIN', '')).strip()
+        if len(vin) == 17:
+            try:
+                vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+                specs = requests.get(vpic_url, timeout=5).json()['Results'][0]
+                recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
+                
+                for r in recalls:
+                    camp_id = str(r.get('NHTSACampaignNumber', '')).strip()
+                    # If it exists in NHTSA but NOT in the Enterprise Active list, it's FIXED
+                    if (vin + camp_id) not in active_keys:
+                        fixed_history.append({"VIN": vin, "CampaignID": camp_id})
+            except:
+                continue
+    
+    # 3. Save to fixed_recalls.csv
+    if fixed_history:
+        new_fixed_df = pd.DataFrame(fixed_history)
+        new_fixed_df.to_csv(fixed_csv_path, index=False)
+    return len(fixed_history)
+
 def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
     """
     Checks NHTSA for every VIN in the fleet and updates the master CSV.
@@ -562,102 +599,74 @@ elif current_page == "GPS and Battery Health":
 elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
-    CSV_PATH = 'fixed_recalls.csv'             # Your list of completed recalls
-    SOURCE_FILE = 'Recalls_389911_05112026.csv' # Your list of open/incomplete recalls
+    CSV_PATH = 'fixed_recalls.csv'
+    SOURCE_FILE = 'Recalls_38991_05112026.csv' 
 
-    # --- REFRESH BUTTON LOGIC ---
-    if st.button("🔄 Refresh Fleet Recall Status", help="Filters the master list against your fixed history"):
-        if os.path.exists(SOURCE_FILE):
-            st.success("List refreshed and filtered.")
-            st.rerun()
-        else:
-            st.error(f"Source file {SOURCE_FILE} not found.")
-
-    # Ensure fixed_recalls.csv exists
+    # Ensure files exist
     if not os.path.exists(CSV_PATH):
         pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
-    else:
-        try:
-            # Check if file is empty or missing headers
-            test_df = pd.read_csv(CSV_PATH)
-            if 'VIN' not in test_df.columns:
-                pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
-        except Exception:
-            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+
+    # --- REFRESH & SEED ACTIONS ---
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("🔄 Refresh Active List", use_container_width=True):
+            st.rerun()
     
-    # --- ADMIN SEED SECTION ---
-    with st.expander("System Administration (Manual Seed)"):
-        st.write("This tool will wipe the current Master Recall CSV and perform a fresh scan of the entire fleet.")
-        if st.button("REGENERATE MASTER LIST (FULL RESET)"):
-            if 'df' in locals() and not df.empty:
-                with st.spinner("Clearing local data and re-scanning NHTSA..."):
-                    # 1. Clear the enterprise file by creating a blank one with headers
-                    pd.DataFrame(columns=['Vehicle', 'VIN', 'Campaign', 'Campaign Description']).to_csv(ENTERPRISE_FILE, index=False)
-                    
-                    # 2. Run the full sync
-                    count = sync_master_recall_file(df, ENTERPRISE_FILE, CSV_PATH)
-                    
-                    st.success(f"Reset Complete. {count} active recalls found.")
-                    st.rerun()
-            else:
-                st.error("No fleet data found to scan.")
+    with col_b:
+        with st.expander("One-Time Historical Sync"):
+            st.write("This compares NHTSA history vs your Enterprise CSV to find completed recalls.")
+            if st.button("RUN HISTORICAL SEED"):
+                if 'df' in locals() and not df.empty:
+                    with st.spinner("Processing historical diff..."):
+                        count = seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
+                        st.success(f"Added {count} historical recalls to Fixed List.")
+                        st.rerun()
 
     # --- MAIN DISPLAY LOGIC ---
     try:
         fixed_df = pd.read_csv(CSV_PATH)
+        # Create a lookup set of VIN+ID for fast filtering
         fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
-    except Exception:
+    except:
         fixed_keys = set()
 
-    if os.path.exists(ENTERPRISE_FILE):
-        active_alerts = []
     if os.path.exists(SOURCE_FILE):
         try:
-            # Read the file containing the OPEN recalls
-            open_recalls_df = pd.read_csv(SOURCE_FILE, keep_default_na=False)
+            open_recalls_df = pd.read_csv(SOURCE_FILE)
+            # Filter: Keep rows where VIN+Campaign is NOT in the fixed_keys set
+            active_alerts = open_recalls_df[~((open_recalls_df['VIN'].astype(str).str.strip() + 
+                                              open_recalls_df['Campaign'].astype(str).str.strip()).isin(fixed_keys))]
             
-            for idx, row in open_recalls_df.iterrows():
-                vin = str(row.get('VIN', '')).strip()
-                camp_id = str(row.get('Campaign', '')).strip()
-                v_name = row.get('Vehicle', 'Unknown')
-                desc = row.get('Campaign Description', 'No Description')
+            if not active_alerts.empty:
+                st.warning(f"Pending Recalls: {len(active_alerts)}")
                 
-                # Only show it if VIN + Campaign is NOT in our fixed_recalls.csv
-                if (vin + camp_id) not in fixed_keys:
-                    active_alerts.append({
-                        "Vehicle": v_name,
-                        "VIN": vin,
-                        "CampaignID": camp_id,
-                        "Description": desc
-                    })
-        except Exception as e:
-            st.error(f"Error reading {SOURCE_FILE}: {e}")
+                # Table Headers
+                h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
+                h1.write("**Vehicle**")
+                h2.write("**Campaign ID**")
+                h3.write("**Description**")
+                h4.write("**Action**")
+                st.divider()
 
-        if active_alerts:
-            st.warning(f"Total Active Recalls: {len(active_alerts)}")
-            
-            # Table Headers
-            h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
-            h1.write("**Vehicle**")
-            h2.write("**Campaign ID**")
-            h3.write("**Description**")
-            h4.write("**Action**")
-            st.divider()
-
-            for alert in active_alerts:
-                c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
-                
-                c1.write(f"**{alert['Vehicle']}**")
-                c2.write(f"**ID:** {alert['CampaignID']}")
-                c3.write(alert['Description'])
-                
-                # Button Logic: Adds the VIN+ID to fixed_recalls.csv and reloads
-                if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}", use_container_width=True):
-                    # 1. Add this specific recall to our permanent "Fixed" log
-                    new_fix = pd.DataFrame([{"VIN": alert['VIN'], "CampaignID": alert['CampaignID']}])
-                    new_fix.to_csv(CSV_PATH, mode='a', header=not os.path.exists(CSV_PATH), index=False)
+                for idx, alert in active_alerts.iterrows():
+                    v_vin = str(alert['VIN']).strip()
+                    v_camp = str(alert['Campaign']).strip()
                     
-                    st.toast(f"Marked {alert['CampaignID']} as fixed.")
-                    st.rerun()
+                    c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
+                    c1.write(f"**{alert.get('Vehicle', 'Unknown')}**")
+                    c2.write(f"**ID:** {v_camp}")
+                    c3.write(alert.get('Campaign Description', 'No Description'))
+                    
+                    if c4.button("FIXED", key=f"fix_{v_vin}_{v_camp}"):
+                        # Append this specific fix to the CSV
+                        new_entry = pd.DataFrame([{"VIN": v_vin, "CampaignID": v_camp}])
+                        new_entry.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                        st.toast(f"Marked {v_camp} as Fixed!")
+                        st.rerun()
+            else:
+                st.success("All recalls from the Enterprise list have been addressed!")
+                
+        except Exception as e:
+            st.error(f"Error processing recall data: {e}")
     else:
-        st.info(f"Awaiting source file: {ENTERPRISE_FILE}")
+        st.error(f"Source file {SOURCE_FILE} not found. Please ensure it is in the directory.")
