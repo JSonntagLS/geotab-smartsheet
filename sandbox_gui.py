@@ -519,7 +519,9 @@ elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
     CSV_PATH = 'fixed_recalls.csv'
-    if not os.path.exists(CSV_PATH):
+    
+    # Ensure file exists and has headers
+    if not os.path.exists(CSV_PATH) or os.stat(CSV_PATH).st_size == 0:
         pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
     
     # --- ADMIN SECTION: ONE-TIME SETUP ---
@@ -530,28 +532,48 @@ elif current_page == "Recalls":
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            for i, (idx, row) in enumerate(df.iterrows()):
-                vin = str(row.get('VIN', '')).strip()
-                status_text.text(f"Scanning {vin}...")
-                progress_bar.progress((i + 1) / len(df))
+            # Use the dataframe 'df' loaded from Smartsheet
+            if 'df' in locals() and not df.empty:
+                for i, (idx, row) in enumerate(df.iterrows()):
+                    vin = str(row.get('VIN', '')).strip()
+                    status_text.text(f"Scanning {vin}...")
+                    progress_bar.progress((i + 1) / len(df))
+                    
+                    if len(vin) == 17:
+                        try:
+                            vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+                            specs_res = requests.get(vpic_url, timeout=5).json()
+                            specs = specs_res['Results']
+                            
+                            # Use our cached function
+                            recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
+                            
+                            for r in recalls:
+                                camp_id = r.get('NHTSACampaignNumber')
+                                if camp_id:
+                                    all_found.append({"VIN": vin, "CampaignID": camp_id})
+                        except: continue
                 
-                if len(vin) == 17:
-                    try:
-                        vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-                        specs = requests.get(vpic_url, timeout=5).json()['Results']
-                        recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
-                        
-                        for r in recalls:
-                            all_found.append({"VIN": vin, "CampaignID": r.get('NHTSACampaignNumber')})
-                    except: continue
-            
-            seed_df = pd.DataFrame(all_found).drop_duplicates()
-            seed_df.to_csv(CSV_PATH, index=False)
-            st.success(f"Generated {len(seed_df)} entries in {CSV_PATH}. You can now edit this file manually.")
+                if all_found:
+                    seed_df = pd.DataFrame(all_found).drop_duplicates()
+                    seed_df.to_csv(CSV_PATH, index=False)
+                    st.success(f"Generated {len(seed_df)} entries in {CSV_PATH}. You can now edit this file manually.")
+                    st.rerun()
+                else:
+                    st.warning("No historical recalls found to seed.")
+            else:
+                st.error("Smartsheet data (df) not loaded.")
 
     # --- MAIN DISPLAY LOGIC ---
-    fixed_df = pd.read_csv(CSV_PATH)
-    fixed_keys = set(fixed_df['VIN'].astype(str) + fixed_df['CampaignID'].astype(str))
+    # Safe read to prevent the error you encountered
+    try:
+        fixed_df = pd.read_csv(CSV_PATH)
+        if fixed_df.empty:
+            fixed_keys = set()
+        else:
+            fixed_keys = set(fixed_df['VIN'].astype(str) + fixed_df['CampaignID'].astype(str))
+    except Exception:
+        fixed_keys = set()
 
     if 'df' in locals() and not df.empty:
         active_alerts = []
@@ -561,12 +583,16 @@ elif current_page == "Recalls":
                 v_name = row[col_map["name"]]
                 if len(vin) == 17:
                     try:
+                        # 1. Get specs
                         vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
                         specs = requests.get(vpic_url, timeout=5).json()['Results']
+                        
+                        # 2. Check for recalls
                         recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
+                        
                         for r in recalls:
                             camp_id = r.get('NHTSACampaignNumber')
-                            if (vin + str(camp_id)) not in fixed_keys:
+                            if camp_id and (vin + str(camp_id)) not in fixed_keys:
                                 active_alerts.append({
                                     "Vehicle": v_name, "VIN": vin, "CampaignID": camp_id,
                                     "Description": r.get('Summary', 'No Summary'),
@@ -584,6 +610,7 @@ elif current_page == "Recalls":
                 if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}"):
                     new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
                     new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                    st.cache_data.clear()
                     st.rerun()
                 st.divider()
         else:
