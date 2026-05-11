@@ -600,7 +600,7 @@ elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
     CSV_PATH = 'fixed_recalls.csv'
-    SOURCE_FILE = 'Recalls_38991_05112026.csv' 
+    SOURCE_FILE = 'Recalls_389911_05112026.csv' 
 
     # Ensure files exist
     if not os.path.exists(CSV_PATH):
