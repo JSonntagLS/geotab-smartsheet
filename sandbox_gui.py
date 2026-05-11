@@ -558,8 +558,17 @@ elif current_page == "Recalls":
             st.error(f"File {ENTERPRISE_FILE} not found on GitHub. Please upload it first.")
 
     # Ensure fixed_recalls.csv exists
-    if not os.path.exists(CSV_PATH) or os.stat(CSV_PATH).st_size == 0:
+    # Ensure fixed_recalls.csv exists with correct headers
+    if not os.path.exists(CSV_PATH):
         pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+    else:
+        try:
+            # Check if file is empty or missing headers
+            test_df = pd.read_csv(CSV_PATH)
+            if 'VIN' not in test_df.columns:
+                pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+        except Exception:
+            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
     
     # --- ADMIN SEED SECTION ---
     with st.expander("⚙️ System Administration (Manual Seed)"):
@@ -610,11 +619,12 @@ elif current_page == "Recalls":
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
             for alert in active_alerts:
-                # REPLACE THE LINE BELOW:
+                # Specified 4 columns with specific widths for better layout
                 c1, c2, c3, c4 = st.columns() 
                 
                 c1.write(f"**{alert['Vehicle']}**")
                 c2.write(f"**ID:** {alert['CampaignID']}")
+                c3.write(alert['Description'])
                 
                 # Button logic to update the local fixed list
                 if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}"):
