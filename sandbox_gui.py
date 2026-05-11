@@ -149,8 +149,14 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
     # 3. Save to fixed_recalls.csv
     if fixed_history:
         new_fixed_df = pd.DataFrame(fixed_history)
+        # Ensure column names are exactly VIN and CampaignID
+        new_fixed_df.columns = ['VIN', 'CampaignID']
         new_fixed_df.to_csv(fixed_csv_path, index=False)
-    return len(fixed_history)
+        
+        # Verify the save
+        verification_df = pd.read_csv(fixed_csv_path)
+        return len(verification_df)
+    return 0
 
 def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
     """
