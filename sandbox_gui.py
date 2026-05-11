@@ -533,7 +533,9 @@ elif current_page == "Recalls":
             status_text = st.empty()
             
             for i, (idx, row) in enumerate(df.iterrows()):
-                vin = str(row.get('VIN', '')).strip()
+                # Handle cases where VIN might be None or NaN
+                vin_raw = row.get('VIN')
+                vin = str(vin_raw).strip() if pd.notnull(vin_raw) else ""
                 status_text.text(f"Syncing History: {vin}")
                 progress.progress((i + 1) / len(df))
                 
@@ -541,7 +543,8 @@ elif current_page == "Recalls":
                     try:
                         vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
                         res = requests.get(vpic_url, timeout=5).json()
-                        specs = res['Results']
+                        # VPIC 'Results' is a list; take the first entry
+                        specs = res['Results'][0] if res['Results'] else {}
                         
                         recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
                         for r in recalls:
@@ -619,8 +622,8 @@ elif current_page == "Recalls":
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
             for alert in active_alerts:
-                # Specified 4 columns with specific widths for better layout
-                c1, c2, c3, c4 = st.columns() 
+                # Assign specific column ratios to handle long descriptions
+                c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
                 
                 c1.write(f"**{alert['Vehicle']}**")
                 c2.write(f"**ID:** {alert['CampaignID']}")
