@@ -149,13 +149,21 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
     # 3. Save to fixed_recalls.csv
     if fixed_history:
         new_fixed_df = pd.DataFrame(fixed_history)
-        # Ensure column names are exactly VIN and CampaignID
-        new_fixed_df.columns = ['VIN', 'CampaignID']
-        new_fixed_df.to_csv(fixed_csv_path, index=False)
+        # Ensure we are using the exact column names expected by the GUI logic
+        new_fixed_df = new_fixed_df[['VIN', 'CampaignID']] 
         
-        # Verify the save
-        verification_df = pd.read_csv(fixed_csv_path)
-        return len(verification_df)
+        # Absolute Path Check: Ensures it writes to the script's actual folder
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        absolute_path = os.path.join(current_dir, fixed_csv_path)
+        
+        try:
+            new_fixed_df.to_csv(absolute_path, index=False)
+            # Verification step: read it right back
+            check_df = pd.read_csv(absolute_path)
+            return len(check_df)
+        except Exception as e:
+            st.error(f"Write Failed: {e}")
+            return 0
     return 0
 
 def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
