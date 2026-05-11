@@ -508,76 +508,77 @@ elif current_page == "GPS and Battery Health":
 elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
-    # 1. Load or Initialize the Fixed Recalls CSV
     CSV_PATH = 'fixed_recalls.csv'
     if not os.path.exists(CSV_PATH):
         pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
     
-    # Read the history of fixed recalls
     fixed_df = pd.read_csv(CSV_PATH)
-    # Create a set of unique keys (VIN + CampaignID) for fast lookup
     fixed_keys = set(fixed_df['VIN'].astype(str) + fixed_df['CampaignID'].astype(str))
 
     if 'df' in locals() and not df.empty:
         active_alerts = []
-        vin_col = "VIN" # Ensure this matches your Smartsheet column name exactly
+        vin_col = "VIN"
+        debug_info = [] # List to store debug messages
         
         if vin_col in df.columns:
-            with st.spinner("Checking NHTSA database..."):
-                # We iterate through the fleet to check each VIN
+            with st.spinner("Scanning NHTSA Safety Databases..."):
                 for idx, row in df.iterrows():
+                    v_name = row[col_map["name"]]
                     vin = str(row[vin_col]).strip()
+                    
                     if len(vin) == 17:
                         try:
-                            # Using NHTSA Decode API to find campaign numbers
-                            res = requests.get(f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json", timeout=5).json()
-                            results = res['Results'][0]
+                            # SWITCHED TO DEDICATED RECALL ENDPOINT
+                            # This endpoint is more accurate than the general decoder
+                            url = f"https://api.nhtsa.gov/recalls/recallinfo?vin={vin}"
+                            res = requests.get(url, timeout=10).json()
                             
-                            campaign_id = results.get('NHTSACampaignNumber')
+                            count = res.get('Count', 0)
+                            results = res.get('results', [])
                             
-                            if campaign_id:
-                                # Create a unique key for this specific vehicle + specific recall
-                                lookup_key = vin + str(campaign_id)
-                                
-                                # Only add to the dashboard if it hasn't been marked fixed
-                                if lookup_key not in fixed_keys:
-                                    active_alerts.append({
-                                        "Vehicle": row[col_map["name"]],
-                                        "VIN": vin,
-                                        "CampaignID": campaign_id,
-                                        "Description": results.get('RecallDescription', 'Safety Recall Detected'),
-                                        "Date": datetime.now().strftime("%m/%d/%Y")
-                                    })
-                        except Exception:
-                            continue
+                            debug_info.append(f"✅ {v_name} ({vin}): Found {count} recalls.")
 
+                            for recall in results:
+                                campaign_id = recall.get('NHTSACampaignNumber')
+                                if campaign_id:
+                                    lookup_key = vin + str(campaign_id)
+                                    if lookup_key not in fixed_keys:
+                                        active_alerts.append({
+                                            "Vehicle": v_name,
+                                            "VIN": vin,
+                                            "CampaignID": campaign_id,
+                                            "Description": recall.get('Summary', 'No summary provided.'),
+                                            "Component": recall.get('Component', 'General')
+                                        })
+                        except Exception as e:
+                            debug_info.append(f"❌ {v_name} ({vin}): Error - {str(e)}")
+                    else:
+                        if vin and vin.lower() != "nan":
+                            debug_info.append(f"⚠️ {v_name}: Invalid VIN length ({len(vin)} chars)")
+
+            # --- DEBUG SECTION ---
+            with st.expander("🔍 View API Connection Logs (Debug)"):
+                for log in debug_info:
+                    st.text(log)
+
+            # --- DISPLAY SECTION ---
             if active_alerts:
                 st.write(f"### Active Fleet Recalls ({len(active_alerts)})")
                 
-                # Header for the custom table
-                h1, h2, h3, h4 = st.columns([2, 2, 4, 1])
-                h1.write("**Vehicle**")
-                h2.write("**Recall ID**")
-                h3.write("**Description**")
-                h4.write("**Action**")
-                st.divider()
-
                 for alert in active_alerts:
                     c1, c2, c3, c4 = st.columns([2, 2, 4, 1])
                     c1.write(f"**{alert['Vehicle']}**")
-                    c2.write(f"ID: {alert['CampaignID']}")
+                    c2.write(f"**ID:** {alert['CampaignID']}\n\n*Component: {alert['Component']}*")
+                    # Use a standard info box for the summary
                     c3.info(alert['Description'])
                     
-                    # Action: Save to CSV and Rerun
                     if c4.button("FIXED", key=f"fix_{alert['VIN']}_{alert['CampaignID']}"):
-                        # Append the new fix to the CSV file
                         new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
                         new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
-                        
                         st.toast(f"Recall cleared for {alert['Vehicle']}")
                         st.rerun()
                     st.divider()
             else:
                 st.success("No open recalls detected for the current fleet.")
         else:
-            st.warning(f"Column '{vin_col}' not found. Please verify the VIN column name in Smartsheet.")
+            st.warning(f"Could not find a column titled '{vin_col}' in Smartsheet.")
