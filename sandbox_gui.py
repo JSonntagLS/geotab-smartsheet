@@ -522,44 +522,20 @@ elif current_page == "Recalls":
     ENTERPRISE_FILE = 'Recalls_389911_05112026.csv'
 
     # --- AUTO-SYNC SECTION ---
-    if st.button("🚀 Auto-Sync Recall History"):
-        if os.path.exists(ENTERPRISE_FILE):
-            ent_df = pd.read_csv(ENTERPRISE_FILE)
-            # Create a set of VIN+Campaign that Enterprise says are OPEN
-            open_keys = set(ent_df['VIN'].astype(str).str.strip() + ent_df['Campaign'].astype(str).str.strip())
-            
-            all_fixed = []
-            progress = st.progress(0)
-            status_text = st.empty()
-            
-            for idx, row in ent_df.iterrows():
-                vin = str(row.get('VIN', '')).strip()
-                camp_id = str(row.get('Campaign', '')).strip()
+    if st.button("🔄 Refresh Fleet Recall Status", help="Searches NHTSA for all vehicles and updates the master CSV"):
+        if 'df' in locals() and not df.empty:
+            with st.spinner("Scanning NHTSA database for the entire fleet..."):
+                # Logic check: Ensure the master file path exists before syncing
+                if not os.path.exists(ENTERPRISE_FILE):
+                    pd.DataFrame(columns=['Vehicle', 'VIN', 'Campaign', 'Campaign Description']).to_csv(ENTERPRISE_FILE, index=False)
                 
-                if len(vin) == 17:
-                    try:
-                        # Decode VIN to get Make/Model/Year for NHTSA check
-                        vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-                        res = requests.get(vpic_url, timeout=5).json()
-                        specs = res['Results'] if res['Results'] else {}
-                        
-                        recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
-                        for r in recalls:
-                            nhtsa_id = str(r.get('NHTSACampaignNumber')).strip()
-                            # If NHTSA says there's a recall, but Enterprise says it's NOT open, mark as FIXED
-                            if (vin + nhtsa_id) not in open_keys:
-                                all_fixed.append({"VIN": vin, "CampaignID": nhtsa_id})
-                    except: 
-                        continue
-            
-            pd.DataFrame(all_fixed).drop_duplicates().to_csv(CSV_PATH, index=False)
-            st.success(f"History Created! Found {len(all_fixed)} historical fixes. 24 recalls should remain.")
-            st.rerun()
+                count = sync_master_recall_file(df, ENTERPRISE_FILE, CSV_PATH)
+                st.success(f"Sync Complete! Found {count} active recalls across the fleet.")
+                st.rerun()
         else:
-            st.error(f"File {ENTERPRISE_FILE} not found on GitHub. Please upload it first.")
+            st.error("Smartsheet data (df) not found. Cannot sync recalls without fleet VINs.")
 
     # Ensure fixed_recalls.csv exists
-    # Ensure fixed_recalls.csv exists with correct headers
     if not os.path.exists(CSV_PATH):
         pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
     else:
