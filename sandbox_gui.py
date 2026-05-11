@@ -119,10 +119,15 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
     st.info("Starting Scan... checking NHTSA API.")
     active_keys = set()
     try:
-        active_df = pd.read_csv(active_csv_path)
-        active_keys = set(active_df['VIN'].astype(str).str.strip() + active_df['Campaign'].astype(str).str.strip())
+        if os.path.exists(active_csv_path):
+            active_df = pd.read_csv(active_csv_path)
+            active_keys = set(active_df['VIN'].astype(str).str.strip() + active_df['Campaign'].astype(str).str.strip())
+        else:
+            st.warning(f"Note: {active_csv_path} not found. Proceeding with full fleet scan.")
+            active_keys = set() # Empty set so nothing is skipped
     except Exception as e:
-        st.error(f"Could not read active CSV: {e}")
+        st.info("Active list check skipped; proceeding with full scan.")
+        active_keys = set()
 
     fixed_history = []
     # Using a subset for the scan to speed up debugging if needed
