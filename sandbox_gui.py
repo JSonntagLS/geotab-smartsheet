@@ -628,21 +628,21 @@ elif current_page == "Recalls":
         
         if not ent_df.empty:
             for idx, row in ent_df.iterrows():
-            vin = str(row.get('VIN', '')).strip()
-            camp_id = str(row.get('Campaign', '')).strip()
-            v_name = row.get('Vehicle', 'Unknown')
-            
-            # Logic Integration: Check for 'Campaign Description' (New CSV) or 'Description' (Original)
-            desc = row.get('Campaign Description', row.get('Description', 'No Description Provided'))
-            
-            # Show if in Enterprise list but NOT in our local Fixed list
-            if (vin + camp_id) not in fixed_keys:
-                active_alerts.append({
-                    "Vehicle": v_name, 
-                    "VIN": vin, 
-                    "CampaignID": camp_id,
-                    "Description": desc
-                })
+                vin = str(row.get('VIN', '')).strip()
+                camp_id = str(row.get('Campaign', '')).strip()
+                v_name = row.get('Vehicle', 'Unknown')
+                
+                # Logic Integration: Check for 'Campaign Description' (New CSV) or 'Description' (Original)
+                desc = row.get('Campaign Description', row.get('Description', 'No Description Provided'))
+                
+                # Show if in Enterprise list but NOT in our local Fixed list
+                if (vin + camp_id) not in fixed_keys:
+                    active_alerts.append({
+                        "Vehicle": v_name, 
+                        "VIN": vin, 
+                        "CampaignID": camp_id,
+                        "Description": desc
+                    })
 
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
