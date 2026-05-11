@@ -116,55 +116,55 @@ def calculate_runway(row):
         return 50000, 12
 
 def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
-    """
-    Initial one-time seed: Scans NHTSA for all history (173) 
-    minus current Enterprise active (24) = Fixed History.
-    """
-    # 1. Load current Enterprise Active list to know what NOT to mark as fixed
+    st.info("Starting Scan... checking NHTSA API.")
+    active_keys = set()
     try:
         active_df = pd.read_csv(active_csv_path)
         active_keys = set(active_df['VIN'].astype(str).str.strip() + active_df['Campaign'].astype(str).str.strip())
-    except:
-        active_keys = set()
+    except Exception as e:
+        st.error(f"Could not read active CSV: {e}")
 
     fixed_history = []
-    
-    # 2. Scan every VIN in the fleet via NHTSA API
+    # Using a subset for the scan to speed up debugging if needed
     for _, row in fleet_df.iterrows():
         vin = str(row.get('VIN', '')).strip()
         if len(vin) == 17:
             try:
+                # Basic spec decode
                 vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-                specs = requests.get(vpic_url, timeout=5).json()['Results'][0]
-                recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
+                res = requests.get(vpic_url, timeout=5).json()
+                specs = res['Results'][0]
                 
+                recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
                 for r in recalls:
                     camp_id = str(r.get('NHTSACampaignNumber', '')).strip()
-                    # If it exists in NHTSA but NOT in the Enterprise Active list, it's FIXED
                     if (vin + camp_id) not in active_keys:
                         fixed_history.append({"VIN": vin, "CampaignID": camp_id})
             except:
                 continue
-    
-    # 3. Save to fixed_recalls.csv
+
     if fixed_history:
-        new_fixed_df = pd.DataFrame(fixed_history)
-        # Ensure we are using the exact column names expected by the GUI logic
-        new_fixed_df = new_fixed_df[['VIN', 'CampaignID']] 
-        
-        # Absolute Path Check: Ensures it writes to the script's actual folder
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        absolute_path = os.path.join(current_dir, fixed_csv_path)
+        debug_df = pd.DataFrame(fixed_history)
+        st.write("### Debug: Data Found")
+        st.write(f"Total items found: {len(debug_df)}")
+        st.dataframe(debug_df.head()) # Show first 5 rows in the UI
         
         try:
-            new_fixed_df.to_csv(absolute_path, index=False)
-            # Verification step: read it right back
-            check_df = pd.read_csv(absolute_path)
-            return len(check_df)
+            # Force write using absolute path to ensure it's not saving in a weird temp folder
+            abs_path = os.path.abspath(fixed_csv_path)
+            debug_df.to_csv(abs_path, index=False)
+            
+            # Double check by reading it back immediately
+            verify_df = pd.read_csv(abs_path)
+            st.success(f"Success! File saved to: {abs_path}")
+            st.write(f"Verified rows in file: {len(verify_df)}")
+            return len(verify_df)
         except Exception as e:
-            st.error(f"Write Failed: {e}")
+            st.error(f"HARD WRITE FAILURE: {e}")
             return 0
-    return 0
+    else:
+        st.warning("Scan finished, but 0 historical recalls were found.")
+        return 0
 
 def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
     """
