@@ -583,29 +583,26 @@ elif current_page == "Recalls":
     # --- MAIN DISPLAY LOGIC ---
     try:
         fixed_df = pd.read_csv(CSV_PATH)
-        fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
+        fixed_keys = set(fixed_df['VIN'].astype(str).strip() + fixed_df['CampaignID'].astype(str).strip())
     except:
         fixed_keys = set()
 
-    if 'df' in locals() and not df.empty:
+    if os.path.exists(ENTERPRISE_FILE):
         active_alerts = []
-        with st.spinner("Checking NHTSA for active fleet recalls..."):
-            for idx, row in df.iterrows():
-                vin = str(row.get('VIN', '')).strip()
-                v_name = row[col_map["name"]]
-                if len(vin) == 17:
-                    try:
-                        vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-                        specs = requests.get(vpic_url, timeout=5).json()['Results']
-                        recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
-                        for r in recalls:
-                            camp_id = str(r.get('NHTSACampaignNumber')).strip()
-                            if (vin + camp_id) not in fixed_keys:
-                                active_alerts.append({
-                                    "Vehicle": v_name, "VIN": vin, "CampaignID": camp_id,
-                                    "Description": r.get('Summary', 'No Summary')
-                                })
-                    except: continue
+        ent_df = pd.read_csv(ENTERPRISE_FILE)
+        
+        for idx, row in ent_df.iterrows():
+            vin = str(row.get('VIN', '')).strip()
+            camp_id = str(row.get('Campaign', '')).strip()
+            v_name = row.get('Vehicle', 'Unknown')
+            desc = row.get('Campaign Description', 'No Description')
+            
+            # Logic: If it's in the Enterprise file AND NOT in our Fixed file, show it.
+            if (vin + camp_id) not in fixed_keys:
+                active_alerts.append({
+                    "Vehicle": v_name, "VIN": vin, "CampaignID": camp_id,
+                    "Description": desc
+                })
 
         if active_alerts:
             st.warning(f"Total Active Recalls: {len(active_alerts)}")
@@ -617,8 +614,10 @@ elif current_page == "Recalls":
                 if c4.button("FIXED", key=f"btn_{alert['VIN']}_{alert['CampaignID']}"):
                     new_fix = pd.DataFrame([[alert['VIN'], alert['CampaignID']]], columns=['VIN', 'CampaignID'])
                     new_fix.to_csv(CSV_PATH, mode='a', header=False, index=False)
-                    st.cache_data.clear()
+                    st.success("Marked as fixed!")
                     st.rerun()
                 st.divider()
         else:
-            st.success("No active recalls found.")
+            st.success("All recalls from the Enterprise list have been marked as fixed!")
+    else:
+        st.error(f"Missing {ENTERPRISE_FILE}. Please ensure it is uploaded to GitHub.")
