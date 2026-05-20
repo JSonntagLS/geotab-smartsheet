@@ -671,9 +671,9 @@ elif current_page == "Recalls":
     # --- DATA LOADING & FILTERING ---
     try:
         if not os.path.exists(CSV_PATH) or os.path.getsize(CSV_PATH) == 0:
-            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
             
-        fixed_df = pd.read_csv(CSV_PATH)
+        fixed_df = pd.read_csv(CSV_PATH)
         fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
         
         if os.path.exists(SOURCE_FILE):
