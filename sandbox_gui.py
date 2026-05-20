@@ -677,7 +677,7 @@ elif current_page == "Recalls":
             st.info("Historical recall database not found. Run a full seed scan to generate it.")
     except Exception as e:
         st.error(f"Error handling recall files: {e}")
-            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+        pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
             
         fixed_df = pd.read_csv(CSV_PATH)
         st.write(f"### Historical Fixed Recalls Verified ({len(fixed_df)})")
