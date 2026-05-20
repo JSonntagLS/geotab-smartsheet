@@ -138,10 +138,23 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                 # Basic spec decode
                 vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
                 res = requests.get(vpic_url, timeout=5).json()
-                specs = res['Results'][0]
                 
-                recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
-                for r in recalls:
+                if 'Results' in res and len(res['Results']) > 0:
+                    specs = res['Results'][0]
+                    make = str(specs.get('Make', '')).strip()
+                    model = str(specs.get('Model', '')).strip()
+                    year = str(specs.get('ModelYear', '')).strip()
+                    
+                    if make and model and year and make.lower() != 'none' and model.lower() != 'none':
+                        recalls = check_vehicle_recall(make, model, year)
+                        for r in recalls:
+                            camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
+                            lookup_key = (vin + camp_id).replace(" ", "")
+                            if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
+                                fixed_history.append({"VIN": vin, "CampaignID": camp_id})
+            except Exception as e:
+                st.sidebar.error(f"VIN {vin} seed error: {e}")
+                continue
                     camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
                     lookup_key = (vin + camp_id).replace(" ", "")
                     if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
@@ -202,11 +215,27 @@ def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
                 # Decode VIN to get Make/Model/Year
                 vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
                 res = requests.get(vpic_url, timeout=5).json()
-                specs = res['Results'] if res['Results'] else {}
                 
-                # Check NHTSA for recalls
-                recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
-                for r in recalls:
+                if 'Results' in res and len(res['Results']) > 0:
+                    specs = res['Results'][0]
+                    make = str(specs.get('Make', '')).strip()
+                    model = str(specs.get('Model', '')).strip()
+                    year = str(specs.get('ModelYear', '')).strip()
+                    
+                    if make and model and year and make.lower() != 'none' and model.lower() != 'none':
+                        # Check NHTSA for recalls
+                        recalls = check_vehicle_recall(make, model, year)
+                        for r in recalls:
+                            camp_id = str(r.get('NHTSACampaignNumber', r.get('NHTSACampaignNumber', ''))).strip()
+                            if (vin + camp_id) not in fixed_keys:
+                                new_active_list.append({
+                                    "Vehicle": v_name,
+                                    "VIN": vin,
+                                    "Campaign": camp_id,
+                                    "Campaign Description": r.get('Summary', 'No description available.')
+                                })
+            except Exception as e:
+                continue
                     camp_id = str(r.get('NHTSACampaignNumber', r.get('NHTSACampaignNumber', ''))).strip()
                     if (vin + camp_id) not in fixed_keys:
                         new_active_list.append({
