@@ -139,21 +139,26 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                 vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
                 res = requests.get(vpic_url, timeout=5).json()
                 
-                if 'Results' in res and len(res['Results']) > 0:
-                    specs = res['Results'][0]
-                    make = str(specs.get('Make', '')).strip()
-                    model = str(specs.get('Model', '')).strip()
-                    year = str(specs.get('ModelYear', '')).strip()
-                    
-                    if make and model and year and make.lower() != 'none' and model.lower() != 'none':
+                if make and model and year and make.lower() != 'none' and model.lower() != 'none':
                         recalls = check_vehicle_recall(make, model, year)
                         if recalls:
                             st.write(f"🔍 API Match Found: {make} {model} returned {len(recalls)} API records.")
-                        for r in recalls:
-                            camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
-                            lookup_key = (vin + camp_id).replace(" ", "")
-                            if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
-                                fixed_history.append({"VIN": vin, "CampaignID": camp_id})
+                        
+                        # Gather all live active campaign numbers from NHTSA for this vehicle
+                        live_nhtsa_campaigns = {str(r.get('NHTSACampaignNumber', '')).strip().upper() for r in recalls}
+                        
+                        # Find matching records in your active enterprise file for this specific VIN
+                        if os.path.exists(active_csv_path):
+                            active_df = pd.read_csv(active_csv_path)
+                            vin_active_recalls = active_df[active_df['VIN'].astype(str).str.strip() == vin]
+                            
+                            for _, active_row in vin_active_recalls.iterrows():
+                                # Use 'Campaign' to match your source file column header definition
+                                active_camp = str(active_row.get('Campaign', '')).strip().upper()
+                                
+                                # If it's on your active sheet, but NO LONGER returned by the NHTSA API, it is FIXED
+                                if active_camp and (active_camp not in live_nhtsa_campaigns):
+                                    fixed_history.append({"VIN": vin, "CampaignID": active_camp})
             except Exception as e:
                 st.sidebar.error(f"VIN {vin} seed error: {e}")
                 continue
@@ -651,6 +656,9 @@ elif current_page == "Recalls":
     CSV_PATH = 'fixed_recalls.csv'
     SOURCE_FILE = 'Recalls_389911_05112026.csv' 
 
+    # Ensure files exist
+    if not os.path.exists(CSV_PATH):
+
     # --- ACTION BUTTONS ---
     # Placing these in columns at the top to ensure they are high-level
     btn_col1, btn_col2 = st.columns(2)
@@ -854,12 +862,13 @@ elif current_page == "Recalls":
 
                 for idx, alert in active_alerts.iterrows():
                     v_vin = str(alert['VIN']).strip()
-                    v_camp = str(alert['Campaign']).strip()
+                    # Fallback lookup ensuring both 'Campaign' or 'CampaignID' variants function smoothly
+                    v_camp = str(alert.get('Campaign', alert.get('CampaignID', ''))).strip()
                     
                     c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
                     c1.write(f"**{alert.get('Vehicle', 'Unknown')}**")
                     c2.write(f"**ID:** {v_camp}")
-                    c3.write(alert.get('Campaign Description', 'No Description'))
+                    c3.write(alert.get('Campaign Description', alert.get('Description', 'No Description')))
                     
                     if c4.button("FIXED", key=f"fix_{v_vin}_{v_camp}"):
                         # Append this specific fix to the CSV
