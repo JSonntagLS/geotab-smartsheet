@@ -696,11 +696,14 @@ elif current_page == "Recalls":
 
                 # Iterate through active alerts and build row layout
                 for idx_alert, row_alert in active_alerts.iterrows():
-                    v_name = row_alert.get('Vehicle', 'Unknown')
-                    v_loc = row_alert.get('Location', 'Unknown')
+                    v_name = row_alert.get('Vehicle', 'Unknown Fleet Vehicle')
+                    v_loc = row_alert.get('Location', 'Unassigned Location')
                     v_vin = str(row_alert.get('VIN', '')).strip()
-                    v_camp = str(row_alert.get('Campaign', '')).strip()
-                    v_desc = row_alert.get('Campaign Description', 'No description available.')
+                    v_camp = str(row_alert.get('CampaignID', row_alert.get('Campaign', ''))).strip()
+                    v_desc = row_alert.get('Campaign Description', 'Details not provided in source CSV.')
+                    
+                    # Create unique key derived from row data to prevent Streamit key collisions
+                    unique_alert_id = f"{v_vin}_{v_camp}"
                     
                     # Create unique key derived from row data to prevent Streamit key collisions
                     unique_alert_id = f"{v_vin}_{v_camp}"
