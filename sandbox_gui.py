@@ -684,7 +684,7 @@ elif current_page == "Recalls":
         st.dataframe(fixed_df, use_container_width=True, hide_index=True)
     except Exception as e:
         st.error(f"Error rendering historical data view: {e}")
-            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+        pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
         fixed_df = pd.read_csv(CSV_PATH)
         fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
         
