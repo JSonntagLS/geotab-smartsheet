@@ -155,12 +155,6 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
             except Exception as e:
                 st.sidebar.error(f"VIN {vin} seed error: {e}")
                 continue
-                    camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
-                    lookup_key = (vin + camp_id).replace(" ", "")
-                    if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
-                        fixed_history.append({"VIN": vin, "CampaignID": camp_id})
-            except:
-                continue
 
     if fixed_history:
         debug_df = pd.DataFrame(fixed_history)
@@ -234,16 +228,6 @@ def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
                                     "Campaign": camp_id,
                                     "Campaign Description": r.get('Summary', 'No description available.')
                                 })
-            except Exception as e:
-                continue
-                    camp_id = str(r.get('NHTSACampaignNumber', r.get('NHTSACampaignNumber', ''))).strip()
-                    if (vin + camp_id) not in fixed_keys:
-                        new_active_list.append({
-                            "Vehicle": v_name,
-                            "VIN": vin,
-                            "Campaign": camp_id,
-                            "Campaign Description": r.get('Summary', 'No description available.')
-                        })
             except Exception:
                 continue
 
@@ -659,7 +643,8 @@ elif current_page == "GPS and Battery Health":
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
 
 elif current_page == "Recalls":
-    st.write("DEBUG: RECALL PAGE LOADED") # This should appear immediately
+    st.title("Vehicle Recalls")
+    st.write("NHTSA Recall scan interface placeholder.")
     st.title("Safety Recall Management")
     
     CSV_PATH = 'fixed_recalls.csv'
