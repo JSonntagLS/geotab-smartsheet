@@ -144,10 +144,10 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                 for r in recalls:
                     camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
                     lookup_key = (vin + camp_id).replace(" ", "")
-                    if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
-                        fixed_history.append({"VIN": vin, "CampaignID": camp_id})
-            except:
-                continue
+                    if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
+                        fixed_history.append({"VIN": vin, "CampaignID": camp_id})
+            except:
+                continue
 
     if fixed_history:
         debug_df = pd.DataFrame(fixed_history)
