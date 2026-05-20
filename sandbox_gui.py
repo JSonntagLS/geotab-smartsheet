@@ -147,6 +147,8 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                     
                     if make and model and year and make.lower() != 'none' and model.lower() != 'none':
                         recalls = check_vehicle_recall(make, model, year)
+                        if recalls:
+                            st.write(f"🔍 API Match Found: {make} {model} returned {len(recalls)} API records.")
                         for r in recalls:
                             camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
                             lookup_key = (vin + camp_id).replace(" ", "")
