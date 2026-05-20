@@ -663,10 +663,10 @@ elif current_page == "Recalls":
 
     # This part shows the message AFTER the rerun
     if 'sync_message' in st.session_state:
-        st.success(st.session_state.sync_message)
-        if st.button("Dismiss Message"):
-            del st.session_state.sync_message
-            st.rerun()
+        st.success(st.session_state.sync_message)
+        if st.button("Dismiss Message"):
+            del st.session_state.sync_message
+            st.rerun()
 
     # --- DATA LOADING & FILTERING ---
     try:
