@@ -141,8 +141,8 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                 specs = res['Results'][0]
                 
                 recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
-                for r in recalls:
-                    camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
+                for r in recalls:
+                    camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
                     lookup_key = (vin + camp_id).replace(" ", "")
                     if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
                         fixed_history.append({"VIN": vin, "CampaignID": camp_id})
@@ -671,8 +671,12 @@ elif current_page == "Recalls":
             st.rerun()
 
     # --- DATA LOADING & FILTERING ---
+    # --- DATA LOADING & FILTERING ---
     try:
         if not os.path.exists(CSV_PATH):
+            st.info("Historical recall database not found. Run a full seed scan to generate it.")
+    except Exception as e:
+        st.error(f"Error handling recall files: {e}")
             pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
             
         fixed_df = pd.read_csv(CSV_PATH)
