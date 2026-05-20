@@ -245,12 +245,7 @@ if 'df' not in st.session_state:
 # Always point 'df' to the session state version
 df = st.session_state.get('df', pd.DataFrame())
 
-    date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None)
-    # If found, rename it to a friendly key for the rest of the script
-    if date_col_title:
-        df = df.rename(columns={date_col_title: "Date of Last Oil Change"})
-    
-    # --- NEW: Map the Date ID to the actual Column Title ---
+if not df.empty:
     date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None)
     # If found, rename it to a friendly key for the rest of the script
     if date_col_title:
@@ -276,10 +271,7 @@ df = st.session_state.get('df', pd.DataFrame())
     
     for col in [col_map["allowance"], col_map["projected"], col_map["actual"]]:
         # Now that we've used force_num, casting to int will not crash
-        df_display[col] = df_display[col].astype(int)
-
-except Exception as e:
-    st.error(f"Error loading Smartsheet: {e}")
+        df_display[col] = df_display[col].fillna(0).astype(int)
 
 # --- SIDEBAR NAVIGATION & CUSTOM UI ---
 # Tight two-line title
