@@ -678,17 +678,55 @@ elif current_page == "Recalls":
         if os.path.exists(SOURCE_FILE):
             open_recalls_df = pd.read_csv(SOURCE_FILE)
             # Filter logic
-            active_alerts = open_recalls_df[~((open_recalls_df['VIN'].astype(str).str.strip() + 
-                                              open_recalls_df['Campaign'].astype(str).str.strip()).isin(fixed_keys))]
+            active_alerts = open_recalls_df[~((open_recalls_df['VIN'].astype(str).str.strip() + open_recalls_df['Campaign'].astype(str).str.strip()).isin(fixed_keys))]
             
-            st.write(f"### Current Active Recalls ({len(active_alerts)})")
-            
-            if not active_alerts.empty:
-                st.table(active_alerts[['Vehicle', 'VIN', 'Campaign', 'Campaign Description']].head(25))
+            if active_alerts.empty:
+                st.success("🎉 No active safety recalls detected for the current fleet!")
             else:
-                st.success("No active recalls found!")
+                st.subheader(f"⚠️ Active Safety Recalls ({len(active_alerts)})")
+                
+                # Setup column headers for the interactive grid
+                rec_h1, rec_h2, rec_h3, rec_h4, rec_h5 = st.columns([2, 2, 2, 4, 2])
+                rec_h1.write("**Vehicle / Location**")
+                rec_h2.write("**VIN**")
+                rec_h3.write("**NHTSA Campaign**")
+                rec_h4.write("**Description**")
+                rec_h5.write("**Action**")
+                st.divider()
+
+                # Iterate through active alerts and build row layout
+                for idx_alert, row_alert in active_alerts.iterrows():
+                    v_name = row_alert.get('Vehicle', 'Unknown')
+                    v_loc = row_alert.get('Location', 'Unknown')
+                    v_vin = str(row_alert.get('VIN', '')).strip()
+                    v_camp = str(row_alert.get('Campaign', '')).strip()
+                    v_desc = row_alert.get('Campaign Description', 'No description available.')
+                    
+                    # Create unique key derived from row data to prevent Streamit key collisions
+                    unique_alert_id = f"{v_vin}_{v_camp}"
+                    
+                    r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([2, 2, 2, 4, 2])
+                    
+                    r_col1.write(f"**{v_name}**  \n📍 {v_loc}")
+                    r_col2.code(v_vin)
+                    r_col3.write(v_camp)
+                    r_col4.write(v_desc)
+                    
+                    if r_col5.button("MARK RESOLVED", key=f"resolve_{unique_alert_id}", use_container_width=True):
+                        try:
+                            # Append the resolved recall parameters to our historical tracking log
+                            new_fixed_entry = pd.DataFrame([{"VIN": v_vin, "CampaignID": v_camp}])
+                            new_fixed_entry.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                            
+                            st.toast(f"Recall {v_camp} marked as resolved for {v_name}!", icon="✅")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update historical tracking file: {e}")
+                    st.divider()
+        else:
+            st.error(f"Master source file missing: '{SOURCE_FILE}' could not be located on disk.")
     except Exception as e:
-        st.error(f"Page Error: {e}")
+        st.error(f"An error occurred while running the recall evaluation engine: {e}")
 
 elif current_page == "Recalls":
     st.title("Safety Recall Management")
