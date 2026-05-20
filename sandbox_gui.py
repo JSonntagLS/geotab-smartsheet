@@ -661,6 +661,47 @@ elif current_page == "Recalls":
         # We are moving this out of the expander temporarily to ensure it works
         seed_trigger = st.button("RUN HISTORICAL SEED", type="primary", use_container_width=True)
 
+    # --- SURGICAL EDIT START: RECALLS PAGE VISUAL DEBUGGER ---
+    with st.expander("🛠️ Recalls Environment Debugger", expanded=True):
+        st.markdown("### File System & Session Diagnostics")
+        dbg_col1, dbg_col2, dbg_col3 = st.columns(3)
+        
+        with dbg_col1:
+            st.markdown(f"**Fixed CSV (`{CSV_PATH}`):**")
+            if os.path.exists(CSV_PATH):
+                try:
+                    f_df = pd.read_csv(CSV_PATH)
+                    st.success(f"Found on disk\n\nRows: {len(f_df)} | Size: {os.path.getsize(CSV_PATH)} bytes")
+                    st.caption(f"Columns: {list(f_df.columns)}")
+                except Exception as de:
+                    st.error(f"Error reading file: {de}")
+            else:
+                st.warning("File does not exist yet. Run seed to create it.")
+
+        with dbg_col2:
+            st.markdown(f"**Source CSV (`{SOURCE_FILE}`):**")
+            if os.path.exists(SOURCE_FILE):
+                try:
+                    s_df = pd.read_csv(SOURCE_FILE)
+                    st.success(f"Found on disk\n\nRows: {len(s_df)} | Size: {os.path.getsize(SOURCE_FILE)} bytes")
+                    st.caption(f"Columns: {list(s_df.columns)}")
+                except Exception as de:
+                    st.error(f"Error reading file: {de}")
+            else:
+                st.error("Source file missing. Check active file path naming configuration.")
+
+        with dbg_col3:
+            st.markdown("**Session Fleet Memory:**")
+            state_df = st.session_state.get('df', pd.DataFrame())
+            if not state_df.empty:
+                vin_count = state_df['VIN'].notnull().sum() if 'VIN' in state_df.columns else 0
+                st.success(f"Active in Memory\n\nTotal Rows: {len(state_df)}\n\nRows with VINs: {vin_count}")
+                if 'VIN' not in state_df.columns:
+                    st.error("CRITICAL: 'VIN' column header missing from Smartsheet data mapping.")
+            else:
+                st.error("Smartsheet dataframe is completely empty in session state.")
+    # --- SURGICAL EDIT END ---
+
     if seed_trigger:
         # Use the persistent session state data
         fleet_to_scan = st.session_state.get('df', pd.DataFrame())
