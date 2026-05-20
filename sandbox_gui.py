@@ -632,7 +632,7 @@ elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
     CSV_PATH = 'fixed_recalls.csv'
-    SOURCE_FILE = 'Recalls_38991_05112026.csv' 
+    SOURCE_FILE = 'Recalls_389911_05112026.csv' 
 
     # --- ACTION BUTTONS ---
     # Placing these in columns at the top to ensure they are high-level
@@ -681,9 +681,9 @@ elif current_page == "Recalls":
             active_alerts = open_recalls_df[~((open_recalls_df['VIN'].astype(str).str.strip() + open_recalls_df['Campaign'].astype(str).str.strip()).isin(fixed_keys))]
             
             if active_alerts.empty:
-                st.success("🎉 No active safety recalls detected for the current fleet!")
+                st.success("No active safety recalls detected for the current fleet!")
             else:
-                st.subheader(f"⚠️ Active Safety Recalls ({len(active_alerts)})")
+                st.subheader(f"Active Safety Recalls ({len(active_alerts)})")
                 
                 # Setup column headers for the interactive grid
                 rec_h1, rec_h2, rec_h3, rec_h4, rec_h5 = st.columns([2, 2, 2, 4, 2])
