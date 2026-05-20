@@ -143,7 +143,7 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                 recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
                 for r in recalls:
                     camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
-                    lookup_key = (vin + camp_id).replace(" ", "")
+                    lookup_key = (vin + camp_id).replace(" ", "")
                     if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
                         fixed_history.append({"VIN": vin, "CampaignID": camp_id})
             except:
