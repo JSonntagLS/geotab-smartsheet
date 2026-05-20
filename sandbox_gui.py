@@ -141,12 +141,13 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                 specs = res['Results'][0]
                 
                 recalls = check_vehicle_recall(specs.get('Make'), specs.get('Model'), specs.get('ModelYear'))
-                for r in recalls:
-                    camp_id = str(r.get('NHTSACampaignNumber', '')).strip()
-                    if (vin + camp_id) not in active_keys:
-                        fixed_history.append({"VIN": vin, "CampaignID": camp_id})
-            except:
-                continue
+                for r in recalls:
+                    camp_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
+                    lookup_key = (vin + camp_id).replace(" ", "")
+                    if lookup_key not in {k.replace(" ", "").upper() for k in active_keys}:
+                        fixed_history.append({"VIN": vin, "CampaignID": camp_id})
+            except:
+                continue
 
     if fixed_history:
         debug_df = pd.DataFrame(fixed_history)
@@ -157,7 +158,8 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
             debug_df = debug_df.drop_duplicates()
             
             # 2. Force Write
-            debug_df.to_csv(fixed_csv_path, index=False)
+            debug_df.columns = ['VIN', 'CampaignID']
+            debug_df.to_csv(fixed_csv_path, index=False)
             
             # 3. VERIFICATION: Immediately try to read it back
             if os.path.exists(fixed_csv_path):
@@ -670,7 +672,14 @@ elif current_page == "Recalls":
 
     # --- DATA LOADING & FILTERING ---
     try:
-        if not os.path.exists(CSV_PATH) or os.path.getsize(CSV_PATH) == 0:
+        if not os.path.exists(CSV_PATH):
+            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+            
+        fixed_df = pd.read_csv(CSV_PATH)
+        st.write(f"### Historical Fixed Recalls Verified ({len(fixed_df)})")
+        st.dataframe(fixed_df, use_container_width=True, hide_index=True)
+    except Exception as e:
+        st.error(f"Error rendering historical data view: {e}")
             pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
         fixed_df = pd.read_csv(CSV_PATH)
         fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
