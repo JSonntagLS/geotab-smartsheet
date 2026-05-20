@@ -663,19 +663,17 @@ elif current_page == "Recalls":
 
     # This part shows the message AFTER the rerun
     if 'sync_message' in st.session_state:
-        st.success(st.session_state.sync_message)
-        if st.button("Dismiss Message"):
-            del st.session_state.sync_message
-            st.rerun()
-        else:
-            st.error("Cannot find fleet data. Refresh the page.")
+        st.success(st.session_state.sync_message)
+        if st.button("Dismiss Message"):
+            del st.session_state.sync_message
+            st.rerun()
 
     # --- DATA LOADING & FILTERING ---
     try:
-        if not os.path.exists(CSV_PATH):
-            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
-            
-        fixed_df = pd.read_csv(CSV_PATH)
+        if not os.path.exists(CSV_PATH) or os.path.getsize(CSV_PATH) == 0:
+            pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+            
+        fixed_df = pd.read_csv(CSV_PATH)
         fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
         
         if os.path.exists(SOURCE_FILE):
