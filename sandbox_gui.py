@@ -643,7 +643,6 @@ elif current_page == "GPS and Battery Health":
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
 
 elif current_page == "Recalls":
-    st.title("Vehicle Recalls")
     st.write("NHTSA Recall scan interface placeholder.")
     st.title("Safety Recall Management")
     
