@@ -159,7 +159,7 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
             
             # 2. Force Write
             debug_df.columns = ['VIN', 'CampaignID']
-            debug_df.to_csv(fixed_csv_path, index=False)
+            debug_df.to_csv(fixed_csv_path, index=False)
             
             # 3. VERIFICATION: Immediately try to read it back
             if os.path.exists(fixed_csv_path):
