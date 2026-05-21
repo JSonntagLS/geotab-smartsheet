@@ -153,9 +153,15 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
         try:
             vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
             st.session_state.harvest_logs.append(f"   📡 Ping vPIC Decoder -> `{vpic_url}`")
-            vpic_res = requests.get(vpic_url, timeout=10).json()
+            vpic_data = requests.get(vpic_url, timeout=10).json()
             
-            if 'Results' not in vpic_res or not vpic_res['Results']:
+            # Direct protection against list/dictionary payload nesting variation
+            if isinstance(vpic_data, list) and len(vpic_data) > 0:
+                vpic_res = vpic_data
+            else:
+                vpic_res = vpic_data
+                
+            if not isinstance(vpic_res, dict) or 'Results' not in vpic_res or not vpic_res['Results']:
                 st.session_state.harvest_logs.append(f"   ❌ vPIC Failure: Payload missing 'Results' array field.")
                 total_skipped += 1
                 continue
