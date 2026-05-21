@@ -82,15 +82,17 @@ def process_recall_sync():
                 model_val = str(cell.value).strip() if cell.value else ""
             elif cell.column_id == COL_YEAR:
                 if cell.value:
+                    # Isolate element if Smartsheet packages it as a list item
                     if isinstance(cell.value, list):
-                        raw_item = str(cell.value) if len(cell.value) > 0 else ""
+                        raw_item = cell.value if len(cell.value) > 0 else ""
                     else:
-                        raw_item = str(cell.value)
+                        raw_item = cell.value
                     
-                    # Safe conversion bypassing split manipulation errors
-                    if '.' in raw_item:
-                        raw_item = raw_item.split('.')
-                    year_val = str(raw_item).strip()
+                    # Convert float digits safely to an integer string without split arrays
+                    try:
+                        year_val = str(int(float(raw_item))).strip()
+                    except (ValueError, TypeError):
+                        year_val = str(raw_item).strip()
 
         if vin_val and make_val and model_val and year_val:
             vehicles_to_check.append({
