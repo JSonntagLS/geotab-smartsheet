@@ -1,11 +1,31 @@
-name: recall-enrichment-env
-channels:
-  - conda-forge
-  - defaults
-dependencies:
-  - python=3.11
-  - pip
-  - pip:
-      - streamlit
-      - pandas
-      - requests
+name: Fetch Detailed Recall Data
+
+on:
+  workflow_dispatch: 
+
+jobs:
+  run-fetcher:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas requests
+
+      - name: Run Recall Fetcher Script
+        run: python recall_detail_fetcher.py
+
+      - name: Commit and Push Detailed Results
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add detailed_recalls.csv
+          git diff-index --quiet HEAD || git commit -m "Automated update of detailed recall information"
+          git push
