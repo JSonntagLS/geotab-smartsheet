@@ -120,93 +120,86 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
         st.session_state.harvest_logs = []
     
     st.session_state.harvest_logs.clear()
-    st.session_state.harvest_logs.append("🛫 **Starting Direct File-Based Harvester Scan...**")
+    st.session_state.harvest_logs.append("🛫 **Starting Granular Fleet Harvester Scan (Smartsheet Source)...**")
     
     fixed_history = []
-    
-    if not os.path.exists(active_csv_path):
-        st.session_state.harvest_logs.append(f"❌ Critical Error: Source file `{active_csv_path}` was not found.")
+    total_processed = 0
+    total_skipped = 0
+
+    if fleet_df is None or fleet_df.empty:
+        st.session_state.harvest_logs.append("❌ Critical Error: Master fleet dataframe is empty or unreadable.")
         return 0
 
-    try:
-        # Read the active recalls sheet directly as our data source
-        source_df = pd.read_csv(active_csv_path)
-    except Exception as e:
-        st.session_state.harvest_logs.append(f"❌ Error reading source CSV: {str(e)}")
-        return 0
+    st.session_state.harvest_logs.append(f"📋 Total individual rows detected in fleet dataframe: **{len(fleet_df)}**")
 
-    # Deduplicate by vehicle specs so we don't query the same make/model/year combination repeatedly
-    unique_vehicles = source_df[['Make', 'Model', 'Year']].drop_duplicates()
-    st.session_state.harvest_logs.append(f"📋 Found **{len(unique_vehicles)}** unique vehicle models to scan in the active file.")
-
-    # Create a reverse mapping dictionary from the active file to quickly assign VIN numbers to campaigns
-    # This maps 'Make_Model_Year' -> list of known VINs for that vehicle model group
-    vin_map = {}
-    for idx, row in source_df.iterrows():
-        v_vin = str(row.get('VIN', '')).strip().upper()
-        v_make = str(row.get('Make', '')).strip().upper()
-        v_model = str(row.get('Model', '')).strip().upper()
-        v_year = str(row.get('Year', '')).strip()
+    # Loop through every single individual vehicle record in your main Smartsheet fleet
+    for idx, row in fleet_df.iterrows():
+        raw_vin = row.get('VIN')
         
-        if v_vin and v_make and v_model and v_year:
-            group_key = f"{v_make}_{v_model}_{v_year}"
-            if group_key not in vin_map:
-                vin_map[group_key] = set()
-            vin_map[group_key].add(v_vin)
-
-    # Begin the lookup loop
-    for idx, row in unique_vehicles.iterrows():
-        make = str(row.get('Make', '')).strip()
-        model = str(row.get('Model', '')).strip()
-        year = str(row.get('Year', '')).strip()
-        
-        if not make or not model or not year:
+        # Clean and validate the string to ensure it's an actual vehicle data row
+        if pd.isna(raw_vin) or raw_vin is None:
+            total_skipped += 1
             continue
             
-        group_key = f"{make.upper()}_{model.upper()}_{year.upper()}"
-        associated_vins = vin_map.get(group_key, set())
+        vin = str(raw_vin).strip().upper()
+        if len(vin) != 17:
+            total_skipped += 1
+            continue
 
-        st.session_state.harvest_logs.append(f"🔍 Querying NHTSA for: **{year} {make} {model}**")
+        # Extract text attributes directly from the master fleet sheet columns
+        # Using fallback mapping targets matching Geotab/Smartsheet column layout rules
+        make = str(row.get('Make', row.get('Vehicle Make', ''))).strip()
+        model = str(row.get('Model', row.get('Vehicle Model', ''))).strip()
+        year = str(row.get('Year', row.get('Model Year', row.get('Vehicle Year', '')))).strip()
+
+        if not make or not model or not year or make.lower() == 'none' or model.lower() == 'none':
+            st.session_state.harvest_logs.append(f"⚠️ Skipped VIN `{vin}`: Missing/incomplete text data labels (`{year} {make} {model}`).")
+            total_skipped += 1
+            continue
+
+        total_processed += 1
+        st.session_state.harvest_logs.append(f"🔍 Processing Car #{total_processed}: VIN `{vin}` ({year} {make} {model})")
         
         try:
-            # Run the tested, working vehicle specs endpoint
+            # Query the tested, highly stable vehicle category endpoint
             recalls = check_vehicle_recall(make, model, year)
             
             if recalls:
-                st.session_state.harvest_logs.append(f"   🟢 Found {len(recalls)} historical recall IDs for this type.")
+                st.session_state.harvest_logs.append(f"   🟢 Found {len(recalls)} historical campaigns for this vehicle type.")
                 for r in recalls:
                     campaign_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
                     if campaign_id:
-                        # Map this historical campaign ID to every matching vehicle VIN in your fleet
-                        for vin in associated_vins:
-                            fixed_history.append({
-                                "VIN": vin,
-                                "CampaignID": campaign_id,
-                                "Make": make,
-                                "Model": model,
-                                "Year": year
-                            })
+                        # Append specifically bound to this exact vehicle's VIN
+                        fixed_history.append({
+                            "VIN": vin,
+                            "CampaignID": campaign_id,
+                            "Make": make,
+                            "Model": model,
+                            "Year": year
+                        })
             else:
-                st.session_state.harvest_logs.append(f"   ℹ️ No records found via API for {year} {make} {model}.")
+                st.session_state.harvest_logs.append(f"   ℹ️ API returned 0 records for this {year} {make} {model}.")
                 
         except Exception as e:
-            st.session_state.harvest_logs.append(f"   💥 Exception during lookup: {str(e)}")
+            st.session_state.harvest_logs.append(f"   💥 API Query Exception: {str(e)}")
             continue
 
-    # Commit historical data directly to your newly structured file
+    st.session_state.harvest_logs.append(f"📋 **Harvest Run Summary:** Checked {total_processed} cars. Skipped {total_skipped} rows.")
+
+    # Commit itemized data rows directly to your local file storage layer
     if fixed_history:
         try:
             debug_df = pd.DataFrame(fixed_history).drop_duplicates()
-            # Ensure output strictly mirrors your expected CSV headers
+            # Enforce exact alignment with your custom csv schema headers
             debug_df = debug_df[['VIN', 'CampaignID', 'Make', 'Model', 'Year']]
             debug_df.to_csv(fixed_csv_path, index=False)
-            st.session_state.harvest_logs.append(f"✅ **SUCCESS:** Wrote {len(debug_df)} total historical entries directly to `{fixed_csv_path}`!")
+            st.session_state.harvest_logs.append(f"✅ **SUCCESS:** Successfully wrote {len(debug_df)} row entries to `{fixed_csv_path}`!")
             return len(debug_df)
         except Exception as e:
-            st.session_state.harvest_logs.append(f"🚨 **WRITE FAILURE:** Could not commit data to file: {str(e)}")
+            st.session_state.harvest_logs.append(f"🚨 **HARD WRITE FAILURE:** Could not save csv: {str(e)}")
             return 0
     else:
-        st.session_state.harvest_logs.append("⚠️ **Scan Complete:** No historical records were returned by the API loops.")
+        st.session_state.harvest_logs.append("⚠️ **Scan Complete:** Zero historical records were generated by the API loop.")
         return 0
 
 def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
@@ -686,7 +679,19 @@ elif current_page == "Recalls":
             if st.button("RUN FULL FLEET HARVEST", type="primary", use_container_width=True):
                 if 'df' in locals() and not df.empty:
                     with st.spinner("Harvesting all matching records from NHTSA..."):
-                        seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
+                        saved_count = seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
+                        if saved_count > 0:
+                            st.toast(f"Committed {saved_count} itemized records directly to disk storage!")
+                            st.rerun()
+                else:
+                    st.error("Master fleet data missing from memory cache.")
+            
+            # Persistent Log Output Box
+            if "harvest_logs" in st.session_state and st.session_state.harvest_logs:
+                st.divider()
+                st.subheader("Engine Diagnostic Readout")
+                for log_msg in st.session_state.harvest_logs:
+                    st.write(log_msg)
                 else:
                     st.error("Master fleet data missing from memory cache.")
             
