@@ -87,10 +87,10 @@ def process_recall_sync():
                     else:
                         raw_item = str(cell.value)
                     
-                    # Safely split string text and isolate string index before stripping
-                    split_parts = raw_item.split('.')
-                    if split_parts:
-                        year_val = split_parts.strip()
+                    # Safe conversion bypassing split manipulation errors
+                    if '.' in raw_item:
+                        raw_item = raw_item.split('.')
+                    year_val = str(raw_item).strip()
 
         if vin_val and make_val and model_val and year_val:
             vehicles_to_check.append({
