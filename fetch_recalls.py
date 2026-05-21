@@ -1,5 +1,6 @@
 import os
 import csv
+import re
 import requests
 import smartsheet
 
@@ -52,6 +53,21 @@ def load_existing_recalls():
         
     return existing_records
 
+def extract_manufacturer_code(notes_text):
+    """Parses the shorthand manufacturer recall code out of the NHTSA Notes text block."""
+    if not notes_text:
+        return ""
+    
+    # Looks for phrases like "recall is..." or "number..." followed by the alphanumeric code at the end of a sentence
+    match = re.search(r"(?:recall is|number for this recall is)\s+([A-Z0-9]+)", notes_text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+        
+    # Fallback: Find the last clean alphanumeric word in the text block if standard phrasing changes
+    clean_text = re.sub(r'[^\w\s]', '', notes_text)
+    words = clean_text.split()
+    return words[-1].strip() if words else ""
+
 def process_recall_sync():
     try:
         smart = smartsheet.Smartsheet(os.getenv("SMARTSHEET_TOKEN"))
@@ -82,13 +98,11 @@ def process_recall_sync():
                 model_val = str(cell.value).strip() if cell.value else ""
             elif cell.column_id == COL_YEAR:
                 if cell.value:
-                    # Isolate element if Smartsheet packages it as a list item
                     if isinstance(cell.value, list):
                         raw_item = cell.value if len(cell.value) > 0 else ""
                     else:
                         raw_item = cell.value
                     
-                    # Convert float digits safely to an integer string without split arrays
                     try:
                         year_val = str(int(float(raw_item))).strip()
                     except (ValueError, TypeError):
@@ -118,7 +132,9 @@ def process_recall_sync():
             if not campaign_id:
                 continue
                 
-            mfg_campaign = str(campaign.get("Component", "")).split(":")[-1].strip() if campaign.get("Component") else ""
+            # Switch extraction source from 'Component' text labels to parsed 'Notes' strings
+            notes_payload = campaign.get("Notes", "")
+            mfg_campaign = extract_manufacturer_code(notes_payload)
             
             composite_key = (vehicle["vin"], campaign_id)
             if composite_key not in existing_entries:
