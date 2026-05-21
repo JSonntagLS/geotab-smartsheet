@@ -25,14 +25,26 @@ def fetch_active_recalls(make, model, year):
     encoded_model = urllib.parse.quote(str(model).strip())
     encoded_year = urllib.parse.quote(str(year).strip())
     
+    # Standardize parameters and safely handle spaces or slashes in commercial vehicle descriptors
+    clean_make = str(make).strip().upper()
+    clean_model = str(model).strip()
+    clean_year = str(year).strip()
+    
+    encoded_make = urllib.parse.quote(clean_make)
+    encoded_model = urllib.parse.quote(clean_model)
+    encoded_year = urllib.parse.quote(clean_year)
+    
     url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={encoded_make}&model={encoded_model}&modelYear={encoded_year}"
-    print(f"Pinging NHTSA API for: {year} {make} {model}...")
+    print(f"Pinging NHTSA API for: {clean_year} {clean_make} {clean_model}...")
     
     try:
         response = requests.get(url, timeout=15)
         if response.status_code == 200:
             data = response.json()
             return data.get("results", [])
+        elif response.status_code == 400:
+            print(f"    -> Info: Model designation '{clean_model}' requires database normalization. Skipping.")
+            return []
         else:
             print(f"    -> NHTSA API error status: {response.status_code}")
     except Exception as e:
@@ -69,12 +81,12 @@ def extract_manufacturer_code(notes_text):
     if paren_match:
         return paren_match.group(1).strip().upper()
         
-    # Pattern 2: Standard manufacturer text callouts (e.g., "number is R25E3" or "campaign 06D")
-    text_match = re.search(r'(?:campaign|recall|number|is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', notes_text, re.IGNORECASE)
+    # Pattern 2: Standard manufacturer text callouts targeting specific phrasing variations
+    text_match = re.search(r'(?:recall\s+number\s+is|recall\s+is|campaign\s+number\s+is|campaign\s+is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', notes_text, re.IGNORECASE)
     if text_match:
         potential_code = text_match.group(1).strip().upper()
-        # Avoid pulling common word fragments by ensuring it contains numbers or distinct patterns
-        if not potential_code.isalpha() or len(potential_code) >= 4:
+        # Strictly ensure the code contains at least one numeric digit to block plain text words
+        if any(char.isdigit() for char in potential_code):
             return potential_code
 
     return ""
@@ -143,6 +155,7 @@ def process_recall_sync():
             if not campaign_id:
                 continue
                 
+            # Shift data source to the text summary block and isolate the true manufacturer campaign string
             notes_payload = campaign.get("Notes", "")
             mfg_campaign = extract_manufacturer_code(notes_payload)
             
@@ -177,3 +190,5 @@ def process_recall_sync():
 
 if __name__ == "__main__":
     process_recall_sync()
+
+
