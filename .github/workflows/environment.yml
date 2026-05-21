@@ -1,10 +1,10 @@
-name: Fetch Detailed Recall Data
+name: Populate Fixed Recalls from Smartsheet
 
 on:
   workflow_dispatch: 
 
 jobs:
-  run-fetcher:
+  run-sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -13,19 +13,22 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
-          pip install pandas requests
+          pip install smartsheet-python-sdk pandas requests
 
-      - name: Run Recall Fetcher Script
-        run: python recall_detail_fetcher.py
+      - name: Run Sync Script
+        env:
+          SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
+          SHEET_ID: ${{ secrets.SMARTSHEET_ID }}
+        run: python sync_recalls.py
 
-      - name: Commit and Push Detailed Results
+      - name: Commit and Push Recalls CSV
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add detailed_recalls.csv
-          git diff-index --quiet HEAD || git commit -m "Automated update of detailed recall information"
+          git add fixed_recalls.csv
+          git diff-index --quiet HEAD || git commit -m "Automated update of fixed_recalls.csv from Smartsheet and NHTSA"
           git push
