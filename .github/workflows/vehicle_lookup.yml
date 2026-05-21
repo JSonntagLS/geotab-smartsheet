@@ -16,17 +16,10 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install mygeotab smartsheet-python-sdk pandas
+        run: pip install smartsheet-python-sdk requests
 
       - name: Run Vehicle Lookup
         run: python vehicle_lookup.py
-        
-      - name: Install dependencies
-        run: pip install mygeotab smartsheet-python-sdk pandas requests
-        
         env:
-          GEOTAB_USER: ${{ secrets.GEOTAB_USER }}
-          GEOTAB_PASSWORD: ${{ secrets.GEOTAB_PASSWORD }}
-          GEOTAB_DB: ${{ secrets.GEOTAB_DB }}
           SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
           SMARTSHEET_ID: ${{ secrets.SMARTSHEET_ID }}
