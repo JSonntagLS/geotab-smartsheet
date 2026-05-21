@@ -20,6 +20,10 @@ jobs:
 
       - name: Run Vehicle Lookup
         run: python vehicle_lookup.py
+        
+      - name: Install dependencies
+        run: pip install mygeotab smartsheet-python-sdk pandas requests
+        
         env:
           GEOTAB_USER: ${{ secrets.GEOTAB_USER }}
           GEOTAB_PASSWORD: ${{ secrets.GEOTAB_PASSWORD }}
