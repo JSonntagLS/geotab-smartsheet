@@ -1,0 +1,41 @@
+name: Sync Vehicle Recall Data
+
+on:
+  workflow_dispatch: # Allows manual execution via the GitHub Actions UI
+
+jobs:
+  check-recalls:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true # Crucial for pushing changes back to GitHub
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Install Required Packages
+        run: pip install smartsheet-python-sdk requests
+
+      - name: Execute Recall Sync Script
+        run: python fetch_recalls.py
+        env:
+          SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
+          SMARTSHEET_ID: ${{ secrets.SMARTSHEET_ID }}
+
+      - name: Commit and Push Updated CSV
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Only add and commit if the file actually changed
+          if ! git diff --quiet fixed_recalls.csv; then
+            git add fixed_recalls.csv
+            git commit -m "Automated update of fixed_recalls.csv with latest NHTSA campaign data"
+            git push
+          else
+            echo "No new recall records or modifications detected."
+          fi
