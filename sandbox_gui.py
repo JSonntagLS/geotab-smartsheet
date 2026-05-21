@@ -145,11 +145,12 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
             
         total_processed += 1
         try:
-            vin_url = f"https://api.nhtsa.gov/recalls/recallsByVin?vin={vin}"
+            # Shifted to a direct path-parameter route to eliminate HTTP 400 Bad Request errors
+            vin_url = f"https://api.nhtsa.gov/recalls/recallsByVin/vin/{vin}?format=json"
             response = requests.get(vin_url, timeout=10)
             
             if response.status_code != 200:
-                st.session_state.harvest_logs.append(f"❌ API Connection Error ({response.status_code}) for VIN `{vin}`")
+                st.session_state.harvest_logs.append(f"❌ API Connection Error ({response.status_code}) for VIN `{vin}` - URL used: {vin_url}")
                 continue
                 
             res = response.json()
