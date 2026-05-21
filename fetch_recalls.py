@@ -2,6 +2,7 @@ import os
 import csv
 import re
 import requests
+import urllib.parse
 import smartsheet
 
 # --- SMARTSHEET COLUMN CONFIGURATION ---
@@ -15,11 +16,16 @@ CSV_FILE_PATH = "fixed_recalls.csv"
 FIELDNAMES = ["Vehicle Name", "VIN", "CampaignID", "ManufacturerCampaign", "Make", "Model", "Year"]
 
 def fetch_active_recalls(make, model, year):
-    """Queries the correct NHTSA database for active safety recalls."""
+    """Queries the correct NHTSA database for active safety recalls with URL encoding."""
     if not (make and model and year):
         return []
         
-    url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={make}&model={model}&modelYear={year}"
+    # Safely handle spaces/special characters in commercial make and model names
+    encoded_make = urllib.parse.quote(str(make).strip())
+    encoded_model = urllib.parse.quote(str(model).strip())
+    encoded_year = urllib.parse.quote(str(year).strip())
+    
+    url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={encoded_make}&model={encoded_model}&modelYear={encoded_year}"
     print(f"Pinging NHTSA API for: {year} {make} {model}...")
     
     try:
@@ -54,19 +60,24 @@ def load_existing_recalls():
     return existing_records
 
 def extract_manufacturer_code(notes_text):
-    """Parses the shorthand manufacturer recall code out of the NHTSA Notes text block."""
+    """Robust pattern matching to isolate shorthand manufacturer campaign codes from NHTSA text blocks."""
     if not notes_text:
         return ""
-    
-    # Looks for phrases like "recall is..." or "number..." followed by the alphanumeric code at the end of a sentence
-    match = re.search(r"(?:recall is|number for this recall is)\s+([A-Z0-9]+)", notes_text, re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
         
-    # Fallback: Find the last clean alphanumeric word in the text block if standard phrasing changes
-    clean_text = re.sub(r'[^\w\s]', '', notes_text)
-    words = clean_text.split()
-    return words[-1].strip() if words else ""
+    # Pattern 1: Capture explicit parentheses blocks like (Recall Campaign 246) or (06D)
+    paren_match = re.search(r'\((?:Recall\s+)?(?:Campaign|Number)?\s*([A-Z0-9]{3,6})\)', notes_text, re.IGNORECASE)
+    if paren_match:
+        return paren_match.group(1).strip().upper()
+        
+    # Pattern 2: Standard manufacturer text callouts (e.g., "number is R25E3" or "campaign 06D")
+    text_match = re.search(r'(?:campaign|recall|number|is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', notes_text, re.IGNORECASE)
+    if text_match:
+        potential_code = text_match.group(1).strip().upper()
+        # Avoid pulling common word fragments by ensuring it contains numbers or distinct patterns
+        if not potential_code.isalpha() or len(potential_code) >= 4:
+            return potential_code
+
+    return ""
 
 def process_recall_sync():
     try:
@@ -132,7 +143,6 @@ def process_recall_sync():
             if not campaign_id:
                 continue
                 
-            # Switch extraction source from 'Component' text labels to parsed 'Notes' strings
             notes_payload = campaign.get("Notes", "")
             mfg_campaign = extract_manufacturer_code(notes_payload)
             
