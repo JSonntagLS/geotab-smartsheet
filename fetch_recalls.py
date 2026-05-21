@@ -4,20 +4,20 @@ import requests
 import smartsheet
 
 # --- SMARTSHEET COLUMN CONFIGURATION ---
+COL_VEHICLE = 6654095235780484
 COL_VIN = 6471696134737796
 COL_MAKE = 849062013472644
 COL_MODEL = 5352661640843140
 COL_YEAR = 3100861827157892
 
 CSV_FILE_PATH = "fixed_recalls.csv"
-FIELDNAMES = ["VIN", "CampaignID", "ManufacturerCampaign", "Make", "Model", "Year"]
+FIELDNAMES = ["Vehicle Name", "VIN", "CampaignID", "ManufacturerCampaign", "Make", "Model", "Year"]
 
 def fetch_active_recalls(make, model, year):
     """Queries the correct NHTSA database for active safety recalls."""
     if not (make and model and year):
         return []
         
-    # Using the correct api.nhtsa.gov domain for safety campaigns
     url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={make}&model={model}&modelYear={year}"
     print(f"Pinging NHTSA API for: {year} {make} {model}...")
     
@@ -65,13 +65,16 @@ def process_recall_sync():
 
     vehicles_to_check = []
     for row in sheet.rows:
+        vehicle_val = ""
         vin_val = ""
         make_val = ""
         model_val = ""
         year_val = ""
 
         for cell in row.cells:
-            if cell.column_id == COL_VIN:
+            if cell.column_id == COL_VEHICLE:
+                vehicle_val = str(cell.value).strip() if cell.value else ""
+            elif cell.column_id == COL_VIN:
                 vin_val = str(cell.value).strip().upper() if cell.value else ""
             elif cell.column_id == COL_MAKE:
                 make_val = str(cell.value).strip() if cell.value else ""
@@ -79,12 +82,16 @@ def process_recall_sync():
                 model_val = str(cell.value).strip() if cell.value else ""
             elif cell.column_id == COL_YEAR:
                 if cell.value:
-                    # Clean the Smartsheet float display (.0) down to a standard integer string
-                    raw_year = str(cell.value).split('.')
+                    if isinstance(cell.value, list):
+                        raw_item = str(cell.value) if len(cell.value) > 0 else ""
+                    else:
+                        raw_item = str(cell.value)
+                    raw_year = raw_item.split('.')
                     year_val = raw_year.strip()
 
         if vin_val and make_val and model_val and year_val:
             vehicles_to_check.append({
+                "vehicle_name": vehicle_val,
                 "vin": "".join(vin_val.split()),
                 "make": make_val,
                 "model": model_val,
@@ -102,17 +109,16 @@ def process_recall_sync():
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
         
         for campaign in raw_campaigns:
-            # The official recall API returns 'NHTSACampaignNumber' inside the results array
             campaign_id = str(campaign.get("NHTSACampaignNumber", "")).strip()
             if not campaign_id:
                 continue
                 
-            # Safely extract the internal factory code if available from the record notes
             mfg_campaign = str(campaign.get("Component", "")).split(":")[-1].strip() if campaign.get("Component") else ""
             
             composite_key = (vehicle["vin"], campaign_id)
             if composite_key not in existing_entries:
                 new_rows_to_append.append({
+                    "Vehicle Name": vehicle["vehicle_name"],
                     "VIN": vehicle["vin"],
                     "CampaignID": campaign_id,
                     "ManufacturerCampaign": mfg_campaign,
