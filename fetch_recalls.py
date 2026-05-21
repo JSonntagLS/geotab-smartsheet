@@ -10,6 +10,7 @@ COL_MODEL = 5352661640843140
 COL_YEAR = 3100861827157892
 
 CSV_FILE_PATH = "fixed_recalls.csv"
+FIELDNAMES = ["VIN", "CampaignID", "ManufacturerCampaign", "Make", "Model", "Year"]
 
 def fetch_active_recalls(make, model, year):
     """Queries the correct NHTSA database for active safety recalls."""
@@ -26,9 +27,9 @@ def fetch_active_recalls(make, model, year):
             data = response.json()
             return data.get("results", [])
         else:
-            print(f"   -> NHTSA API error status: {response.status_code}")
+            print(f"    -> NHTSA API error status: {response.status_code}")
     except Exception as e:
-        print(f"   -> Connection issue with NHTSA endpoint: {e}")
+        print(f"    -> Connection issue with NHTSA endpoint: {e}")
         
     return []
 
@@ -79,7 +80,7 @@ def process_recall_sync():
             elif cell.column_id == COL_YEAR:
                 if cell.value:
                     # Clean the Smartsheet float display (.0) down to a standard integer string
-                    raw_year = str(cell.value).split('.')[0]
+                    raw_year = str(cell.value).split('.')
                     year_val = raw_year.strip()
 
         if vin_val and make_val and model_val and year_val:
@@ -106,11 +107,15 @@ def process_recall_sync():
             if not campaign_id:
                 continue
                 
+            # Safely extract the internal factory code if available from the record notes
+            mfg_campaign = str(campaign.get("Component", "")).split(":")[-1].strip() if campaign.get("Component") else ""
+            
             composite_key = (vehicle["vin"], campaign_id)
             if composite_key not in existing_entries:
                 new_rows_to_append.append({
                     "VIN": vehicle["vin"],
                     "CampaignID": campaign_id,
+                    "ManufacturerCampaign": mfg_campaign,
                     "Make": vehicle["make"],
                     "Model": vehicle["model"],
                     "Year": vehicle["year"]
@@ -121,8 +126,7 @@ def process_recall_sync():
         file_exists = os.path.exists(CSV_FILE_PATH) and os.path.getsize(CSV_FILE_PATH) > 0
         
         with open(CSV_FILE_PATH, mode='a', newline='', encoding='utf-8') as f:
-            fieldnames = ["VIN", "CampaignID", "Make", "Model", "Year"]
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
             
             if not file_exists:
                 writer.writeheader()
