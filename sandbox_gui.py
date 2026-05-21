@@ -144,21 +144,11 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                         if recalls:
                             st.write(f"🔍 API Match Found: {make} {model} returned {len(recalls)} API records.")
                         
-                        # Gather all live active campaign numbers from NHTSA for this vehicle
-                        live_nhtsa_campaigns = {str(r.get('NHTSACampaignNumber', '')).strip().upper() for r in recalls}
-                        
-                        # Find matching records in your active enterprise file for this specific VIN
-                        if os.path.exists(active_csv_path):
-                            active_df = pd.read_csv(active_csv_path)
-                            vin_active_recalls = active_df[active_df['VIN'].astype(str).str.strip() == vin]
-                            
-                            for _, active_row in vin_active_recalls.iterrows():
-                                # Use 'Campaign' to match your source file column header definition
-                                active_camp = str(active_row.get('Campaign', '')).strip().upper()
-                                
-                                # If it's on your active sheet, but NO LONGER returned by the NHTSA API, it is FIXED
-                                if active_camp and (active_camp not in live_nhtsa_campaigns):
-                                    fixed_history.append({"VIN": vin, "CampaignID": active_camp})
+                        # Gather every single live campaign returned by NHTSA to dump into fixed history
+                        for r in recalls:
+                            active_camp = str(r.get('NHTSACampaignNumber', '')).strip().upper()
+                            if active_camp:
+                                fixed_history.append({"VIN": vin, "CampaignID": active_camp})
             except Exception as e:
                 st.sidebar.error(f"VIN {vin} seed error: {e}")
                 continue
@@ -650,66 +640,84 @@ elif current_page == "GPS and Battery Health":
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
 
 elif current_page == "Recalls":
-    st.write("NHTSA Recall scan interface placeholder.")
     st.title("Safety Recall Management")
     
     CSV_PATH = 'fixed_recalls.csv'
     SOURCE_FILE = 'Recalls_389911_05112026.csv' 
 
-    # Ensure files exist
+    # Ensure fixed file skeleton exists safely
     if not os.path.exists(CSV_PATH):
+        pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
 
-    # --- ACTION BUTTONS ---
-    # Placing these in columns at the top to ensure they are high-level
-    btn_col1, btn_col2 = st.columns(2)
-    
-    with btn_col1:
+    # --- REFRESH & SEED ACTIONS ---
+    col_a, col_b = st.columns(2)
+    with col_a:
         if st.button("🔄 Refresh Active List", use_container_width=True):
             st.rerun()
+    
+    with col_b:
+        with st.expander("Mass Recall Harvester Tool", expanded=True):
+            st.write("Click below to pull ALL historical API recalls into your fixed tracking file for manual editing.")
+            if st.button("RUN FULL FLEET HARVEST", type="primary", use_container_width=True):
+                if 'df' in locals() and not df.empty:
+                    with st.spinner("Harvesting all matching records from NHTSA..."):
+                        count = seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
+                        st.success(f"Harvested {count} total records into {CSV_PATH}. You can now safely prune this file!")
+                        st.rerun()
+                else:
+                    st.error("Master fleet data missing from memory cache.")
 
-    with btn_col2:
-        # We are moving this out of the expander temporarily to ensure it works
-        seed_trigger = st.button("RUN HISTORICAL SEED", type="primary", use_container_width=True)
+    # --- MAIN FILTERING AND DISPLAY DISPLAY LOGIC ---
+    try:
+        fixed_df = pd.read_csv(CSV_PATH)
+        fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
+    except Exception:
+        fixed_keys = set()
 
-    # --- SURGICAL EDIT START: RECALLS PAGE VISUAL DEBUGGER ---
-    with st.expander("🛠️ Recalls Environment Debugger", expanded=True):
-        st.markdown("### File System & Session Diagnostics")
-        dbg_col1, dbg_col2, dbg_col3 = st.columns(3)
-        
-        with dbg_col1:
-            st.markdown(f"**Fixed CSV (`{CSV_PATH}`):**")
-            if os.path.exists(CSV_PATH):
-                try:
-                    f_df = pd.read_csv(CSV_PATH)
-                    st.success(f"Found on disk\n\nRows: {len(f_df)} | Size: {os.path.getsize(CSV_PATH)} bytes")
-                    st.caption(f"Columns: {list(f_df.columns)}")
-                except Exception as de:
-                    st.error(f"Error reading file: {de}")
+    if os.path.exists(SOURCE_FILE):
+        try:
+            open_recalls_df = pd.read_csv(SOURCE_FILE)
+            
+            # Filter Logic: Keep the record ONLY if it is NOT found inside the fixed_recalls tracking sheet
+            active_alerts = open_recalls_df[~((open_recalls_df['VIN'].astype(str).str.strip() + 
+                                              open_recalls_df['Campaign'].astype(str).str.strip()).isin(fixed_keys))]
+            
+            if not active_alerts.empty:
+                st.warning(f"Pending Active Recalls Requiring Action: {len(active_alerts)}")
+                
+                # Table Headers
+                h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
+                h1.write("**Vehicle / Location**")
+                h2.write("**Campaign ID**")
+                h3.write("**Description**")
+                h4.write("**Action**")
+                st.divider()
+
+                for idx, alert in active_alerts.iterrows():
+                    v_vin = str(alert.get('VIN', '')).strip()
+                    v_camp = str(alert.get('Campaign', alert.get('CampaignID', ''))).strip()
+                    v_name = alert.get('Vehicle', 'Unknown Vehicle')
+                    v_loc = alert.get('Location', 'Unassigned')
+                    v_desc = alert.get('Campaign Description', alert.get('Description', 'No Description Available'))
+                    
+                    c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
+                    c1.write(f"**{v_name}** \n📍 {v_loc}")
+                    c2.write(f"**ID:** {v_camp}  \n`{v_vin}`")
+                    c3.write(v_desc)
+                    
+                    if c4.button("MARK FIXED", key=f"fix_{v_vin}_{v_camp}", use_container_width=True):
+                        new_entry = pd.DataFrame([{"VIN": v_vin, "CampaignID": v_camp}])
+                        new_entry.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                        st.toast(f"Moved campaign {v_camp} to the fixed registry!")
+                        st.rerun()
+                    st.divider()
             else:
-                st.warning("File does not exist yet. Run seed to create it.")
-
-        with dbg_col2:
-            st.markdown(f"**Source CSV (`{SOURCE_FILE}`):**")
-            if os.path.exists(SOURCE_FILE):
-                try:
-                    s_df = pd.read_csv(SOURCE_FILE)
-                    st.success(f"Found on disk\n\nRows: {len(s_df)} | Size: {os.path.getsize(SOURCE_FILE)} bytes")
-                    st.caption(f"Columns: {list(s_df.columns)}")
-                except Exception as de:
-                    st.error(f"Error reading file: {de}")
-            else:
-                st.error("Source file missing. Check active file path naming configuration.")
-
-        with dbg_col3:
-            st.markdown("**Session Fleet Memory:**")
-            state_df = st.session_state.get('df', pd.DataFrame())
-            if not state_df.empty:
-                vin_count = state_df['VIN'].notnull().sum() if 'VIN' in state_df.columns else 0
-                st.success(f"Active in Memory\n\nTotal Rows: {len(state_df)}\n\nRows with VINs: {vin_count}")
-                if 'VIN' not in state_df.columns:
-                    st.error("CRITICAL: 'VIN' column header missing from Smartsheet data mapping.")
-            else:
-                st.error("Smartsheet dataframe is completely empty in session state.")
+                st.success("All campaigns from the Enterprise active list match your resolved parameters!")
+                
+        except Exception as e:
+            st.error(f"Error processing filtering layer: {e}")
+    else:
+        st.error(f"Source file asset target '{SOURCE_FILE}' could not be verified on local drive storage.")
     # --- SURGICAL EDIT END ---
 
     if seed_trigger:
@@ -734,7 +742,6 @@ elif current_page == "Recalls":
             del st.session_state.sync_message
             st.rerun()
 
-    # --- DATA LOADING & FILTERING ---
     # --- DATA LOADING & FILTERING ---
     try:
         if not os.path.exists(CSV_PATH):
