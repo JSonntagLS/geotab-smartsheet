@@ -146,31 +146,47 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
             total_skipped += 1
             continue
 
-        # Using fallback mapping targets matching Geotab/Smartsheet column layout rules
-        # Extract text attributes directly using your script's explicit global col_map keys
-        # Extract text attributes directly by referencing the explicit Smartsheet spreadsheet headers
-        make = str(row.get("Vehicle Make", row.get("Make", ""))).strip()
-        model = str(row.get("Vehicle Model", row.get("Model", ""))).strip()
-        year = str(row.get("Model Year", row.get("Year", row.get("Vehicle Year", "")))).strip()
-
-        if not make or not model or not year or make.lower() == 'none' or model.lower() == 'none':
-            st.session_state.harvest_logs.append(f"⚠️ Skipped VIN `{vin}`: Missing/incomplete text data labels (`{year} {make} {model}`).")
+        total_processed += 1
+        st.session_state.harvest_logs.append(f"⚙️ **[Car #{total_processed}] Initializing Pipeline for VIN:** `{vin}`")
+        
+        # --- STAGE 1: DECODE VIN VIA NHTSA vPIC ---
+        try:
+            vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
+            st.session_state.harvest_logs.append(f"   📡 Ping vPIC Decoder -> `{vpic_url}`")
+            vpic_res = requests.get(vpic_url, timeout=10).json()
+            
+            if 'Results' not in vpic_res or not vpic_res['Results']:
+                st.session_state.harvest_logs.append(f"   ❌ vPIC Failure: Payload missing 'Results' array field.")
+                total_skipped += 1
+                continue
+                
+            specs = vpic_res['Results']
+            make = str(specs.get('Make', '')).strip()
+            model = str(specs.get('Model', '')).strip()
+            year = str(specs.get('ModelYear', '')).strip()
+            
+            st.session_state.harvest_logs.append(f"   📝 vPIC Parsed Specs: Make=`{make}`, Model=`{model}`, Year=`{year}`")
+            
+            if not make or not model or not year or make.lower() == 'none' or model.lower() == 'none':
+                st.session_state.harvest_logs.append(f"   ⚠️ vPIC Reject: Incomplete/Null attributes decoded from VIN sequence.")
+                total_skipped += 1
+                continue
+                
+        except Exception as vpic_err:
+            st.session_state.harvest_logs.append(f"   💥 Stage 1 Exception (vPIC Decoder Crash): {str(vpic_err)}")
             total_skipped += 1
             continue
 
-        total_processed += 1
-        st.session_state.harvest_logs.append(f"🔍 Processing Car #{total_processed}: VIN `{vin}` ({year} {make} {model})")
-        
+        # --- STAGE 2: HARVEST HISTORICAL RECALL CAMPAIGNS ---
         try:
-            # Query the tested, highly stable vehicle category endpoint
+            st.session_state.harvest_logs.append(f"   📡 Ping Recall Engine via Specs -> `{year} {make} {model}`")
             recalls = check_vehicle_recall(make, model, year)
             
             if recalls:
-                st.session_state.harvest_logs.append(f"   🟢 Found {len(recalls)} historical campaigns for this vehicle type.")
+                st.session_state.harvest_logs.append(f"   🟢 Success: Found {len(recalls)} historical campaigns for this vehicle architecture.")
                 for r in recalls:
                     campaign_id = str(r.get('NHTSACampaignNumber', '')).strip().upper()
                     if campaign_id:
-                        # Append specifically bound to this exact vehicle's VIN
                         fixed_history.append({
                             "VIN": vin,
                             "CampaignID": campaign_id,
@@ -179,10 +195,10 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                             "Year": year
                         })
             else:
-                st.session_state.harvest_logs.append(f"   ℹ️ API returned 0 records for this {year} {make} {model}.")
+                st.session_state.harvest_logs.append(f"   ℹ️ Recall Engine: 0 baseline campaigns registered at NHTSA for this asset class.")
                 
-        except Exception as e:
-            st.session_state.harvest_logs.append(f"   💥 API Query Exception: {str(e)}")
+        except Exception as recall_err:
+            st.session_state.harvest_logs.append(f"   💥 Stage 2 Exception (Recall API Crash): {str(recall_err)}")
             continue
 
     st.session_state.harvest_logs.append(f"📋 **Harvest Run Summary:** Checked {total_processed} cars. Skipped {total_skipped} rows.")
