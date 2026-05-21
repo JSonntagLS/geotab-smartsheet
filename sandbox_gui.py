@@ -135,26 +135,17 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
         vin = str(row.get('VIN', '')).strip()
         if len(vin) == 17:
             try:
-                # Basic spec decode
-                vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
-                res = requests.get(vpic_url, timeout=5).json()
+                # Query NHTSA directly using the absolute VIN tracking endpoint
+                vin_url = f"https://api.nhtsa.gov/recalls/recallsByVin?vin={vin}"
+                res = requests.get(vin_url, timeout=10).json()
+                recalls = res.get('results', [])
                 
-                if 'Results' in res and len(res['Results']) > 0:
-                    specs = res['Results']
-                    make = str(specs.get('Make', '')).strip()
-                    model = str(specs.get('Model', '')).strip()
-                    year = str(specs.get('ModelYear', '')).strip()
-                    
-                    if make and model and year and make.lower() != 'none' and model.lower() != 'none':
-                        recalls = check_vehicle_recall(make, model, year)
-                        if recalls:
-                            st.write(f"🔍 API Match Found: {make} {model} returned {len(recalls)} API records.")
-                        
-                        # Gather every single live campaign returned by NHTSA to dump into fixed history
-                        for r in recalls:
-                            active_camp = str(r.get('NHTSACampaignNumber', '')).strip().upper()
-                            if active_camp:
-                                fixed_history.append({"VIN": vin, "CampaignID": active_camp})
+                if recalls:
+                    st.write(f"🔍 API Match Found: VIN {vin} returned {len(recalls)} historical records.")
+                    for r in recalls:
+                        active_camp = str(r.get('NHTSACampaignNumber', '')).strip().upper()
+                        if active_camp:
+                            fixed_history.append({"VIN": vin, "CampaignID": active_camp})
             except Exception as e:
                 st.sidebar.error(f"VIN {vin} seed error: {e}")
                 continue
