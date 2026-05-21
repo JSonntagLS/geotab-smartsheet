@@ -139,7 +139,13 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                 vpic_url = f"https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/{vin}?format=json"
                 res = requests.get(vpic_url, timeout=5).json()
                 
-                if make and model and year and make.lower() != 'none' and model.lower() != 'none':
+                if 'Results' in res and len(res['Results']) > 0:
+                    specs = res['Results']
+                    make = str(specs.get('Make', '')).strip()
+                    model = str(specs.get('Model', '')).strip()
+                    year = str(specs.get('ModelYear', '')).strip()
+                    
+                    if make and model and year and make.lower() != 'none' and model.lower() != 'none':
                         recalls = check_vehicle_recall(make, model, year)
                         if recalls:
                             st.write(f"🔍 API Match Found: {make} {model} returned {len(recalls)} API records.")
