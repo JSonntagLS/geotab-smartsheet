@@ -116,73 +116,83 @@ def calculate_runway(row):
         return 50000, 12
 
 def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
-    st.info("Starting Scan... checking NHTSA API.")
-    active_keys = set()
-    try:
-        if os.path.exists(active_csv_path):
-            active_df = pd.read_csv(active_csv_path)
-            active_keys = set(active_df['VIN'].astype(str).str.strip() + active_df['Campaign'].astype(str).str.strip())
-        else:
-            st.warning(f"Note: {active_csv_path} not found. Proceeding with full fleet scan.")
-            active_keys = set() # Empty set so nothing is skipped
-    except Exception as e:
-        st.info("Active list check skipped; proceeding with full scan.")
-        active_keys = set()
-
+    # Create a persistent list in session state to hold logs so they survive page refreshes
+    if "harvest_logs" not in st.session_state:
+        st.session_state.harvest_logs = []
+    
+    st.session_state.harvest_logs.clear()
+    st.session_state.harvest_logs.append("🛫 **Starting Diagnostic Scan... connecting to NHTSA API.**")
+    
     fixed_history = []
-    # Using a subset for the scan to speed up debugging if needed
-    for _, row in fleet_df.iterrows():
-        vin = str(row.get('VIN', '')).strip()
-        if len(vin) == 17:
-            try:
-                # Query NHTSA directly using the absolute VIN tracking endpoint
-                vin_url = f"https://api.nhtsa.gov/recalls/recallsByVin?vin={vin}"
-                res = requests.get(vin_url, timeout=10).json()
-                recalls = res.get('results', [])
+    
+    # Track metrics
+    total_processed = 0
+    total_skipped = 0
+    
+    for idx, row in fleet_df.iterrows():
+        raw_vin = row.get('VIN')
+        
+        # Clean and validate the string to ensure it is text data
+        if pd.isna(raw_vin) or raw_vin is None:
+            total_skipped += 1
+            continue
+            
+        vin = str(raw_vin).strip().upper()
+        
+        if len(vin) != 17:
+            total_skipped += 1
+            continue
+            
+        total_processed += 1
+        try:
+            vin_url = f"https://api.nhtsa.gov/recalls/recallsByVin?vin={vin}"
+            response = requests.get(vin_url, timeout=10)
+            
+            if response.status_code != 200:
+                st.session_state.harvest_logs.append(f"❌ API Connection Error ({response.status_code}) for VIN `{vin}`")
+                continue
                 
-                if recalls:
-                    st.write(f"🔍 API Match Found: VIN `{vin}` returned {len(recalls)} records.")
-                    for r in recalls:
+            res = response.json()
+            
+            # Safe checking for None payloads or missing result keys
+            if res is None:
+                st.session_state.harvest_logs.append(f"⚠️ API returned null payload response for VIN `{vin}`")
+                continue
+                
+            recalls = res.get('results')
+            if recalls is None:
+                recalls = []
+                
+            if recalls:
+                st.session_state.harvest_logs.append(f"🟢 **API Match:** VIN `{vin}` found {len(recalls)} historical entries.")
+                for r in recalls:
+                    if r and isinstance(r, dict):
                         active_camp = str(r.get('NHTSACampaignNumber', '')).strip().upper()
                         if active_camp:
                             fixed_history.append({"VIN": vin, "CampaignID": active_camp})
-                else:
-                    st.write(f"ℹ️ VIN `{vin}` checked: API returned 0 recalls.")
-            except Exception as e:
-                st.write(f"❌ API Network/Parsing Error for VIN `{vin}`: {e}")
-                continue
+            else:
+                st.session_state.harvest_logs.append(f"ℹ️ VIN `{vin}` verified: API returned 0 historical records.")
+                
+        except Exception as e:
+            st.session_state.harvest_logs.append(f"💥 Code Exception on VIN `{vin}`: {str(e)}")
+            continue
 
-    st.write(f"📋 Total raw entries collected in memory before saving: {len(fixed_history)}")
+    st.session_state.harvest_logs.append(f"📋 **Summary:** Processed {total_processed} valid VINs. Skipped {total_skipped} blank/invalid rows.")
+    st.session_state.harvest_logs.append(f"💾 Total entries loaded into temporary memory: **{len(fixed_history)}**")
 
+    # Hard-commit data storage layer execution
     if fixed_history:
-        debug_df = pd.DataFrame(fixed_history)
-        st.write(f"DEBUG: Attempting to save {len(debug_df)} items to {fixed_csv_path}")
-        
         try:
-            # 1. Clean data
-            debug_df = debug_df.drop_duplicates()
-            
-            # 2. Force Write
+            debug_df = pd.DataFrame(fixed_history).drop_duplicates()
             debug_df.columns = ['VIN', 'CampaignID']
             debug_df.to_csv(fixed_csv_path, index=False)
-            
-            # 3. VERIFICATION: Immediately try to read it back
-            if os.path.exists(fixed_csv_path):
-                check_size = os.path.getsize(fixed_csv_path)
-                if check_size > 0:
-                    st.write(f"DEBUG: File verified on disk ({check_size} bytes)")
-                    return len(debug_df)
-                else:
-                    st.error("FATAL: File exists but is 0 bytes. Check folder permissions.")
-            else:
-                st.error("FATAL: to_csv command finished but file was not found on disk.")
-                
-            return 0
+            st.session_state.harvest_logs.append(f"✅ **SUCCESS:** Successfully wrote {len(debug_df)} verified entries to `{fixed_csv_path}`!")
+            return len(debug_df)
         except Exception as e:
-            st.error(f"HARD WRITE FAILURE: {e}")
+            st.session_state.harvest_logs.append(f"🚨 **HARD WRITE FAILURE:** {str(e)}")
             return 0
     else:
-        st.warning("Scan finished, but 0 historical recalls were found.")
+        st.session_state.harvest_logs.append("⚠️ **Scan ended:** No historical records were returned by the API across the processed fleet.")
         return 0
 
 def sync_master_recall_file(fleet_df, enterprise_path, fixed_path):
@@ -662,11 +672,16 @@ elif current_page == "Recalls":
             if st.button("RUN FULL FLEET HARVEST", type="primary", use_container_width=True):
                 if 'df' in locals() and not df.empty:
                     with st.spinner("Harvesting all matching records from NHTSA..."):
-                        count = seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
-                        st.success(f"Harvested {count} total records into {CSV_PATH}. You can now safely prune this file!")
-                        st.rerun()
+                        seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
                 else:
                     st.error("Master fleet data missing from memory cache.")
+            
+            # Persistent Log Output Box
+            if "harvest_logs" in st.session_state and st.session_state.harvest_logs:
+                st.divider()
+                st.subheader("Engine Diagnostic Readout")
+                for log_msg in st.session_state.harvest_logs:
+                    st.write(log_msg)
 
     # --- MAIN FILTERING AND DISPLAY LOGIC ---
     try:
