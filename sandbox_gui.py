@@ -141,14 +141,18 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
                 recalls = res.get('results', [])
                 
                 if recalls:
-                    st.write(f"🔍 API Match Found: VIN {vin} returned {len(recalls)} historical records.")
+                    st.write(f"🔍 API Match Found: VIN `{vin}` returned {len(recalls)} records.")
                     for r in recalls:
                         active_camp = str(r.get('NHTSACampaignNumber', '')).strip().upper()
                         if active_camp:
                             fixed_history.append({"VIN": vin, "CampaignID": active_camp})
+                else:
+                    st.write(f"ℹ️ VIN `{vin}` checked: API returned 0 recalls.")
             except Exception as e:
-                st.sidebar.error(f"VIN {vin} seed error: {e}")
+                st.write(f"❌ API Network/Parsing Error for VIN `{vin}`: {e}")
                 continue
+
+    st.write(f"📋 Total raw entries collected in memory before saving: {len(fixed_history)}")
 
     if fixed_history:
         debug_df = pd.DataFrame(fixed_history)
