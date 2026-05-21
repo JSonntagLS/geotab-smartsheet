@@ -1,15 +1,10 @@
-import streamlit as st
 import pandas as pd
 import requests
 import os
 
-st.set_page_config(layout="wide")
-st.title("🚨 Detailed Fixed Recalls Registry")
-st.markdown("This tool cross-references your logged completions against the live NHTSA database to pull deep data points.")
-
 CSV_PATH = "fixed_recalls.csv"
+OUTPUT_PATH = "detailed_recalls.csv"
 
-@st.cache_data(ttl=600)
 def fetch_nhtsa_details(make, model, year, campaign_id):
     """Queries the live NHTSA API for the detailed campaign parameters."""
     try:
@@ -17,7 +12,6 @@ def fetch_nhtsa_details(make, model, year, campaign_id):
         response = requests.get(url, timeout=10)
         if response.status_code == 200:
             results = response.json().get('results', [])
-            # Isolate the exact matching Campaign ID
             for recall in results:
                 if str(recall.get('NHTSACampaignNumber', '')).strip() == str(campaign_id).strip():
                     return {
@@ -30,67 +24,57 @@ def fetch_nhtsa_details(make, model, year, campaign_id):
         pass
     return None
 
-if os.path.exists(CSV_PATH):
-    try:
-        # Load your specific 5-column CSV file
-        df_csv = pd.read_csv(CSV_PATH)
+def main():
+    if not os.path.exists(CSV_PATH):
+        print(f"Error: Could not locate '{CSV_PATH}' in the repository workspace.")
+        return
+
+    df_csv = pd.read_csv(CSV_PATH)
+    if df_csv.empty:
+        print("The fixed_recalls.csv file is empty. Nothing to process.")
+        return
+
+    print(f"Processing {len(df_csv)} records from {CSV_PATH}...")
+    detailed_records = []
+    
+    for idx, row in df_csv.iterrows():
+        vin = str(row.get('VIN', 'N/A')).strip()
+        camp_id = str(row.get('CampaignID', 'N/A')).strip()
+        make = str(row.get('Make', '')).strip()
+        model = str(row.get('Model', '')).strip()
+        year = str(row.get('Year', '')).strip()
         
-        if df_csv.empty:
-            st.info("The fixed_recalls.csv file is currently empty.")
+        print(f"Fetching data for Campaign {camp_id} ({year} {make} {model})...")
+        api_data = fetch_nhtsa_details(make, model, year, camp_id)
+        
+        if api_data:
+            detailed_records.append({
+                "VIN": vin,
+                "CampaignID": camp_id,
+                "Make": make,
+                "Model": model,
+                "Year": year,
+                "Component": api_data["Component"],
+                "Summary": api_data["Summary"],
+                "Consequence": api_data["Cone"],
+                "Remedy": api_data["Remedy"]
+            })
         else:
-            st.metric(label="Total Tracked Resolved Campaigns", value=len(df_csv))
-            
-            detailed_records = []
-            
-            # Loop through each line of your CSV and enrich it via the API
-            for idx, row in df_csv.iterrows():
-                vin = str(row.get('VIN', 'N/A'))
-                camp_id = str(row.get('CampaignID', 'N/A'))
-                make = str(row.get('Make', ''))
-                model = str(row.get('Model', ''))
-                year = str(row.get('Year', ''))
-                
-                api_data = fetch_nhtsa_details(make, model, year, camp_id)
-                
-                if api_data:
-                    detailed_records.append({
-                        "VIN": vin,
-                        "Campaign ID": camp_id,
-                        "Vehicle": f"{year} {make} {model}",
-                        "Affected Component": api_data["Component"],
-                        "Defect Summary": api_data["Summary"],
-                        "Risk / Consequence": api_data["Cone"],
-                        "Corrective Remedy": api_data["Remedy"]
-                    })
-                else:
-                    detailed_records.append({
-                        "VIN": vin,
-                        "Campaign ID": camp_id,
-                        "Vehicle": f"{year} {make} {model}",
-                        "Affected Component": "Unknown / Clear",
-                        "Defect Summary": "Campaign details could not be mapped from public safety endpoints.",
-                        "Risk / Consequence": "N/A",
-                        "Corrective Remedy": "N/A"
-                    })
-            
-            # Convert enriched data to a presentation dataframe
-            df_display = pd.DataFrame(detailed_records)
-            
-            # Render a high-detail grid layout
-            for idx, item in df_display.iterrows():
-                with st.container():
-                    col1, col2 = st.columns()
-                    with col1:
-                        st.subheader(f"🚗 {item['Vehicle']}")
-                        st.code(f"VIN: {item['VIN']}\nCamp: {item['Campaign ID']}")
-                        st.caption(f"**Component:** {item['Affected Component']}")
-                    with col2:
-                        st.markdown(f"**Defect Summary:**\n{item['Defect Summary']}")
-                        st.markdown(f"**Consequences:**\n*{item['Risk / Consequence']}*")
-                        st.markdown(f"**Remedy Fix:**\n{item['Corrective Remedy']}")
-                    st.divider()
-                    
-    except Exception as e:
-        st.error(f"Error executing retrieval matrix: {e}")
-else:
-    st.error(f"Could not locate '{CSV_PATH}' in the execution root directory.")
+            detailed_records.append({
+                "VIN": vin,
+                "CampaignID": camp_id,
+                "Make": make,
+                "Model": model,
+                "Year": year,
+                "Component": "N/A",
+                "Summary": "Details could not be fetched from the NHTSA database. Check details manually.",
+                "Consequence": "N/A",
+                "Remedy": "N/A"
+            })
+
+    df_output = pd.DataFrame(detailed_records)
+    df_output.to_csv(OUTPUT_PATH, index=False)
+    print(f"Success! Detailed report written to '{OUTPUT_PATH}'")
+
+if __name__ == "__main__":
+    main()
