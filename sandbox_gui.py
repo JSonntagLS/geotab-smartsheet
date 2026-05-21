@@ -148,9 +148,10 @@ def seed_fixed_recalls(fleet_df, active_csv_path, fixed_csv_path):
 
         # Using fallback mapping targets matching Geotab/Smartsheet column layout rules
         # Extract text attributes directly using your script's explicit global col_map keys
-        make = str(row.get(col_map.get('make', 'Make'), '')).strip()
-        model = str(row.get(col_map.get('model', 'Model'), '')).strip()
-        year = str(row.get(col_map.get('year', 'Year'), '')).strip()
+        # Extract text attributes directly by referencing the explicit Smartsheet spreadsheet headers
+        make = str(row.get("Vehicle Make", row.get("Make", ""))).strip()
+        model = str(row.get("Vehicle Model", row.get("Model", ""))).strip()
+        year = str(row.get("Model Year", row.get("Year", row.get("Vehicle Year", "")))).strip()
 
         if not make or not model or not year or make.lower() == 'none' or model.lower() == 'none':
             st.session_state.harvest_logs.append(f"⚠️ Skipped VIN `{vin}`: Missing/incomplete text data labels (`{year} {make} {model}`).")
