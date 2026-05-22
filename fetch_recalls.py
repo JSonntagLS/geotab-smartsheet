@@ -133,11 +133,11 @@ def extract_manufacturer_code(notes_text, vehicle_make=""):
         "FMVSS", "CNG", "LPG", "LNG", "EV", "HEV", "PHEV"
 
     # Inline helper to validate that a code isn't just a manufacturer name or purely text when it shouldn't be
-    def is_valid_code(code_str):
-        c = code_str.strip().upper()
-        if c in make_blacklist or len(c) <= 2:
-            return False
-        return True
+def is_valid_code(code_str):
+    c = code_str.strip().upper()
+    if c in make_blacklist or len(c) <= 2:
+        return False
+    return True
 
     # Pattern 1: Specific pattern for lists or multi-code phrasing like "numbers for this recall are 06D, 10D..."
     list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9]{2,6})\b', text_to_search, re.IGNORECASE)
