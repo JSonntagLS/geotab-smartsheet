@@ -177,19 +177,16 @@ def process_recall_sync():
     for vehicle in vehicles_to_check:
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
-        # DEBUGGER: Print the exact API payload response structure and exit cleanly
+        # DEBUGGER: Direct string fallback processing to verify regex extraction
         if raw_campaigns:
             print("\n=== DEBUGGER: RAW NHTSA API PAYLOAD DATA ===")
             import json
-            print(json.dumps(raw_campaigns, indent=4))
+            payload_string = json.dumps(raw_campaigns, indent=4)
+            print(payload_string)
             
-            # Pull the dictionary element directly out of the wrapper list
-            test_campaign = raw_campaigns
-            test_remedy = test_campaign.get("Remedy", "") or ""
-            
-            # Evaluate the text block processing function
-            extracted = extract_manufacturer_code(test_remedy)
-            print(f"DEBUGGER TEST -> Extracted Code from Remedy: '{extracted}'")
+            # Use string parsing to test the pattern matching on the raw console stream
+            extracted = extract_manufacturer_code(payload_string)
+            print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
             print("============================================\n")
             import sys
             sys.exit(0)
