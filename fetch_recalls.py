@@ -254,16 +254,15 @@ def process_recall_sync():
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
         # TARGETED BATCH DEBUGGER: Evaluate the new collection against the updated FMVSS filter
-        # TARGETED BATCH DEBUGGER: Evaluate the new collection against the updated FMVSS filter
         if raw_campaigns:
             profile_tuple = (v_year, v_make, v_model)
             if profile_tuple not in seen_debug_profiles:
                 seen_debug_profiles.add(profile_tuple)
-                import json
-                payload_string = json.dumps(raw_campaigns, indent=4)
                 
                 print(f"\n=== DEBUGGER UNIQUE VEHICLE #{debug_counter + 1}: {v_year} {v_make} {v_model} ===")
-                extracted = extract_manufacturer_code(payload_string, vehicle["make"])
+                first_campaign = raw_campaigns[0]
+                sample_text = (first_campaign.get("Notes", "") or "") + " " + (first_campaign.get("Remedy", "") or "")
+                extracted = extract_manufacturer_code(sample_text, vehicle["make"])
                 print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
                 print("========================================================================\n")
                 
