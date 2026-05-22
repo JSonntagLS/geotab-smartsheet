@@ -64,6 +64,11 @@ def fetch_active_recalls(make, model, year):
         "KONA ELECTRIC": "KONA",
         "TRAILBLAZER SUV": "TRAILBLAZER",
         "EQUINOX EV": "EQUINOX",
+        # Official NHTSA API Structural Overrides
+        "TRAILBLAZER": "TRAIL BLAZER",
+        "COMMERCIAL SERIES": "COMMERCIAL",
+        
+        # Heavy Duty Commercial Bus Frameworks
         "PC205": "CE",
         "CE COMMERCIAL": "CE",
         "INTEGRATED CE COMMERCIAL": "CE",
@@ -250,18 +255,26 @@ def process_recall_sync():
         v_year = str(vehicle["year"]).strip().upper()
         
         # Ensure the model keywords match the normalization target layout
-        if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES" in v_model:
-            v_model = "COMMERCIAL SERIES"
+        if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES" in v_model or v_model == "COMMERCIAL":
+            v_model = "COMMERCIAL"
         elif "EXPRESS" in v_model:
             v_model = "EXPRESS"
-        elif "TRAILBLAZER" in v_model:
-            v_model = "TRAILBLAZER"
+        elif "TRAILBLAZER" in v_model or "TRAIL BLAZER" in v_model:
+            v_model = "TRAIL BLAZER"
         elif "KONA" in v_model:
             v_model = "KONA"
         elif v_model == "PACIFICA":
             v_model = "VOYAGER"
             
         current_sig = (v_make, v_model, v_year)
+        
+        debug_targets = [
+            ("CHRYSLER", "VOYAGER", "2026"),
+            ("HYUNDAI", "KONA", "2022"),
+            ("CHEVROLET", "EXPRESS", "2013"),
+            ("BLUE BIRD", "COMMERCIAL", "2007"),
+            ("CHEVROLET", "TRAIL BLAZER", "2023")
+        ]
         
         if current_sig not in debug_targets:
             continue
