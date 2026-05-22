@@ -174,22 +174,24 @@ def process_recall_sync():
     existing_entries = load_existing_recalls()
     new_rows_to_append = []
 
+    debug_counter = 0
     for vehicle in vehicles_to_check:
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
-        # DEBUGGER: Direct string fallback processing to verify regex extraction
+        # MULTI-VEHICLE DEBUGGER: Track and verify 5 distinct vehicle payload extractions
         if raw_campaigns:
-            print("\n=== DEBUGGER: RAW NHTSA API PAYLOAD DATA ===")
             import json
             payload_string = json.dumps(raw_campaigns, indent=4)
-            print(payload_string)
             
-            # Use string parsing to test the pattern matching on the raw console stream
+            print(f"\n=== DEBUGGER VEHICLE #{debug_counter + 1}: {vehicle['year']} {vehicle['make']} {vehicle['model']} ===")
             extracted = extract_manufacturer_code(payload_string)
             print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
-            print("============================================\n")
-            import sys
-            sys.exit(0)
+            print("========================================================================\n")
+            
+            debug_counter += 1
+            if debug_counter >= 5:
+                import sys
+                sys.exit("Exiting script safely after printing 5 unique manufacturer payload evaluations.")
         
         for campaign in raw_campaigns:
             campaign_id = str(campaign.get("NHTSACampaignNumber", "")).strip()
