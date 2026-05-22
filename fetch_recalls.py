@@ -183,11 +183,11 @@ def process_recall_sync():
             import json
             print(json.dumps(raw_campaigns, indent=4))
             
-            # Directly isolate the first dictionary in the flat list
+            # Pull the dictionary element directly out of the wrapper list
             test_campaign = raw_campaigns
             test_remedy = test_campaign.get("Remedy", "") or ""
             
-            # Run the extraction function and view the output
+            # Evaluate the text block processing function
             extracted = extract_manufacturer_code(test_remedy)
             print(f"DEBUGGER TEST -> Extracted Code from Remedy: '{extracted}'")
             print("============================================\n")
