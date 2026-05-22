@@ -92,22 +92,22 @@ def extract_manufacturer_code(notes_text):
         
     text_to_search = str(notes_text)
         
-    # Pattern 1: Capture explicit parentheses blocks like (Recall Campaign 246) or (06D)
+    # Pattern 1: Specific pattern for lists or multi-code phrasing like "numbers for this recall are 06D, 10D..."
+    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9]{2,6})\b', text_to_search, re.IGNORECASE)
+    if list_match:
+        return list_match.group(1).strip().upper()
+
+    # Pattern 2: Capture explicit parentheses blocks like (Recall Campaign 246) or (06D)
     paren_match = re.search(r'\((?:Recall\s+)?(?:Campaign|Number)?\s*([A-Z0-9]{3,6})\)', text_to_search, re.IGNORECASE)
     if paren_match:
         return paren_match.group(1).strip().upper()
         
-    # Pattern 2: Standard manufacturer text callouts targeting specific phrasing variations
+    # Pattern 3: Standard manufacturer text callouts targeting specific phrasing variations
     text_match = re.search(r'(?:recall\s+number\s+is|recall\s+is|campaign\s+number\s+is|campaign\s+is|internal\s+number\s+for\s+this\s+recall\s+is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', text_to_search, re.IGNORECASE)
     if text_match:
         potential_code = text_match.group(1).strip().upper()
         if any(char.isdigit() for char in potential_code):
             return potential_code
-
-    # Specific pattern for lists or multi-code phrasing like "numbers for this recall are 06D, 10D..."
-    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9]{2,6})\b', text_to_search, re.IGNORECASE)
-    if list_match:
-        return list_match.group(1).strip().upper()
     
     # Fallback Pattern 3: Catch casual mentions of numeric/alphanumeric codes near the word recall or campaign
     fallback_match = re.search(r'(?:recall|campaign)\s+(?:code|number)?\s*([A-Z0-9]{2,6})\b', text_to_search, re.IGNORECASE)
