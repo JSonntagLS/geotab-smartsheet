@@ -184,19 +184,24 @@ def process_recall_sync():
     new_rows_to_append = []
 
     debug_counter = 0
-    evaluated_types = set()
+    # Explicit target signatures for our 5 fresh verification profiles
+    debug_targets = [
+        ("HYUNDAI", "KONA", "2023"),
+        ("CHEVROLET", "EQUINOX", "2023"),
+        ("CHRYSLER", "PACIFICA HYBRID", "2024"),
+        ("FORD", "TRANSIT E-350", "2026"),
+        ("IC BUS", "PC205", "2011")
+    ]
     
     for vehicle in vehicles_to_check:
-        # Create a unique tracking key for the specific Make/Model/Year combo
-        vehicle_type_key = (vehicle["make"].upper(), vehicle["model"].upper(), vehicle["year"])
+        current_sig = (vehicle["make"].upper().strip(), vehicle["model"].upper().strip(), vehicle["year"].strip())
         
-        # If we already evaluated this exact combo, skip pinging and printing to save our 5 slots
-        if vehicle_type_key in evaluated_types:
+        if current_sig not in debug_targets:
             continue
             
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
-        # MULTI-MANUFACTURER DEBUGGER: Track and verify 5 completely unique configurations
+        # TARGETED DEBUGGER: Process and print our 5 fresh testing profiles
         if raw_campaigns:
             import json
             payload_string = json.dumps(raw_campaigns, indent=4)
@@ -206,12 +211,13 @@ def process_recall_sync():
             print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
             print("========================================================================\n")
             
-            evaluated_types.add(vehicle_type_key)
+            # Remove from targets list so we don't repeat the exact same truck/car
+            debug_targets.remove(current_sig)
             debug_counter += 1
             
-            if debug_counter >= 5:
+            if debug_counter >= 5 or not debug_targets:
                 import sys
-                sys.exit("Exiting script safely after printing 5 completely different manufacturer payload evaluations.")
+                sys.exit("Exiting script safely after printing 5 fresh custom manufacturer payload evaluations.")
 
         
         for campaign in raw_campaigns:
