@@ -25,7 +25,6 @@ def fetch_active_recalls(make, model, year):
     clean_model = " ".join(str(model).strip().split()).upper()
     clean_year = " ".join(str(year).strip().split()).upper()
 
-    # Database translation map to strip non-standard strings down to valid NHTSA API variants
     # Comprehensive cross-fleet database translation map to handle universal model variants
     model_normalization = {
         # Common Typo & Alternate Spelling Defense
@@ -65,11 +64,10 @@ def fetch_active_recalls(make, model, year):
         "MC FRONT ENGINE MOTOR HOME CHASSIS": "MC FRONT ENGINE MOTOR HOME CHASSIS"
     }
 
-    # Apply exact matching translations
+    # 1. Run explicit translation check first
     if clean_model in model_normalization:
         clean_model = model_normalization[clean_model]
-        
-    # Catch-all phrase filters for custom utility bodies (e.g., "EXPRESS CUTAWAY" -> "EXPRESS")
+    # 2. Fall back to generic phrase containment parsing only if not explicitly matched
     elif "EXPRESS" in clean_model:
         clean_model = "EXPRESS"
     elif "TRANSIT" in clean_model and "CONNECT" not in clean_model:
@@ -129,7 +127,10 @@ def extract_manufacturer_code(notes_text, vehicle_make=""):
         return ""
         
     text_to_search = str(notes_text)
-    make_blacklist = {str(vehicle_make).strip().upper(), "NISSAN", "CHRYSLER", "FORD", "CHEVROLET", "CHEVY", "HYUNDAI", "FMVSS"}
+    make_blacklist = {
+        str(vehicle_make).strip().upper(), 
+        "NISSAN", "CHRYSLER", "FORD", "CHEVROLET", "CHEVY", "HYUNDAI", 
+        "FMVSS", "CNG", "LPG", "LNG", "EV", "HEV", "PHEV"
 
     # Inline helper to validate that a code isn't just a manufacturer name or purely text when it shouldn't be
     def is_valid_code(code_str):
