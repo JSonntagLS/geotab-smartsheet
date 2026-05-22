@@ -102,6 +102,11 @@ def extract_manufacturer_code(notes_text):
         if any(char.isdigit() for char in potential_code):
             return potential_code
 
+    # Specific pattern for lists or multi-code phrasing like "numbers for this recall are 06D, 10D..."
+    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9]{2,6})', notes_text, re.IGNORECASE)
+    if list_match:
+        return list_match.group(1).strip().upper()
+    
     # Fallback Pattern 3: Catch casual mentions of numeric/alphanumeric codes near the word recall or campaign
     fallback_match = re.search(r'(?:recall|campaign)\s+(?:code|number)?\s*([A-Z0-9]{2,6})\b', notes_text, re.IGNORECASE)
     if fallback_match:
