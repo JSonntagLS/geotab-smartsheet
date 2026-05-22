@@ -129,7 +129,7 @@ def extract_manufacturer_code(notes_text, vehicle_make=""):
         return ""
         
     text_to_search = str(notes_text)
-    make_blacklist = {str(vehicle_make).strip().upper(), "NISSAN", "CHRYSLER", "FORD", "CHEVROLET", "CHEVY", "HYUNDAI"}
+    make_blacklist = {str(vehicle_make).strip().upper(), "NISSAN", "CHRYSLER", "FORD", "CHEVROLET", "CHEVY", "HYUNDAI", "FMVSS"}
 
     # Inline helper to validate that a code isn't just a manufacturer name or purely text when it shouldn't be
     def is_valid_code(code_str):
@@ -217,34 +217,45 @@ def process_recall_sync():
     new_rows_to_append = []
 
     debug_counter = 0
-    # Explicit target signatures for our 5 fresh verification profiles
+    # Custom targets targeting our 5 fresh verification profiles
     debug_targets = [
-        ("HYUNDAI", "KONA", "2023"),
-        ("CHEVROLET", "EQUINOX", "2023"),
-        ("CHRYSLER", "PACIFICA HYBRID", "2024"),
-        ("FORD", "TRANSIT E-350", "2026"),
-        ("IC BUS", "PC205", "2011")
+        ("CHRYSLER", "VOYAGER", "2026"),  # Normalizes Row 01 Pacifica lookup to match sheet rules
+        ("HYUNDAI", "KONA", "2022"),
+        ("CHEVROLET", "EXPRESS", "2013"),
+        ("BLUE BIRD", "COMMERCIAL SERIES", "2007"),
+        ("CHEVROLET", "TRAILBLAZER", "2023")
     ]
     
     for vehicle in vehicles_to_check:
-        current_sig = (vehicle["make"].upper().strip(), vehicle["model"].upper().strip(), vehicle["year"].strip())
+        v_make = vehicle["make"].upper().strip()
+        v_model = vehicle["model"].upper().strip()
+        v_year = vehicle["year"].strip()
+        
+        # Keep evaluation targets perfectly matched against our database map formats
+        if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES BUS" in v_model:
+            v_model = "COMMERCIAL SERIES"
+        elif "EXPRESS" in v_model:
+            v_model = "EXPRESS"
+        elif v_model == "PACIFICA":
+            v_model = "VOYAGER"
+            
+        current_sig = (v_make, v_model, v_year)
         
         if current_sig not in debug_targets:
             continue
             
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
-        # TARGETED DEBUGGER: Process and print our 5 fresh testing profiles
+        # TARGETED BATCH DEBUGGER: Evaluate the new collection against the updated FMVSS filter
         if raw_campaigns:
             import json
             payload_string = json.dumps(raw_campaigns, indent=4)
             
-            print(f"\n=== DEBUGGER UNIQUE VEHICLE #{debug_counter + 1}: {vehicle['year']} {vehicle['make']} {vehicle['model']} ===")
+            print(f"\n=== DEBUGGER UNIQUE VEHICLE #{debug_counter + 1}: {v_year} {v_make} {v_model} ===")
             extracted = extract_manufacturer_code(payload_string, vehicle["make"])
             print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
             print("========================================================================\n")
             
-            # Remove from targets list so we don't repeat the exact same truck/car
             debug_targets.remove(current_sig)
             debug_counter += 1
             
