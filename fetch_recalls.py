@@ -269,7 +269,8 @@ def process_recall_sync():
             
             if debug_counter >= 5 or not debug_targets:
                 import sys
-                sys.exit("Exiting script safely after printing 5 fresh custom manufacturer payload evaluations.")
+                print("Exiting script safely after printing 5 fresh custom manufacturer payload evaluations.")
+                sys.exit(0)
 
         
         for campaign in raw_campaigns:
