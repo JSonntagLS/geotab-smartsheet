@@ -45,58 +45,53 @@ def fetch_active_recalls(make, model, year):
                 break
 
     model_normalization = {
+        # Typos, Alternate Spellings, and Variations
         "ROUGE": "ROGUE",
         "CHYSLER VOYAGER": "VOYAGER",
         "CHYRSLER VOYAGER": "VOYAGER",
-        "PACIFICA HYBRID": "PACIFICA",
-        "SAVANNA": "SAVANA",
+        "PACIFICA HYBRID": "VOYAGER",
+        "PACIFICA": "VOYAGER",
+        "SAVANNA": "EXPRESS",
         "CHEVY EXPRESS": "EXPRESS",
         "CHEVROLET EXPRESS 3500": "EXPRESS",
         "EXPRESS 3500 CUTAWAY": "EXPRESS",
         "EXPRESS 3500": "EXPRESS",
-        "TRANSIT E-350": "E-350 TRANSIT",
+        
+        # Ford Commercial & Passenger Splits
+        "TRANSIT E-350": "TRANSIT",
         "E350": "E-350",
         "E-350 SUPER DUTY": "E-350",
         "TRANSIT CARGO VAN": "TRANSIT",
         "TRANSIT CONNECT": "TRANSIT CONNECT",
-        "F350": "F-350",
-        "F-350 SUPER DUTY": "F-350",
-        "KONA ELECTRIC": "KONA",
         "TRAILBLAZER SUV": "TRAILBLAZER",
+        "TRAIL BLAZER": "TRAILBLAZER",
         "EQUINOX EV": "EQUINOX",
-        # Official NHTSA API Structural Overrides
-        "TRAILBLAZER": "TRAIL BLAZER",
-        "COMMERCIAL SERIES": "COMMERCIAL",
         
-        # Heavy Duty Commercial Bus Frameworks
+        # Heavy Fleet Commercial Mappings
         "PC205": "CE",
         "CE COMMERCIAL": "CE",
         "INTEGRATED CE COMMERCIAL": "CE",
         "3000": "3000 RE",
         "INTERNATIONAL 3000": "3000 RE",
-        "COMMERCIAL SERIES BUS": "COMMERCIAL SERIES",
-        "SHELL COMMERCIAL SERIES": "COMMERCIAL SERIES",
-        "EAGLE MMC 39'": "MC FRONT ENGINE MOTOR HOME CHASSIS",
+        "COMMERCIAL SERIES BUS": "COMMERCIAL",
+        "SHELL COMMERCIAL SERIES": "COMMERCIAL",
+        "COMMERCIAL SERIES": "COMMERCIAL",
         "MC FRONT ENGINE MOTOR HOME CHASSIS": "MC FRONT ENGINE MOTOR HOME CHASSIS"
     }
 
     if clean_model in model_normalization:
         clean_model = model_normalization[clean_model]
-    elif "EXPRESS" in clean_model:
+    elif "EXPRESS" in clean_model or "SAVANNA" in clean_model:
         clean_model = "EXPRESS"
     elif "TRANSIT" in clean_model and "CONNECT" not in clean_model:
         clean_model = "TRANSIT"
-    elif "PC205" in clean_model or "CE COMMERCIAL" in clean_model or "CE" in clean_model:
+    elif "PC205" in clean_model or "CE" in clean_model:
         clean_model = "CE"
-    elif "SHELL COMMERCIAL SERIES" in clean_model or "COMMERCIAL SERIES" in clean_model:
-        clean_model = "COMMERCIAL SERIES"
+    elif "COMMERCIAL" in clean_model:
+        clean_model = "COMMERCIAL"
         
-    # Format components appropriately for target vehicle classes based on API requirements
-    api_make = clean_make.title() if clean_make in ["CHEVROLET", "HYUNDAI", "CHRYSLER", "NISSAN"] else clean_make
-    api_model = clean_model.title() if clean_make in ["CHEVROLET", "HYUNDAI", "CHRYSLER", "NISSAN"] else clean_model
-
-    encoded_make = urllib.parse.quote(api_make)
-    encoded_model = urllib.parse.quote(api_model)
+    encoded_make = urllib.parse.quote(clean_make)
+    encoded_model = urllib.parse.quote(clean_model)
     encoded_year = urllib.parse.quote(clean_year)
     
     url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={encoded_make}&model={encoded_model}&modelYear={encoded_year}"
@@ -237,38 +232,20 @@ def process_recall_sync():
 
     existing_entries = load_existing_recalls()
     new_rows_to_append = []
-
-    debug_counter = 0
-    # Placed outside the loop scope so removals persist across rows
-    debug_targets = [
-        ("CHRYSLER", "VOYAGER", "2026"),
-        ("HYUNDAI", "KONA", "2022"),
-        ("CHEVROLET", "EXPRESS", "2013"),
-        ("BLUE BIRD", "COMMERCIAL", "2007"),
-        ("CHEVROLET", "TRAIL BLAZER", "2023")
-    ]
     
     for vehicle in vehicles_to_check:
         v_make = str(vehicle["make"]).strip().upper()
         v_model = str(vehicle["model"]).strip().upper()
         v_year = str(vehicle["year"]).strip().upper()
         
-        # Keep internal signatures perfectly matched to normalized targeting structures
         if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES" in v_model or v_model == "COMMERCIAL":
             v_model = "COMMERCIAL"
-        elif "EXPRESS" in v_model:
+        elif "EXPRESS" in v_model or "SAVANNA" in v_model:
             v_model = "EXPRESS"
-        elif "TRAILBLAZER" in v_model or "TRAIL BLAZER" in v_model:
-            v_model = "TRAIL BLAZER"
-        elif "KONA" in v_model:
-            v_model = "KONA"
+        elif "PC205" in v_model:
+            v_model = "CE"
         elif v_model == "PACIFICA":
             v_model = "VOYAGER"
-            
-        current_sig = (v_make, v_model, v_year)
-        
-        if current_sig not in debug_targets:
-            continue
             
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
