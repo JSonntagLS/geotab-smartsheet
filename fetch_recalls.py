@@ -237,11 +237,6 @@ def process_recall_sync():
     existing_entries = load_existing_recalls()
     new_rows_to_append = []
     
-    debug_counter = 0
-    debug_targets = set()
-    current_sig = ""
-    seen_debug_profiles = set()
-    
     for vehicle in vehicles_to_check:
         v_make = str(vehicle["make"]).strip().upper()
         v_model = str(vehicle["model"]).strip().upper()
@@ -256,7 +251,7 @@ def process_recall_sync():
         elif v_model == "PACIFICA":
             v_model = "VOYAGER"
             
-        raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
+        raw_campaigns = fetch_active_recalls(v_make, v_model, v_year)
 
         # TARGETED BATCH DEBUGGER: Evaluate the new collection against the updated FMVSS filter
         if raw_campaigns:
