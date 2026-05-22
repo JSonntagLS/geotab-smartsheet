@@ -29,6 +29,18 @@ def fetch_active_recalls(make, model, year):
     clean_make = " ".join(str(make).strip().split()).upper()
     clean_model = " ".join(str(model).strip().split()).upper()
     clean_year = " ".join(str(year).strip().split()).upper()
+
+    # Database translation map to correct commercial/utility model names for the NHTSA API
+    model_normalization = {
+        "TRANSIT": "TRANSIT CARGO VAN",
+        "KONA": "KONA ELECTRIC",
+        "TRAILBLAZER": "TRAILBLAZER SUV",
+        "PC205": "INTEGRATED CE COMMERCIAL",
+        "SHELL COMMERCIAL SERIES": "COMMERCIAL SERIES Bus"
+    }
+    
+    if clean_model in model_normalization:
+        clean_model = model_normalization[clean_model]
     
     encoded_make = urllib.parse.quote(clean_make)
     encoded_model = urllib.parse.quote(clean_model)
