@@ -26,29 +26,56 @@ def fetch_active_recalls(make, model, year):
     clean_year = " ".join(str(year).strip().split()).upper()
 
     # Database translation map to strip non-standard strings down to valid NHTSA API variants
+    # Comprehensive cross-fleet database translation map to handle universal model variants
     model_normalization = {
+        # Common Typo & Alternate Spelling Defense
         "ROUGE": "ROGUE",
         "CHYSLER VOYAGER": "VOYAGER",
         "CHYRSLER VOYAGER": "VOYAGER",
         "PACIFICA HYBRID": "PACIFICA",
-        "TRANSIT E-350": "E-350 TRANSIT",
         "SAVANNA": "SAVANA",
+        "CHEVY EXPRESS": "EXPRESS",
+        "CHEVROLET EXPRESS 3500": "EXPRESS",
+        "EXPRESS 3500 CUTAWAY": "EXPRESS",
+        "EXPRESS 3500": "EXPRESS",
+        
+        # Ford E-Series / Transit Fleet Variations
+        "TRANSIT E-350": "E-350 TRANSIT",
+        "E350": "E-350",
+        "E-350 SUPER DUTY": "E-350",
         "TRANSIT CARGO VAN": "TRANSIT",
+        "TRANSIT CONNECT": "TRANSIT CONNECT",
+        "F350": "F-350",
+        "F-350 SUPER DUTY": "F-350",
+        
+        # EV & SUV Trim Normalizations
         "KONA ELECTRIC": "KONA",
         "TRAILBLAZER SUV": "TRAILBLAZER",
-        "INTEGRATED CE COMMERCIAL": "CE COMMERCIAL",
+        "EQUINOX EV": "EQUINOX",
+        
+        # Heavy Duty Commercial Bus Frameworks
+        "PC205": "CE",
+        "CE COMMERCIAL": "CE",
+        "INTEGRATED CE COMMERCIAL": "CE",
+        "3000": "3000 RE",
+        "INTERNATIONAL 3000": "3000 RE",
         "COMMERCIAL SERIES BUS": "COMMERCIAL SERIES",
-        "SHELL COMMERCIAL SERIES": "COMMERCIAL SERIES"
+        "SHELL COMMERCIAL SERIES": "COMMERCIAL SERIES",
+        "EAGLE MMC 39'": "MC FRONT ENGINE MOTOR HOME CHASSIS",
+        "MC FRONT ENGINE MOTOR HOME CHASSIS": "MC FRONT ENGINE MOTOR HOME CHASSIS"
     }
 
-    # Add translation to catch the fleet identifier for IC Bus entries
+    # Apply exact matching translations
     if clean_model in model_normalization:
         clean_model = model_normalization[clean_model]
-    elif clean_make == "IC BUS" and "PC205" in clean_model:
-        clean_model = "CE COMMERCIAL"
-    
-    if clean_model in model_normalization:
-        clean_model = model_normalization[clean_model]
+        
+    # Catch-all phrase filters for custom utility bodies (e.g., "EXPRESS CUTAWAY" -> "EXPRESS")
+    elif "EXPRESS" in clean_model:
+        clean_model = "EXPRESS"
+    elif "TRANSIT" in clean_model and "CONNECT" not in clean_model:
+        clean_model = "TRANSIT"
+    elif "PC205" in clean_model or "CE COMMERCIAL" in clean_model:
+        clean_model = "CE"
         
     encoded_make = urllib.parse.quote(clean_make)
     encoded_model = urllib.parse.quote(clean_model)
