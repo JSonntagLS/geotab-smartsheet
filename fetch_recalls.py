@@ -149,8 +149,13 @@ def extract_manufacturer_code(notes_text, vehicle_make=""):
         c = code_str.strip().upper()
         if c in make_blacklist or len(c) <= 2:
             return False
-        # If it contains only alphabetical characters, make sure it isn't a plain generic English word
-        if c.isalpha() and c in ["BEFORE", "AFTER", "OWNER", "UNITS", "THESE", "WHICH", "ABOUT"]:
+        # Catch common short narrative noise, prepositions, and hardware acronyms
+        narrative_noise = {
+            "FOR", "AND", "THE", "NOT", "ALL", "BUT", "HAS", "WAS", "ANY", "ITS", "OUT",
+            "BEFORE", "AFTER", "OWNER", "UNITS", "THESE", "WHICH", "ABOUT", "THEM", "FROM",
+            "APIM", "BCM", "TCM", "ECM", "PCM", "ABS", "SRS", "OBD", "CAN", "RCM", "IPC"
+        }
+        if c in narrative_noise:
             return False
         return True
 
