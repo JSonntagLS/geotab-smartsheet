@@ -25,9 +25,26 @@ def fetch_active_recalls(make, model, year):
     clean_model = " ".join(str(model).strip().split()).upper()
     clean_year = " ".join(str(year).strip().split()).upper()
 
-    # Comprehensive cross-fleet database translation map to handle universal model variants
+    # Global translation maps to clean up corporate suffixes from sheet cells
+    make_normalization = {
+        "CHEVROLET CARS": "CHEVROLET",
+        "CHEVY": "CHEVROLET",
+        "HYUNDAI MOTOR": "HYUNDAI",
+        "HYUNDAI MOTOR AMERICA": "HYUNDAI",
+        "BLUE BIRD BODY COMPANY": "BLUE BIRD",
+        "BLUEBIRD": "BLUE BIRD",
+        "CHRYSLER LLC": "CHRYSLER"
+    }
+    
+    if clean_make in make_normalization:
+        clean_make = make_normalization[clean_make]
+    else:
+        for partial_key, replacement in make_normalization.items():
+            if partial_key in clean_make:
+                clean_make = replacement
+                break
+
     model_normalization = {
-        # Common Typo & Alternate Spelling Defense
         "ROUGE": "ROGUE",
         "CHYSLER VOYAGER": "VOYAGER",
         "CHYRSLER VOYAGER": "VOYAGER",
@@ -37,8 +54,6 @@ def fetch_active_recalls(make, model, year):
         "CHEVROLET EXPRESS 3500": "EXPRESS",
         "EXPRESS 3500 CUTAWAY": "EXPRESS",
         "EXPRESS 3500": "EXPRESS",
-        
-        # Ford E-Series / Transit Fleet Variations
         "TRANSIT E-350": "E-350 TRANSIT",
         "E350": "E-350",
         "E-350 SUPER DUTY": "E-350",
@@ -46,13 +61,9 @@ def fetch_active_recalls(make, model, year):
         "TRANSIT CONNECT": "TRANSIT CONNECT",
         "F350": "F-350",
         "F-350 SUPER DUTY": "F-350",
-        
-        # EV & SUV Trim Normalizations
         "KONA ELECTRIC": "KONA",
         "TRAILBLAZER SUV": "TRAILBLAZER",
         "EQUINOX EV": "EQUINOX",
-        
-        # Heavy Duty Commercial Bus Frameworks
         "PC205": "CE",
         "CE COMMERCIAL": "CE",
         "INTEGRATED CE COMMERCIAL": "CE",
@@ -64,10 +75,8 @@ def fetch_active_recalls(make, model, year):
         "MC FRONT ENGINE MOTOR HOME CHASSIS": "MC FRONT ENGINE MOTOR HOME CHASSIS"
     }
 
-    # Apply translation check against the normalized uppercase model name
     if clean_model in model_normalization:
         clean_model = model_normalization[clean_model]
-    # Fall back to generic keyword containment checks
     elif "EXPRESS" in clean_model:
         clean_model = "EXPRESS"
     elif "TRANSIT" in clean_model and "CONNECT" not in clean_model:
@@ -77,8 +86,12 @@ def fetch_active_recalls(make, model, year):
     elif "SHELL COMMERCIAL SERIES" in clean_model or "COMMERCIAL SERIES" in clean_model:
         clean_model = "COMMERCIAL SERIES"
         
-    encoded_make = urllib.parse.quote(clean_make)
-    encoded_model = urllib.parse.quote(clean_model)
+    # Format components appropriately for target vehicle classes based on API requirements
+    api_make = clean_make.title() if clean_make in ["CHEVROLET", "HYUNDAI", "CHRYSLER", "NISSAN"] else clean_make
+    api_model = clean_model.title() if clean_make in ["CHEVROLET", "HYUNDAI", "CHRYSLER", "NISSAN"] else clean_model
+
+    encoded_make = urllib.parse.quote(api_make)
+    encoded_model = urllib.parse.quote(api_model)
     encoded_year = urllib.parse.quote(clean_year)
     
     url = f"https://api.nhtsa.gov/recalls/recallsByVehicle?make={encoded_make}&model={encoded_model}&modelYear={encoded_year}"
