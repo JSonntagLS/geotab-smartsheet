@@ -40,6 +40,12 @@ def fetch_active_recalls(make, model, year):
         "COMMERCIAL SERIES BUS": "COMMERCIAL SERIES",
         "SHELL COMMERCIAL SERIES": "COMMERCIAL SERIES"
     }
+
+    # Add translation to catch the fleet identifier for IC Bus entries
+    if clean_model in model_normalization:
+        clean_model = model_normalization[clean_model]
+    elif clean_make == "IC BUS" and "PC205" in clean_model:
+        clean_model = "CE COMMERCIAL"
     
     if clean_model in model_normalization:
         clean_model = model_normalization[clean_model]
