@@ -20,28 +20,30 @@ def fetch_active_recalls(make, model, year):
     if not (make and model and year):
         return []
         
-    # Safely handle spaces/special characters in commercial make and model names
-    encoded_make = urllib.parse.quote(str(make).strip())
-    encoded_model = urllib.parse.quote(str(model).strip())
-    encoded_year = urllib.parse.quote(str(year).strip())
-    
-    # Standardize parameters and safely handle spaces or slashes in commercial vehicle descriptors
+# Standardize parameters and safely handle spaces or slashes in commercial vehicle descriptors
     clean_make = " ".join(str(make).strip().split()).upper()
     clean_model = " ".join(str(model).strip().split()).upper()
     clean_year = " ".join(str(year).strip().split()).upper()
 
-    # Database translation map to correct commercial/utility model names for the NHTSA API
+    # Database translation map to strip non-standard strings down to valid NHTSA API variants
     model_normalization = {
-        "TRANSIT": "TRANSIT CARGO VAN",
-        "KONA": "KONA ELECTRIC",
-        "TRAILBLAZER": "TRAILBLAZER SUV",
-        "PC205": "INTEGRATED CE COMMERCIAL",
-        "SHELL COMMERCIAL SERIES": "COMMERCIAL SERIES Bus"
+        "ROUGE": "ROGUE",
+        "CHYSLER VOYAGER": "VOYAGER",
+        "CHYRSLER VOYAGER": "VOYAGER",
+        "PACIFICA HYBRID": "PACIFICA",
+        "TRANSIT E-350": "E-350 TRANSIT",
+        "SAVANNA": "SAVANA",
+        "TRANSIT CARGO VAN": "TRANSIT",
+        "KONA ELECTRIC": "KONA",
+        "TRAILBLAZER SUV": "TRAILBLAZER",
+        "INTEGRATED CE COMMERCIAL": "CE COMMERCIAL",
+        "COMMERCIAL SERIES BUS": "COMMERCIAL SERIES",
+        "SHELL COMMERCIAL SERIES": "COMMERCIAL SERIES"
     }
     
     if clean_model in model_normalization:
         clean_model = model_normalization[clean_model]
-    
+        
     encoded_make = urllib.parse.quote(clean_make)
     encoded_model = urllib.parse.quote(clean_model)
     encoded_year = urllib.parse.quote(clean_year)
@@ -173,17 +175,12 @@ def process_recall_sync():
             if not campaign_id:
                 continue
                 
-            # Drop the entire raw note block directly into the manufacturer campaign area
-            mfg_campaign = campaign.get("Notes", "") or campaign.get("notes", "")
-
-            cleaned_code = ""
-            if isinstance(mfg_campaign, str) and mfg_campaign:
-                # Extracts standard formats (24V-123), mixed strings (R26C1), and 5-digit codes (12332)
-                found_codes = re.findall(r'\b\d{2}V[-–]\d{3}\b|\b(?=[A-Za-z]*\d)(?=\d*[A-Za-z])[A-Za-z0-9\-_]{4,12}\b|\b\d{5}\b', mfg_campaign)
-                cleaned_code = " ".join(found_codes).strip()
+            # Extract the clean manufacturer code column directly instead of parsing the text notes
+            final_campaign_display = str(campaign.get("MfrCampaignNumber", "")).strip()
             
-            # If a clean shorthand code was extracted, use it; otherwise, preserve the raw text notes
-            final_campaign_display = cleaned_code if cleaned_code else mfg_campaign
+            # If the manufacturer column is blank or says "NONE", use the NHTSA ID as a backup
+            if not final_campaign_display or final_campaign_display.upper() == "NONE":
+                final_campaign_display = campaign_id
             
             composite_key = (vehicle["vin"], campaign_id)
             if composite_key not in existing_entries:
