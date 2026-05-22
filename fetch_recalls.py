@@ -163,6 +163,11 @@ def process_recall_sync():
                 
             # Drop the entire raw note block directly into the manufacturer campaign area
             mfg_campaign = campaign.get("Notes", "") or campaign.get("notes", "")
+
+            if isinstance(mfg_campaign, str) and mfg_campaign:
+                # Extracts standard formats (24V-123), mixed strings (R26C1), and 5-digit codes (12332)
+                found_codes = re.findall(r'\b\d{2}V[-–]\d{3}\b|\b(?=[A-Za-z]*\d)(?=\d*[A-Za-z])[A-Za-z0-9\-_]{4,12}\b|\b\d{5}\b', mfg_campaign)
+                mfg_campaign = " ".join(found_codes).strip()
             
             composite_key = (vehicle["vin"], campaign_id)
             if composite_key not in existing_entries:
