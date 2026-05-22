@@ -206,9 +206,9 @@ def process_recall_sync():
             vehicles_to_check.append({
                 "vehicle_name": vehicle_val,
                 "vin": "".join(vin_val.split()),
-                "make": make_val,
-                "model": model_val,
-                "year": year_val
+                "make": " ".join(str(make_val).strip().split()).upper(),
+                "model": " ".join(str(model_val).strip().split()).upper(),
+                "year": " ".join(str(year_val).strip().split()).upper()
             })
 
     if not vehicles_to_check:
@@ -221,7 +221,7 @@ def process_recall_sync():
     debug_counter = 0
     # Custom targets targeting our 5 fresh verification profiles
     debug_targets = [
-        ("CHRYSLER", "VOYAGER", "2026"),  # Normalizes Row 01 Pacifica lookup to match sheet rules
+        ("CHRYSLER", "VOYAGER", "2026"),
         ("HYUNDAI", "KONA", "2022"),
         ("CHEVROLET", "EXPRESS", "2013"),
         ("BLUE BIRD", "COMMERCIAL SERIES", "2007"),
@@ -229,12 +229,11 @@ def process_recall_sync():
     ]
     
     for vehicle in vehicles_to_check:
-        # Sanitize parameters directly to neutralize any hidden sheet spacing or casing issues
-        v_make = " ".join(str(vehicle["make"]).strip().split()).upper()
-        v_model = " ".join(str(vehicle["model"]).strip().split()).upper()
-        v_year = " ".join(str(vehicle["year"]).strip().split()).upper()
+        v_make = vehicle["make"]
+        v_model = vehicle["model"]
+        v_year = vehicle["year"]
         
-        # Keep evaluation targets perfectly matched against our database map formats
+        # Adjust input variant styles to match normalized targeting arrays cleanly
         if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES BUS" in v_model:
             v_model = "COMMERCIAL SERIES"
         elif "EXPRESS" in v_model:
@@ -247,7 +246,7 @@ def process_recall_sync():
         if current_sig not in debug_targets:
             continue
             
-        raw_campaigns = fetch_active_recalls(v_make, v_model, v_year)
+        raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
         # TARGETED BATCH DEBUGGER: Evaluate the new collection against the updated FMVSS filter
         if raw_campaigns:
