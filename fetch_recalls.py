@@ -90,25 +90,27 @@ def extract_manufacturer_code(notes_text):
     if not notes_text:
         return ""
         
+    text_to_search = str(notes_text)
+        
     # Pattern 1: Capture explicit parentheses blocks like (Recall Campaign 246) or (06D)
-    paren_match = re.search(r'\((?:Recall\s+)?(?:Campaign|Number)?\s*([A-Z0-9]{3,6})\)', notes_text, re.IGNORECASE)
+    paren_match = re.search(r'\((?:Recall\s+)?(?:Campaign|Number)?\s*([A-Z0-9]{3,6})\)', text_to_search, re.IGNORECASE)
     if paren_match:
         return paren_match.group(1).strip().upper()
         
     # Pattern 2: Standard manufacturer text callouts targeting specific phrasing variations
-    text_match = re.search(r'(?:recall\s+number\s+is|recall\s+is|campaign\s+number\s+is|campaign\s+is|internal\s+number\s+for\s+this\s+recall\s+is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', notes_text, re.IGNORECASE)
+    text_match = re.search(r'(?:recall\s+number\s+is|recall\s+is|campaign\s+number\s+is|campaign\s+is|internal\s+number\s+for\s+this\s+recall\s+is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', text_to_search, re.IGNORECASE)
     if text_match:
         potential_code = text_match.group(1).strip().upper()
         if any(char.isdigit() for char in potential_code):
             return potential_code
 
     # Specific pattern for lists or multi-code phrasing like "numbers for this recall are 06D, 10D..."
-    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9]{2,6})', notes_text, re.IGNORECASE)
+    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9]{2,6})\b', text_to_search, re.IGNORECASE)
     if list_match:
         return list_match.group(1).strip().upper()
     
     # Fallback Pattern 3: Catch casual mentions of numeric/alphanumeric codes near the word recall or campaign
-    fallback_match = re.search(r'(?:recall|campaign)\s+(?:code|number)?\s*([A-Z0-9]{2,6})\b', notes_text, re.IGNORECASE)
+    fallback_match = re.search(r'(?:recall|campaign)\s+(?:code|number)?\s*([A-Z0-9]{2,6})\b', text_to_search, re.IGNORECASE)
     if fallback_match:
         potential_code = fallback_match.group(1).strip().upper()
         if any(char.isdigit() for char in potential_code):
@@ -175,14 +177,20 @@ def process_recall_sync():
     for vehicle in vehicles_to_check:
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
-        # DEBUGGER: Print the exact API payload response structure and exit
+        # DEBUGGER: Print the exact API payload response structure and exit safely
         if raw_campaigns:
             print("\n=== DEBUGGER: RAW NHTSA API PAYLOAD DATA ===")
             import json
             print(json.dumps(raw_campaigns, indent=4))
+            
+            # Verify our function parses the Remedy text stream perfectly
+            test_campaign = raw_campaigns
+            test_remedy = test_campaign.get("Remedy", "") or ""
+            extracted = extract_manufacturer_code(test_remedy)
+            print(f"DEBUGGER TEST -> Extracted Code from Remedy: '{extracted}'")
             print("============================================\n")
             import sys
-            sys.exit("Exiting script safely after printing raw payload. Remove debugger to resume normal sync.")
+            sys.exit(0)
         
         for campaign in raw_campaigns:
             campaign_id = str(campaign.get("NHTSACampaignNumber", "")).strip()
