@@ -233,6 +233,10 @@ def process_recall_sync():
     existing_entries = load_existing_recalls()
     new_rows_to_append = []
     
+    debug_counter = 0
+    debug_targets = set()
+    current_sig = ""
+    
     for vehicle in vehicles_to_check:
         v_make = str(vehicle["make"]).strip().upper()
         v_model = str(vehicle["model"]).strip().upper()
