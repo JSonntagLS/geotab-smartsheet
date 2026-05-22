@@ -162,7 +162,7 @@ def process_recall_sync():
                 continue
                 
             # Shift data source to the text summary block and isolate the true manufacturer campaign string
-            notes_payload = campaign.get("Notes", "")
+            notes_payload = campaign.get("notes") or campaign.get("Notes") or ""
             mfg_campaign = extract_manufacturer_code(notes_payload)
             
             composite_key = (vehicle["vin"], campaign_id)
