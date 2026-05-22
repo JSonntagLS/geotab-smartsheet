@@ -64,16 +64,18 @@ def fetch_active_recalls(make, model, year):
         "MC FRONT ENGINE MOTOR HOME CHASSIS": "MC FRONT ENGINE MOTOR HOME CHASSIS"
     }
 
-    # 1. Run explicit translation check first
+    # Apply translation check against the normalized uppercase model name
     if clean_model in model_normalization:
         clean_model = model_normalization[clean_model]
-    # 2. Fall back to generic phrase containment parsing only if not explicitly matched
+    # Fall back to generic keyword containment checks
     elif "EXPRESS" in clean_model:
         clean_model = "EXPRESS"
     elif "TRANSIT" in clean_model and "CONNECT" not in clean_model:
         clean_model = "TRANSIT"
-    elif "PC205" in clean_model or "CE COMMERCIAL" in clean_model:
+    elif "PC205" in clean_model or "CE COMMERCIAL" in clean_model or "CE" in clean_model:
         clean_model = "CE"
+    elif "SHELL COMMERCIAL SERIES" in clean_model or "COMMERCIAL SERIES" in clean_model:
+        clean_model = "COMMERCIAL SERIES"
         
     encoded_make = urllib.parse.quote(clean_make)
     encoded_model = urllib.parse.quote(clean_model)
@@ -219,7 +221,7 @@ def process_recall_sync():
     new_rows_to_append = []
 
     debug_counter = 0
-    # Custom targets targeting our 5 fresh verification profiles
+    # Custom targets formatted to catch the exact normalized signatures
     debug_targets = [
         ("CHRYSLER", "VOYAGER", "2026"),
         ("HYUNDAI", "KONA", "2022"),
@@ -229,15 +231,20 @@ def process_recall_sync():
     ]
     
     for vehicle in vehicles_to_check:
-        v_make = vehicle["make"]
-        v_model = vehicle["model"]
-        v_year = vehicle["year"]
+        # Evaluate using uppercase conversion to ensure exact tracking matches
+        v_make = str(vehicle["make"]).strip().upper()
+        v_model = str(vehicle["model"]).strip().upper()
+        v_year = str(vehicle["year"]).strip().upper()
         
-        # Adjust input variant styles to match normalized targeting arrays cleanly
-        if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES BUS" in v_model:
+        # Ensure the model keywords match the normalization target layout
+        if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES" in v_model:
             v_model = "COMMERCIAL SERIES"
         elif "EXPRESS" in v_model:
             v_model = "EXPRESS"
+        elif "TRAILBLAZER" in v_model:
+            v_model = "TRAILBLAZER"
+        elif "KONA" in v_model:
+            v_model = "KONA"
         elif v_model == "PACIFICA":
             v_model = "VOYAGER"
             
