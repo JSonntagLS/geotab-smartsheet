@@ -263,7 +263,8 @@ def process_recall_sync():
             print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
             print("========================================================================\n")
             
-            debug_targets.remove(current_sig)
+            if current_sig in debug_targets:
+                debug_targets.remove(current_sig)
             debug_counter += 1
             
             if debug_counter >= 5 or not debug_targets:
