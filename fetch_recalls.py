@@ -161,9 +161,8 @@ def process_recall_sync():
             if not campaign_id:
                 continue
                 
-            # Shift data source to the text summary block and isolate the true manufacturer campaign string
-            notes_payload = campaign.get("notes") or campaign.get("Notes") or ""
-            mfg_campaign = extract_manufacturer_code(notes_payload)
+            # Drop the entire raw note block directly into the manufacturer campaign area
+            mfg_campaign = campaign.get("Notes", "") or campaign.get("notes", "")
             
             composite_key = (vehicle["vin"], campaign_id)
             if composite_key not in existing_entries:
