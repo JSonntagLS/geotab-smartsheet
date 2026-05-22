@@ -136,7 +136,7 @@ def load_existing_recalls():
         
     return existing_records
 
-def extract_manufacturer_code(notes_text):
+def extract_manufacturer_code(notes_text, vehicle_make=""):
     """Robust pattern matching to isolate shorthand manufacturer campaign codes from NHTSA text blocks."""
     if not notes_text:
         return ""
@@ -239,22 +239,21 @@ def process_recall_sync():
     new_rows_to_append = []
 
     debug_counter = 0
-    # Custom targets formatted to catch the exact normalized signatures
+    # Placed outside the loop scope so removals persist across rows
     debug_targets = [
         ("CHRYSLER", "VOYAGER", "2026"),
         ("HYUNDAI", "KONA", "2022"),
         ("CHEVROLET", "EXPRESS", "2013"),
-        ("BLUE BIRD", "COMMERCIAL SERIES", "2007"),
-        ("CHEVROLET", "TRAILBLAZER", "2023")
+        ("BLUE BIRD", "COMMERCIAL", "2007"),
+        ("CHEVROLET", "TRAIL BLAZER", "2023")
     ]
     
     for vehicle in vehicles_to_check:
-        # Evaluate using uppercase conversion to ensure exact tracking matches
         v_make = str(vehicle["make"]).strip().upper()
         v_model = str(vehicle["model"]).strip().upper()
         v_year = str(vehicle["year"]).strip().upper()
         
-        # Ensure the model keywords match the normalization target layout
+        # Keep internal signatures perfectly matched to normalized targeting structures
         if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES" in v_model or v_model == "COMMERCIAL":
             v_model = "COMMERCIAL"
         elif "EXPRESS" in v_model:
@@ -267,14 +266,6 @@ def process_recall_sync():
             v_model = "VOYAGER"
             
         current_sig = (v_make, v_model, v_year)
-        
-        debug_targets = [
-            ("CHRYSLER", "VOYAGER", "2026"),
-            ("HYUNDAI", "KONA", "2022"),
-            ("CHEVROLET", "EXPRESS", "2013"),
-            ("BLUE BIRD", "COMMERCIAL", "2007"),
-            ("CHEVROLET", "TRAIL BLAZER", "2023")
-        ]
         
         if current_sig not in debug_targets:
             continue
