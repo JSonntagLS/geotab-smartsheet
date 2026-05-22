@@ -175,23 +175,35 @@ def process_recall_sync():
     new_rows_to_append = []
 
     debug_counter = 0
+    evaluated_types = set()
+    
     for vehicle in vehicles_to_check:
+        # Create a unique tracking key for the specific Make/Model/Year combo
+        vehicle_type_key = (vehicle["make"].upper(), vehicle["model"].upper(), vehicle["year"])
+        
+        # If we already evaluated this exact combo, skip pinging and printing to save our 5 slots
+        if vehicle_type_key in evaluated_types:
+            continue
+            
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
-        # MULTI-VEHICLE DEBUGGER: Track and verify 5 distinct vehicle payload extractions
+        # MULTI-MANUFACTURER DEBUGGER: Track and verify 5 completely unique configurations
         if raw_campaigns:
             import json
             payload_string = json.dumps(raw_campaigns, indent=4)
             
-            print(f"\n=== DEBUGGER VEHICLE #{debug_counter + 1}: {vehicle['year']} {vehicle['make']} {vehicle['model']} ===")
+            print(f"\n=== DEBUGGER UNIQUE VEHICLE #{debug_counter + 1}: {vehicle['year']} {vehicle['make']} {vehicle['model']} ===")
             extracted = extract_manufacturer_code(payload_string)
             print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
             print("========================================================================\n")
             
+            evaluated_types.add(vehicle_type_key)
             debug_counter += 1
+            
             if debug_counter >= 5:
                 import sys
-                sys.exit("Exiting script safely after printing 5 unique manufacturer payload evaluations.")
+                sys.exit("Exiting script safely after printing 5 completely different manufacturer payload evaluations.")
+
         
         for campaign in raw_campaigns:
             campaign_id = str(campaign.get("NHTSACampaignNumber", "")).strip()
