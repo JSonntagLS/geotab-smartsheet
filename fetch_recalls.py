@@ -177,24 +177,19 @@ def process_recall_sync():
     for vehicle in vehicles_to_check:
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
-        # DEBUGGER: Unpack and inspect the nested list data payload safely
+        # DEBUGGER: Print the exact API payload response structure and exit cleanly
         if raw_campaigns:
             print("\n=== DEBUGGER: RAW NHTSA API PAYLOAD DATA ===")
             import json
             print(json.dumps(raw_campaigns, indent=4))
             
-            # Safely get the internal campaign dictionary object
-            target_campaign = raw_campaigns
-            if isinstance(target_campaign, list) and len(target_campaign) > 0:
-                target_campaign = target_campaign
-                
-            if isinstance(target_campaign, dict):
-                test_remedy = target_campaign.get("Remedy", "") or ""
-                extracted = extract_manufacturer_code(test_remedy)
-                print(f"DEBUGGER TEST -> Extracted Code from Remedy: '{extracted}'")
-            else:
-                print("DEBUGGER ALERT -> Couldn't isolate target dictionary object.")
-                
+            # Directly isolate the first dictionary in the flat list
+            test_campaign = raw_campaigns
+            test_remedy = test_campaign.get("Remedy", "") or ""
+            
+            # Run the extraction function and view the output
+            extracted = extract_manufacturer_code(test_remedy)
+            print(f"DEBUGGER TEST -> Extracted Code from Remedy: '{extracted}'")
             print("============================================\n")
             import sys
             sys.exit(0)
