@@ -169,6 +169,15 @@ def process_recall_sync():
 
     for vehicle in vehicles_to_check:
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
+
+        # DEBUGGER: Print the exact API payload response structure and exit
+        if raw_campaigns:
+            print("\n=== DEBUGGER: RAW NHTSA API PAYLOAD DATA ===")
+            import json
+            print(json.dumps(raw_campaigns, indent=4))
+            print("============================================\n")
+            import sys
+            sys.exit("Exiting script safely after printing raw payload. Remove debugger to resume normal sync.")
         
         for campaign in raw_campaigns:
             campaign_id = str(campaign.get("NHTSACampaignNumber", "")).strip()
