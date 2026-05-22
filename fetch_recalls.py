@@ -26,9 +26,9 @@ def fetch_active_recalls(make, model, year):
     encoded_year = urllib.parse.quote(str(year).strip())
     
     # Standardize parameters and safely handle spaces or slashes in commercial vehicle descriptors
-    clean_make = str(make).strip().upper()
-    clean_model = str(model).strip()
-    clean_year = str(year).strip()
+    clean_make = " ".join(str(make).strip().split()).upper()
+    clean_model = " ".join(str(model).strip().split()).upper()
+    clean_year = " ".join(str(year).strip().split()).upper()
     
     encoded_make = urllib.parse.quote(clean_make)
     encoded_model = urllib.parse.quote(clean_model)
@@ -82,10 +82,16 @@ def extract_manufacturer_code(notes_text):
         return paren_match.group(1).strip().upper()
         
     # Pattern 2: Standard manufacturer text callouts targeting specific phrasing variations
-    text_match = re.search(r'(?:recall\s+number\s+is|recall\s+is|campaign\s+number\s+is|campaign\s+is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', notes_text, re.IGNORECASE)
+    text_match = re.search(r'(?:recall\s+number\s+is|recall\s+is|campaign\s+number\s+is|campaign\s+is|internal\s+number\s+for\s+this\s+recall\s+is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', notes_text, re.IGNORECASE)
     if text_match:
         potential_code = text_match.group(1).strip().upper()
-        # Strictly ensure the code contains at least one numeric digit to block plain text words
+        if any(char.isdigit() for char in potential_code):
+            return potential_code
+
+    # Fallback Pattern 3: Catch casual mentions of numeric/alphanumeric codes near the word recall or campaign
+    fallback_match = re.search(r'(?:recall|campaign)\s+(?:code|number)?\s*([A-Z0-9]{2,6})\b', notes_text, re.IGNORECASE)
+    if fallback_match:
+        potential_code = fallback_match.group(1).strip().upper()
         if any(char.isdigit() for char in potential_code):
             return potential_code
 
