@@ -202,7 +202,7 @@ def process_recall_sync():
             payload_string = json.dumps(raw_campaigns, indent=4)
             
             print(f"\n=== DEBUGGER UNIQUE VEHICLE #{debug_counter + 1}: {vehicle['year']} {vehicle['make']} {vehicle['model']} ===")
-            extracted = extract_manufacturer_code(payload_string)
+            extracted = extract_manufacturer_code(payload_string, vehicle["make"])
             print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
             print("========================================================================\n")
             
@@ -236,7 +236,7 @@ def process_recall_sync():
                 remedy_text = campaign.get("Remedy", "") or ""
                 
                 # Combine them or check them sequentially using your pattern matching function
-                extracted_code = extract_manufacturer_code(notes_text) or extract_manufacturer_code(remedy_text)
+                extracted_code = extract_manufacturer_code(notes_text, vehicle["make"]) or extract_manufacturer_code(remedy_text, vehicle["make"])
                 
                 if extracted_code:
                     final_campaign_display = extracted_code
