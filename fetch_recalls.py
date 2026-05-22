@@ -267,7 +267,7 @@ def process_recall_sync():
                 debug_targets.remove(current_sig)
             debug_counter += 1
             
-            if debug_counter >= 5 or not debug_targets:
+            if debug_counter >= 5:
                 import sys
                 print("Exiting script safely after printing 5 fresh custom manufacturer payload evaluations.")
                 sys.exit(0)
