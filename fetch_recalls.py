@@ -229,9 +229,10 @@ def process_recall_sync():
     ]
     
     for vehicle in vehicles_to_check:
-        v_make = vehicle["make"].upper().strip()
-        v_model = vehicle["model"].upper().strip()
-        v_year = vehicle["year"].strip()
+        # Sanitize parameters directly to neutralize any hidden sheet spacing or casing issues
+        v_make = " ".join(str(vehicle["make"]).strip().split()).upper()
+        v_model = " ".join(str(vehicle["model"]).strip().split()).upper()
+        v_year = " ".join(str(vehicle["year"]).strip().split()).upper()
         
         # Keep evaluation targets perfectly matched against our database map formats
         if "SHELL COMMERCIAL SERIES" in v_model or "COMMERCIAL SERIES BUS" in v_model:
@@ -246,7 +247,7 @@ def process_recall_sync():
         if current_sig not in debug_targets:
             continue
             
-        raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
+        raw_campaigns = fetch_active_recalls(v_make, v_model, v_year)
 
         # TARGETED BATCH DEBUGGER: Evaluate the new collection against the updated FMVSS filter
         if raw_campaigns:
