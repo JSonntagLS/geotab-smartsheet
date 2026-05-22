@@ -136,22 +136,21 @@ def extract_manufacturer_code(notes_text, vehicle_make=""):
     if not notes_text:
         return ""
         
-def extract_manufacturer_code(notes_text, vehicle_make=""):
-    """Robust pattern matching to isolate shorthand manufacturer campaign codes from NHTSA text blocks."""
-    if not notes_text:
-        return ""
-        
     text_to_search = str(notes_text)
     make_blacklist = {
         str(vehicle_make).strip().upper(), 
         "NISSAN", "CHRYSLER", "FORD", "CHEVROLET", "CHEVY", "HYUNDAI", 
-        "FMVSS", "CNG", "LPG", "LNG", "EV", "HEV", "PHEV"
+        "FMVSS", "CNG", "LPG", "LNG", "EV", "HEV", "PHEV",
+        "VINS", "BEGAN", "DEALERS", "RECALL", "CAMPAIGN", "NUMBER"
     }
 
     # Inline helper to validate that a code isn't just a manufacturer name or purely text when it shouldn't be
     def is_valid_code(code_str):
         c = code_str.strip().upper()
         if c in make_blacklist or len(c) <= 2:
+            return False
+        # If it contains only alphabetical characters, make sure it isn't a plain generic English word
+        if c.isalpha() and c in ["BEFORE", "AFTER", "OWNER", "UNITS", "THESE", "WHICH", "ABOUT"]:
             return False
         return True
 
