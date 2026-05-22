@@ -236,6 +236,7 @@ def process_recall_sync():
     debug_counter = 0
     debug_targets = set()
     current_sig = ""
+    seen_debug_profiles = set()
     
     for vehicle in vehicles_to_check:
         v_make = str(vehicle["make"]).strip().upper()
@@ -254,23 +255,20 @@ def process_recall_sync():
         raw_campaigns = fetch_active_recalls(vehicle["make"], vehicle["model"], vehicle["year"])
 
         # TARGETED BATCH DEBUGGER: Evaluate the new collection against the updated FMVSS filter
+        # TARGETED BATCH DEBUGGER: Evaluate the new collection against the updated FMVSS filter
         if raw_campaigns:
-            import json
-            payload_string = json.dumps(raw_campaigns, indent=4)
-            
-            print(f"\n=== DEBUGGER UNIQUE VEHICLE #{debug_counter + 1}: {v_year} {v_make} {v_model} ===")
-            extracted = extract_manufacturer_code(payload_string, vehicle["make"])
-            print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
-            print("========================================================================\n")
-            
-            if current_sig in debug_targets:
-                debug_targets.remove(current_sig)
-            debug_counter += 1
-            
-            if debug_counter >= 5:
-                import sys
-                print("Exiting script safely after printing 5 fresh custom manufacturer payload evaluations.")
-                sys.exit(0)
+            profile_tuple = (v_year, v_make, v_model)
+            if profile_tuple not in seen_debug_profiles:
+                seen_debug_profiles.add(profile_tuple)
+                import json
+                payload_string = json.dumps(raw_campaigns, indent=4)
+                
+                print(f"\n=== DEBUGGER UNIQUE VEHICLE #{debug_counter + 1}: {v_year} {v_make} {v_model} ===")
+                extracted = extract_manufacturer_code(payload_string, vehicle["make"])
+                print(f"DEBUGGER TEST -> Extracted Code from Payload String: '{extracted}'")
+                print("========================================================================\n")
+                
+                debug_counter += 1
 
         
         for campaign in raw_campaigns:
