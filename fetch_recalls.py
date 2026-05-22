@@ -175,12 +175,26 @@ def process_recall_sync():
             if not campaign_id:
                 continue
                 
-            # Extract the clean manufacturer code column directly instead of parsing the text notes
-            final_campaign_display = str(campaign.get("MfrCampaignNumber", "")).strip()
+            # Try capturing lowercase API variant first, then fall back to uppercase property
+            raw_mfr_code = campaign.get("mfrCampaignNumber")
+            if raw_mfr_code is None:
+                raw_mfr_code = campaign.get("MfrCampaignNumber")
+                
+            final_campaign_display = str(raw_mfr_code).strip() if raw_mfr_code is not None else ""
             
-            # If the manufacturer column is blank or says "NONE", use the NHTSA ID as a backup
-            if not final_campaign_display or final_campaign_display.upper() == "NONE":
-                final_campaign_display = campaign_id
+            # If the API returned a blank, an explicit "NONE", or a duplicate of the NHTSA ID,
+            # aggressively scan the notes block to extract the hidden dealer campaign code
+            if (not final_campaign_display or 
+                final_campaign_display.upper() == "NONE" or 
+                final_campaign_display == campaign_id):
+                
+                notes_text = campaign.get("Notes", "")
+                extracted_code = extract_manufacturer_code(notes_text)
+                
+                if extracted_code:
+                    final_campaign_display = extracted_code
+                else:
+                    final_campaign_display = campaign_id
             
             composite_key = (vehicle["vin"], campaign_id)
             if composite_key not in existing_entries:
