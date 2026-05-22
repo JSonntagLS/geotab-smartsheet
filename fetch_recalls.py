@@ -184,21 +184,24 @@ def process_recall_sync():
             if not campaign_id:
                 continue
                 
-            # Try capturing lowercase API variant first, then fall back to uppercase property
+            # Extract using the API properties if they happen to exist
             raw_mfr_code = campaign.get("mfrCampaignNumber")
             if raw_mfr_code is None:
                 raw_mfr_code = campaign.get("MfrCampaignNumber")
                 
             final_campaign_display = str(raw_mfr_code).strip() if raw_mfr_code is not None else ""
             
-            # If the API returned a blank, an explicit "NONE", or a duplicate of the NHTSA ID,
-            # aggressively scan the notes block to extract the hidden dealer campaign code
+            # If the property is missing, blank, or duplicates the NHTSA ID:
             if (not final_campaign_display or 
                 final_campaign_display.upper() == "NONE" or 
                 final_campaign_display == campaign_id):
                 
-                notes_text = campaign.get("Notes", "")
-                extracted_code = extract_manufacturer_code(notes_text)
+                # Check both text fields where manufacturers hide their campaign numbers
+                notes_text = campaign.get("Notes", "") or ""
+                remedy_text = campaign.get("Remedy", "") or ""
+                
+                # Combine them or check them sequentially using your pattern matching function
+                extracted_code = extract_manufacturer_code(notes_text) or extract_manufacturer_code(remedy_text)
                 
                 if extracted_code:
                     final_campaign_display = extracted_code
