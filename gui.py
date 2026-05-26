@@ -279,6 +279,10 @@ if current_page == "Fleet Rotation Analysis":
                             act_m_val_B = force_num(low_row[col_map["actual"]])
                             wk_val_B = force_num(low_row[col_map["weekly_actual"]])
 
+                            # Catch anomalous odometer data corruption sitting in actuals
+                            if act_m_val_B and odo_B > 0 and act_m_val_B >= (odo_B * 0.5):
+                                act_m_val_B = 0.0
+
                             if proj_m_val_B and proj_m_val_B > 0:
                                 raw_route_B = proj_m_val_B
                             elif act_m_val_B and act_m_val_B > 0:
