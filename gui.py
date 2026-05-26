@@ -22,6 +22,7 @@ col_map = {
     "priority": "Rotation Priority",
     "tier": "Utilization Tier",
     "actual": "Monthly Miles Actual",
+    "weekly_actual": "Weekly Miles Actual",
     "trend": "Weekly Trend",
     "name": "Vehicle Name",
     "loc": "Current Location",
@@ -129,7 +130,7 @@ try:
         df = df.rename(columns={date_col_title: "Date of Last Oil Change"})
     
     # DATA CLEANING: Clean all columns
-    for col_key in ["allowance", "projected", "actual", "odo", "last_oil", "next_oil", "interval"]:
+    for col_key in ["allowance", "projected", "actual", "weekly_actual", "odo", "last_oil", "next_oil", "interval"]:
         if col_key in col_map:
             col = col_map[col_key]
             if col in df.columns:
@@ -238,7 +239,19 @@ if current_page == "Fleet Rotation Analysis":
                     
                     possible_swaps = []
                     for h_idx, high_row in high_usage_assets.iterrows():
-                        raw_route_A = force_num(high_row[col_map["projected"]]) if force_num(high_row[col_map["projected"]]) > 0 else force_num(high_row[col_map["actual"]])
+                        proj_m_val = force_num(high_row[col_map["projected"]])
+                        act_m_val = force_num(high_row[col_map["actual"]])
+                        wk_val = force_num(high_row[col_map["weekly_actual"]])
+                        
+                        if proj_m_val and proj_m_val > 0:
+                            raw_route_A = proj_m_val
+                        elif act_m_val and act_m_val > 0:
+                            raw_route_A = act_m_val
+                        elif wk_val and wk_val > 0:
+                            raw_route_A = wk_val * 4.34
+                        else:
+                            raw_route_A = 0.0
+
                         route_A_baseline = max(raw_route_A, 200.0)
                         
                         _, months_rem_A = calculate_runway(high_row)
@@ -256,8 +269,20 @@ if current_page == "Fleet Rotation Analysis":
                             dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
                             if dist > max_dist: continue
                             
-                            odo_B = force_num(low_row[col_map["odo"]])
-                            raw_route_B = force_num(low_row[col_map["projected"]]) if force_num(low_row[col_map["projected"]]) > 0 else force_num(low_row[col_map["actual"]])
+                            odo_B = force_num(low_row[col_map["odo"]], fallback=0.0)
+                            proj_m_val_B = force_num(low_row[col_map["projected"]])
+                            act_m_val_B = force_num(low_row[col_map["actual"]])
+                            wk_val_B = force_num(low_row[col_map["weekly_actual"]])
+
+                            if proj_m_val_B and proj_m_val_B > 0:
+                                raw_route_B = proj_m_val_B
+                            elif act_m_val_B and act_m_val_B > 0:
+                                raw_route_B = act_m_val_B
+                            elif wk_val_B and wk_val_B > 0:
+                                raw_route_B = wk_val_B * 4.34
+                            else:
+                                raw_route_B = 0.0
+
                             route_B_baseline = max(raw_route_B, 200.0)
                             _, months_rem_B = calculate_runway(low_row)
     
@@ -319,7 +344,7 @@ if current_page == "Fleet Rotation Analysis":
         # Filter for specific columns requested
         rotation_cols = [
             col_map["name"], col_map["loc"], col_map["desc"], 
-            col_map["odo"], col_map["actual"], col_map["projected"], 
+            col_map["odo"], col_map["actual"], col_map["weekly_actual"], col_map["projected"], 
             col_map["allowance"], col_map["trend"], col_map["priority"], col_map["tier"]
         ]
         # Only display columns that exist in the dataframe
