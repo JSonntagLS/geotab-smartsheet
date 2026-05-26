@@ -744,14 +744,6 @@ elif current_page == "Recalls":
         if df.empty:
             st.error("Master fleet dataframe cache is unpopulated or missing.")
         else:
-            # Persistent session diagnostic dictionary initialized before scan execution
-            st.session_state.diagnostic_logs = {
-                "total_vehicles_processed": 0,
-                "invalid_vins_skipped": 0,
-                "api_queries_attempted": [],
-                "fixed_keys_snapshot": list(fixed_keys)[:15] if fixed_keys else []
-            }
-            
             with st.spinner("Pinging NHTSA API endpoints across live fleet configurations..."):
                 scanned_results = []
                 vin_col = next((c for c in df.columns if 'vin' in c.lower()), None)
@@ -797,20 +789,8 @@ elif current_page == "Recalls":
                     elif model_val == "PACIFICA":
                         model_val = "VOYAGER"
 
-                    st.session_state.diagnostic_logs["total_vehicles_processed"] += 1
-
                     if make_val and model_val and year_val:
                         recalls = check_vehicle_recall(make_val, model_val, year_val)
-                        
-                        # Log raw API response numbers per combination tested
-                        st.session_state.diagnostic_logs["api_queries_attempted"].append({
-                            "vehicle_name": name_val,
-                            "vin": raw_vin,
-                            "queried_make": make_val,
-                            "queried_model": model_val,
-                            "queried_year": year_val,
-                            "api_raw_results_count": len(recalls) if isinstance(recalls, list) else "ERROR_NOT_LIST"
-                        })
                     elif "TRANSIT" in model_val and "CONNECT" not in model_val:
                         model_val = "TRANSIT"
                     elif "PC205" in model_val or "CE" in model_val:
@@ -856,21 +836,12 @@ elif current_page == "Recalls":
 
     # Render filtered layout from session memory cache
     if "scanned_recalls" in st.session_state:
-        # Diagnostic UI Expander Rendered Explicitly for Error Log Verification
-        if "diagnostic_logs" in st.session_state:
-            with st.expander("🛠️ Live Fleet Scanner Diagnostic Log", expanded=True):
-                st.subheader("High-Level Execution Summary")
-                st.write(f"**Total Row Records Swept from Smartsheet Cache:** {st.session_state.diagnostic_logs['total_vehicles_processed']}")
-                st.write(f"**Invalid Short VINs Discarded:** {st.session_state.diagnostic_logs['invalid_vins_skipped']}")
-                st.write(f"**Total Scanned Results Pulled in Memory:** {len(st.session_state.scanned_recalls)}")
-                
-                st.subheader("Sample of active fixed_keys configuration blocks")
-                st.json(st.session_state.diagnostic_logs["fixed_keys_snapshot"])
-                
-                st.subheader("Raw API Matrix (Endpoints Queried vs Responses Loaded)")
-                st.dataframe(pd.DataFrame(st.session_state.diagnostic_logs["api_queries_attempted"]))
-
-        active_alerts = [r for r in st.session_state.scanned_recalls if (r["VIN"] + r["CampaignID"]) not in fixed_keys]
+        # Clean upper case string alignment matching criteria
+        active_alerts = []
+        for r in st.session_state.scanned_recalls:
+            match_key = str(r["VIN"]).strip().upper() + str(r["CampaignID"]).strip().upper()
+            if match_key not in fixed_keys:
+                active_alerts.append(r)
         
         if active_alerts:
             st.warning(f"Unresolved Engine Recalls Active: {len(active_alerts)}")
