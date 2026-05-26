@@ -239,6 +239,10 @@ if current_page == "Fleet Rotation Analysis":
                     
                     possible_swaps = []
                     for h_idx, high_row in high_usage_assets.iterrows():
+                        # Skip processing if the vehicle has a Lock flag active
+                        if str(high_row.get("Vehicle Lock", "")).strip().lower() in ["yes", "true", "1", "locked"]:
+                            continue
+
                         odo_val = force_num(high_row[col_map["odo"]], fallback=0.0)
                         proj_m_val = force_num(high_row[col_map["projected"]])
                         act_m_val = force_num(high_row[col_map["actual"]])
@@ -270,7 +274,11 @@ if current_page == "Fleet Rotation Analysis":
                             h_desc = str(high_row.get(col_map["desc"], "")).strip().lower()
                             l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
                             if h_desc != l_desc: continue
-    
+
+                            # Skip processing if the candidate low-use vehicle is locked
+                            if str(low_row.get("Vehicle Lock", "")).strip().lower() in ["yes", "true", "1", "locked"]:
+                                continue
+
                             dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
                             if dist > max_dist: continue
                             
