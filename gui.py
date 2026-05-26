@@ -239,10 +239,15 @@ if current_page == "Fleet Rotation Analysis":
                     
                     possible_swaps = []
                     for h_idx, high_row in high_usage_assets.iterrows():
+                        odo_val = force_num(high_row[col_map["odo"]], fallback=0.0)
                         proj_m_val = force_num(high_row[col_map["projected"]])
                         act_m_val = force_num(high_row[col_map["actual"]])
                         wk_val = force_num(high_row[col_map["weekly_actual"]])
                         
+                        # Catch anomalous odometer data corruption sitting in actuals
+                        if act_m_val and odo_val > 0 and act_m_val >= (odo_val * 0.5):
+                            act_m_val = 0.0
+
                         if proj_m_val and proj_m_val > 0:
                             raw_route_A = proj_m_val
                         elif act_m_val and act_m_val > 0:
