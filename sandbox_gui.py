@@ -774,7 +774,13 @@ elif current_page == "Recalls":
                     
                     make_val = " ".join(str(row.get(make_col, '')).strip().split()).upper() if make_col else ""
                     model_val = " ".join(str(row.get(model_col, '')).strip().split()).upper() if model_col else ""
-                    year_val = " ".join(str(row.get(year_col, '')).strip().split()).upper() if year_col else ""
+                    
+                    # Convert float string years (like 2026.0) cleanly into crisp integer digits
+                    raw_year = str(row.get(year_col, '')).strip()
+                    if raw_year.endswith('.0'):
+                        raw_year = raw_year[:-2]
+                    year_val = " ".join(raw_year.split())
+                    
                     name_val = str(row.get(name_col, 'Unknown Vehicle')).strip() if name_col else "Unknown Vehicle"
                     
                     if make_val in make_normalization:
