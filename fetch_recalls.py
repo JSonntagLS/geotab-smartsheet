@@ -159,11 +159,18 @@ def extract_manufacturer_code(notes_text, vehicle_make=""):
             return False
         return True
 
+    # --- AFTER ---
     # Pattern 1: Specific pattern for lists or multi-code phrasing like "numbers for this recall are 06D, 10D..."
-    # Upgraded to extract the first code from a comma/space separated sequence up to 10 characters (including hyphens)
-    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9\-]{2,10})\b', text_to_search, re.IGNORECASE)
-    if list_match and is_valid_code(list_match.group(1)):
-        return list_match.group(1).strip().upper()
+    # Upgraded to extract all valid codes within a trailing sequence block to catch grouped campaigns
+    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9\-,\s\b(and)]+)', text_to_search, re.IGNORECASE)
+    if list_match:
+        found_codes = re.findall(r'\b([A-Z0-9\-]{2,10})\b', list_match.group(1).upper())
+        valid_found = [c for c in found_codes if is_valid_code(c)]
+        if valid_found:
+            # Deduplicate while preserving a stable, clean output: "R25E2 / R25E3"
+            unique_codes = sorted(list(set(valid_found)))
+            return " / ".join(unique_codes)
+    # --------------
 
     # Pattern 2: Capture explicit parentheses blocks like (Recall Campaign 246) or (06D)
     paren_match = re.search(r'\((?:Recall\s+)?(?:Campaign|Number)?\s*([A-Z0-9\-]{2,10})\)', text_to_search, re.IGNORECASE)
