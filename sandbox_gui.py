@@ -722,99 +722,136 @@ elif current_page == "GPS and Battery Health":
         else:
             st.warning("Health columns (Status/Battery) were not found in the sheet.")
 
+# --- AFTER ---
 elif current_page == "Recalls":
     st.title("Safety Recall Management")
     
     CSV_PATH = 'fixed_recalls.csv'
-    SOURCE_FILE = 'Recalls_389911_05112026.csv' 
+    FIELDNAMES = ["Vehicle Name", "VIN", "CampaignID", "ManufacturerCampaign", "Make", "Model", "Year"]
 
-    # Ensure fixed file skeleton exists safely
-    if not os.path.exists(CSV_PATH):
-        pd.DataFrame(columns=['VIN', 'CampaignID']).to_csv(CSV_PATH, index=False)
+    # Ensure fixed file skeleton exists safely with correct layout
+    if not os.path.exists(CSV_PATH) or os.path.getsize(CSV_PATH) == 0:
+        pd.DataFrame(columns=FIELDNAMES).to_csv(CSV_PATH, index=False)
 
-    # --- REFRESH & SEED ACTIONS ---
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("🔄 Refresh Active List", use_container_width=True):
-            st.rerun()
-    
-    with col_b:
-        with st.expander("Mass Recall Harvester Tool", expanded=True):
-            st.write("Click below to pull ALL historical API recalls into your fixed tracking file for manual editing.")
-            if st.button("RUN FULL FLEET HARVEST", type="primary", use_container_width=True):
-                if 'df' in locals() and not df.empty:
-                    with st.spinner("Harvesting all matching records from NHTSA..."):
-                        saved_count = seed_fixed_recalls(df, SOURCE_FILE, CSV_PATH)
-                        if saved_count > 0:
-                            st.toast(f"Committed {saved_count} itemized records directly to disk storage!")
-                            st.rerun()
-                else:
-                    st.error("Master fleet data missing from memory cache.")
-            
-            # Persistent Log Output Box
-            if "harvest_logs" in st.session_state and st.session_state.harvest_logs:
-                st.divider()
-                st.subheader("Engine Diagnostic Readout")
-                for log_msg in st.session_state.harvest_logs:
-                    st.write(log_msg)
-                else:
-                    st.error("Master fleet data missing from memory cache.")
-            
-            # Persistent Log Output Box
-            if "harvest_logs" in st.session_state and st.session_state.harvest_logs:
-                st.divider()
-                st.subheader("Engine Diagnostic Readout")
-                for log_msg in st.session_state.harvest_logs:
-                    st.write(log_msg)
-
-    # --- MAIN FILTERING AND DISPLAY LOGIC ---
+    # Track fixed composite keys to exclude already completed elements
     try:
         fixed_df = pd.read_csv(CSV_PATH)
-        fixed_keys = set(fixed_df['VIN'].astype(str).str.strip() + fixed_df['CampaignID'].astype(str).str.strip())
+        fixed_keys = set(fixed_df['VIN'].astype(str).str.strip().str.upper() + fixed_df['CampaignID'].astype(str).str.strip().str.upper())
     except Exception:
         fixed_keys = set()
 
-    if os.path.exists(SOURCE_FILE):
-        try:
-            open_recalls_df = pd.read_csv(SOURCE_FILE)
-            
-            # Filter Logic: Keep the record ONLY if it is NOT found inside the fixed_recalls tracking sheet
-            active_alerts = open_recalls_df[~((open_recalls_df['VIN'].astype(str).str.strip() + 
-                                              open_recalls_df['Campaign'].astype(str).str.strip()).isin(fixed_keys))]
-            
-            if not active_alerts.empty:
-                st.warning(f"Pending Active Recalls Requiring Action: {len(active_alerts)}")
+    # Dynamic scanner execution button targeting live API calls 
+    if st.button("🔍 Scan Fleet for Active Recalls", use_container_width=True, type="primary"):
+        if df.empty:
+            st.error("Master fleet dataframe cache is unpopulated or missing.")
+        else:
+            with st.spinner("Pinging NHTSA API endpoints across live fleet configurations..."):
+                scanned_results = []
+                vin_col = next((c for c in df.columns if 'vin' in c.lower()), None)
+                make_col = next((c for c in df.columns if 'make' in c.lower()), None)
+                model_col = next((c for c in df.columns if 'model' in c.lower()), None)
+                year_col = next((c for c in df.columns if 'year' in c.lower()), None)
+                name_col = col_map.get("name") if col_map.get("name") in df.columns else next((c for c in df.columns if 'name' in c.lower()), None)
                 
-                # Table Headers
-                h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
-                h1.write("**Vehicle / Location**")
-                h2.write("**Campaign ID**")
-                h3.write("**Description**")
-                h4.write("**Action**")
-                st.divider()
+                make_normalization = {
+                    "CHEVROLET CARS": "CHEVROLET", "CHEVY": "CHEVROLET",
+                    "HYUNDAI MOTOR": "HYUNDAI", "HYUNDAI MOTOR AMERICA": "HYUNDAI",
+                    "BLUE BIRD BODY COMPANY": "BLUE BIRD", "BLUEBIRD": "BLUE BIRD",
+                    "CHRYSLER LLC": "CHRYSLER"
+                }
 
-                for idx, alert in active_alerts.iterrows():
-                    v_vin = str(alert.get('VIN', '')).strip()
-                    v_camp = str(alert.get('Campaign', alert.get('CampaignID', ''))).strip()
-                    v_name = alert.get('Vehicle', 'Unknown Vehicle')
-                    v_loc = alert.get('Location', 'Unassigned')
-                    v_desc = alert.get('Campaign Description', alert.get('Description', 'No Description Available'))
+                for _, row in df.iterrows():
+                    raw_vin = str(row.get(vin_col, '')).strip().upper() if vin_col else ""
+                    if len(raw_vin) != 17:
+                        continue
                     
-                    c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1]) 
-                    c1.write(f"**{v_name}** \n📍 {v_loc}")
-                    c2.write(f"**ID:** {v_camp}  \n`{v_vin}`")
-                    c3.write(v_desc)
+                    make_val = " ".join(str(row.get(make_col, '')).strip().split()).upper() if make_col else ""
+                    model_val = " ".join(str(row.get(model_col, '')).strip().split()).upper() if model_col else ""
+                    year_val = " ".join(str(row.get(year_col, '')).strip().split()).upper() if year_col else ""
+                    name_val = str(row.get(name_col, 'Unknown Vehicle')).strip() if name_col else "Unknown Vehicle"
                     
-                    if c4.button("MARK FIXED", key=f"fix_{v_vin}_{v_camp}", use_container_width=True):
-                        new_entry = pd.DataFrame([{"VIN": v_vin, "CampaignID": v_camp}])
-                        new_entry.to_csv(CSV_PATH, mode='a', header=False, index=False)
-                        st.toast(f"Moved campaign {v_camp} to the fixed registry!")
-                        st.rerun()
-                    st.divider()
-            else:
-                st.success("All campaigns from the Enterprise active list match your resolved parameters!")
+                    if make_val in make_normalization:
+                        make_val = make_normalization[make_val]
+
+                    if "EXPRESS" in model_val or "SAVANNA" in model_val:
+                        model_val = "EXPRESS"
+                    elif "TRANSIT" in model_val and "CONNECT" not in model_val:
+                        model_val = "TRANSIT"
+                    elif "PC205" in model_val or "CE" in model_val:
+                        model_val = "CE"
+                    elif "COMMERCIAL" in model_val:
+                        model_val = "COMMERCIAL"
+                    elif model_val == "PACIFICA":
+                        model_val = "VOYAGER"
+
+                    if make_val and model_val and year_val:
+                        recalls = check_vehicle_recall(make_val, model_val, year_val)
+                        for r in recalls:
+                            camp_id = str(r.get("NHTSACampaignNumber", "")).strip()
+                            if not camp_id:
+                                continue
+                            
+                            # Parse manufacturer internal tracking code or fallback to component type
+                            raw_mfr = r.get("mfrCampaignNumber") or r.get("MfrCampaignNumber") or ""
+                            if not raw_mfr or str(raw_mfr).upper() == "NONE" or str(raw_mfr) == camp_id:
+                                notes_text = r.get("Notes", "") or ""
+                                remedy_text = r.get("Remedy", "") or ""
+                                list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9\-,\s\b(and)]+)', f"{notes_text} {remedy_text}", re.IGNORECASE)
+                                if list_match:
+                                    codes = re.findall(r'\b([A-Z0-9\-]{2,10})\b', list_match.group(1).upper())
+                                    valid_codes = [c for c in codes if c not in ["NISSAN", "FORD", "CHEVY", "CHEVROLET", "RECALL", "AND", "FOR"]]
+                                    raw_mfr = " / ".join(sorted(list(set(valid_codes)))) if valid_codes else ""
+                            
+                            if not raw_mfr:
+                                raw_mfr = f"{str(r.get('Component', 'UNKNOWN')).split(':')[0].strip().upper()} RECALL"
+                                
+                            scanned_results.append({
+                                "Vehicle Name": name_val,
+                                "VIN": raw_vin,
+                                "CampaignID": camp_id,
+                                "ManufacturerCampaign": raw_mfr,
+                                "Make": make_val,
+                                "Model": model_val,
+                                "Year": year_val,
+                                "Summary": r.get("Summary", "No description available.")
+                            })
+                st.session_state.scanned_recalls = scanned_results
+                st.toast(f"Scan Complete! Located {len(scanned_results)} total active campaigns.", icon="🔍")
+
+    # Render filtered layout from session memory cache
+    if "scanned_recalls" in st.session_state:
+        active_alerts = [r for r in st.session_state.scanned_recalls if (r["VIN"] + r["CampaignID"]) not in fixed_keys]
+        
+        if active_alerts:
+            st.warning(f"Unresolved Engine Recalls Active: {len(active_alerts)}")
+            
+            h1, h2, h3, h4 = st.columns([1.5, 1.5, 3, 1])
+            h1.write("**Vehicle Context**")
+            h2.write("**Identifiers**")
+            h3.write("**Campaign Technical Summary**")
+            h4.write("**Action**")
+            st.divider()
+
+            for idx, alert in enumerate(active_alerts):
+                c1, c2, c3, c4 = st.columns([1.5, 1.5, 3, 1])
+                c1.write(f"**{alert['Vehicle Name']}**\n`{alert['VIN']}`")
+                c2.write(f"**NHTSA:** {alert['CampaignID']}\n**Mfr:** {alert['ManufacturerCampaign']}")
+                c3.write(alert['Summary'])
                 
-        except Exception as e:
-            st.error(f"Error processing filtering layer: {e}")
-    else:
-        st.error(f"Source file asset target '{SOURCE_FILE}' could not be verified on local drive storage.")
+                if c4.button("Completed", key=f"comp_{alert['VIN']}_{alert['CampaignID']}_{idx}", use_container_width=True, type="secondary"):
+                    new_row = pd.DataFrame([{
+                        "Vehicle Name": alert["Vehicle Name"],
+                        "VIN": alert["VIN"],
+                        "CampaignID": alert["CampaignID"],
+                        "ManufacturerCampaign": alert["ManufacturerCampaign"],
+                        "Make": alert["Make"],
+                        "Model": alert["Model"],
+                        "Year": alert["Year"]
+                    }])
+                    new_row.to_csv(CSV_PATH, mode='a', header=False, index=False)
+                    st.toast(f"Saved campaign {alert['CampaignID']} to fixed records!", icon="✅")
+                    st.rerun()
+                st.divider()
+        else:
+            st.success("All clear! Zero active recalls discovered across scanned vehicle parameters.")
+# --------------
