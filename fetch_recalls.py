@@ -254,6 +254,15 @@ def process_recall_sync():
         raw_campaigns = fetch_active_recalls(v_make, v_model, v_year)
         
         for campaign in raw_campaigns:
+            # BROAD-SPECTRUM DIAGNOSTIC: Evaluate every code mapping event
+            c_id = str(campaign.get("NHTSACampaignNumber", "")).strip()
+            api_mfr_1 = campaign.get("mfrCampaignNumber")
+            api_mfr_2 = campaign.get("MfrCampaignNumber")
+            
+            print(f"[DIAGNOSTIC] Evaluating {v_make} {v_model} ({v_year}) - NHTSA ID: {c_id}")
+            print(f"   -> Raw Keys - 'mfrCampaignNumber': {repr(api_mfr_1)} | 'MfrCampaignNumber': {repr(api_mfr_2)}")
+            print(f"   -> Notes Excerpt: {str(campaign.get('Notes', ''))[:120]}...")
+            print(f"   -> Remedy Excerpt: {str(campaign.get('Remedy', ''))[:120]}...")
             campaign_id = str(campaign.get("NHTSACampaignNumber", "")).strip()
             if not campaign_id:
                 continue
