@@ -147,7 +147,7 @@ def extract_manufacturer_code(notes_text, vehicle_make=""):
     # Inline helper to validate that a code isn't just a manufacturer name or purely text when it shouldn't be
     def is_valid_code(code_str):
         c = code_str.strip().upper()
-        if c in make_blacklist or len(c) <= 2:
+        if c in make_blacklist or len(c) < 2:
             return False
         # Catch common short narrative noise, prepositions, and hardware acronyms
         narrative_noise = {
@@ -160,22 +160,29 @@ def extract_manufacturer_code(notes_text, vehicle_make=""):
         return True
 
     # Pattern 1: Specific pattern for lists or multi-code phrasing like "numbers for this recall are 06D, 10D..."
-    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9]{2,6})\b', text_to_search, re.IGNORECASE)
+    # Upgraded to extract the first code from a comma/space separated sequence up to 10 characters (including hyphens)
+    list_match = re.search(r'(?:numbers\s+for\s+this\s+recall\s+are)\s+([A-Z0-9\-]{2,10})\b', text_to_search, re.IGNORECASE)
     if list_match and is_valid_code(list_match.group(1)):
         return list_match.group(1).strip().upper()
 
     # Pattern 2: Capture explicit parentheses blocks like (Recall Campaign 246) or (06D)
-    paren_match = re.search(r'\((?:Recall\s+)?(?:Campaign|Number)?\s*([A-Z0-9]{3,6})\)', text_to_search, re.IGNORECASE)
+    paren_match = re.search(r'\((?:Recall\s+)?(?:Campaign|Number)?\s*([A-Z0-9\-]{2,10})\)', text_to_search, re.IGNORECASE)
     if paren_match and is_valid_code(paren_match.group(1)):
         return paren_match.group(1).strip().upper()
         
     # Pattern 3: Standard manufacturer text callouts targeting specific phrasing variations
-    text_match = re.search(r'(?:recall\s+number\s+is|recall\s+is|campaign\s+number\s+is|campaign\s+is|internal\s+number\s+for\s+this\s+recall\s+is)\s+([A-Z0-9]{2,6})(?:\.|\s|$)', text_to_search, re.IGNORECASE)
+    text_match = re.search(r'(?:recall\s+number\s+is|recall\s+is|campaign\s+number\s+is|campaign\s+is|internal\s+number\s+for\s+this\s+recall\s+is)\s+([A-Z0-9\-]{2,10})(?:\.|\s|$)', text_to_search, re.IGNORECASE)
     if text_match and is_valid_code(text_match.group(1)):
         return text_match.group(1).strip().upper()
     
-    # Fallback Pattern 3: Catch casual mentions of numeric/alphanumeric codes near the word recall or campaign
-    fallback_match = re.search(r'(?:recall|campaign)\s+(?:code|number)?\s*([A-Z0-9]{2,6})\b', text_to_search, re.IGNORECASE)
+    # Pattern 4: Proximity call-to-action sentence match (Bypass supplier names for Buses/Commercial)
+    # Target structure: "contact [Brand] at 1-800-... and reference number/campaign [CODE]"
+    cta_match = re.search(r'(?:contact|call)\s+[\w\s]{1,40}(?:at\s+\d{1,3}[\-\s]\d{3}[\-\s]\d{4})?[\s\w]{1,40}(?:reference|campaign|number|code)[:\s]+([A-Z0-9\-]{2,10})\b', text_to_search, re.IGNORECASE)
+    if cta_match and is_valid_code(cta_match.group(1)):
+        return cta_match.group(1).strip().upper()
+
+    # Fallback Pattern 5: Catch casual mentions of numeric/alphanumeric codes near the word recall or campaign
+    fallback_match = re.search(r'(?:recall|campaign)\s+(?:code|number)?\s*([A-Z0-9\-]{2,10})\b', text_to_search, re.IGNORECASE)
     if fallback_match and is_valid_code(fallback_match.group(1)):
         return fallback_match.group(1).strip().upper()
 
