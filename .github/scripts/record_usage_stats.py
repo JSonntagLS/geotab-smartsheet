@@ -24,6 +24,7 @@ except Exception as e:
     exit(1)
 
 target_col = "Utilization Tier"
+lock_col = "Vehicle Lock"
 labels = [
     "Highly Overused", "Moderately Overused", "Slightly Overused", 
     "Balanced", 
@@ -34,7 +35,14 @@ stats = {"Date": datetime.now().strftime("%Y-%m-%d")}
 hist_file = "usage_history.csv" 
 
 if target_col in df.columns:
-    raw_values = df[target_col].fillna("None").astype(str).str.strip().str.lower()
+    # Filter the dataframe to only include vehicles that are NOT locked
+    if lock_col in df.columns:
+        # Treats True, "True", "checked", or a checked checkbox indicator as locked
+        filtered_df = df[~df[lock_col].astype(str).str.strip().str.lower().isin(['true', '1', 'checked'])]
+    else:
+        filtered_df = df
+
+    raw_values = filtered_df[target_col].fillna("None").astype(str).str.strip().str.lower()
     for label in labels:
         stats[label] = int((raw_values == label.lower().strip()).sum())
     
