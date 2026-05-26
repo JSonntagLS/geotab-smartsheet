@@ -296,7 +296,27 @@ def process_recall_sync():
                 if extracted_code:
                     final_campaign_display = extracted_code
                 else:
-                    final_campaign_display = campaign_id
+                    # Absolute Last Bastion: Create a uniform, high-level text summary from the Component string
+                    raw_component = str(campaign.get("Component", "")).strip()
+                    primary_system = raw_component.split(":")[0].strip().upper() if raw_component else "UNKNOWN"
+                    
+                    # Map bulky NHTSA database phrases to clean operational terms
+                    clean_system_map = {
+                        "SERVICE BRAKES, HYDRAULIC": "HYDRAULIC BRAKES",
+                        "SERVICE BRAKES, AIR": "AIR BRAKES",
+                        "ELECTRICAL SYSTEM": "ELECTRICAL",
+                        "FORWARD COLLISION AVOIDANCE": "COLLISION AVOIDANCE",
+                        "EQUIPMENT ADAPTIVE": "ADAPTIVE EQUIP"
+                    }
+                    summary_text = clean_system_map.get(primary_system, primary_system)
+                    
+                    # Intercept known upfitter or equipment anomalies and apply tracking tags
+                    if campaign_id == "25V876000":
+                        final_campaign_display = f"{summary_text} (ROLLX RECALL)"
+                    elif campaign_id in ["15V868000", "15V870000", "19V478000", "19V479000"]:
+                        final_campaign_display = f"{summary_text} (IC BUS EQUIP)"
+                    else:
+                        final_campaign_display = f"{summary_text} RECALL"
             
             composite_key = (vehicle["vin"], campaign_id)
             if composite_key not in existing_entries:
