@@ -444,6 +444,12 @@ if current_page == "Fleet Rotation Analysis":
                     
                     possible_swaps = []
                     for h_idx, high_row in high_usage_assets.iterrows():
+                        # Guardrail: Exclude Transits entirely from high-use pool
+                        h_desc_check = str(high_row.get(col_map["desc"], "")).upper()
+                        h_name_check = str(high_row.get(col_map["name"], "")).upper()
+                        if "TRANSIT" in h_desc_check or "TRANSIT" in h_name_check:
+                            continue
+
                         # Guardrail: Check vehicle lock
                         lock_val = str(high_row.get("Vehicle Lock", "")).strip().lower()
                         if lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
@@ -478,23 +484,15 @@ if current_page == "Fleet Rotation Analysis":
                         orig_runway_A = max(0.0, (105000 - odo_A) / route_A_baseline) if route_A_baseline > 0 else 999.0
     
                         for l_idx, low_row in low_usage_assets.iterrows():
+                            # Guardrail: Exclude Transits entirely from low-use pool
+                            l_desc_check = str(low_row.get(col_map["desc"], "")).upper()
+                            l_name_check = str(low_row.get(col_map["name"], "")).upper()
+                            if "TRANSIT" in l_desc_check or "TRANSIT" in l_name_check:
+                                continue
+
                             # Guardrail: Check low-use vehicle lock
                             low_lock_val = str(low_row.get("Vehicle Lock", "")).strip().lower()
                             if low_lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
-                                continue
-
-                            # Guardrail: Do not swap Voyagers with Transits
-                            h_desc_str = str(high_row.get(col_map["desc"], "")).upper()
-                            l_desc_str = str(low_row.get(col_map["desc"], "")).upper()
-                            h_name_str = str(high_row.get(col_map["name"], "")).upper()
-                            l_name_str = str(low_row.get(col_map["name"], "")).upper()
-
-                            is_h_voyager = "VOYAGER" in h_desc_str or "VOYAGER" in h_name_str
-                            is_l_voyager = "VOYAGER" in l_desc_str or "VOYAGER" in l_name_str
-                            is_h_transit = "TRANSIT" in h_desc_str or "TRANSIT" in h_name_str
-                            is_l_transit = "TRANSIT" in l_desc_str or "TRANSIT" in l_name_str
-
-                            if (is_h_voyager and is_l_transit) or (is_h_transit and is_l_voyager):
                                 continue
 
                             odo_B = force_num(low_row[col_map["odo"]], fallback=0.0)
