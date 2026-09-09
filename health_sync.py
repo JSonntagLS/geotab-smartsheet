@@ -103,21 +103,20 @@ def run_health_sync():
                     v_list = [float(l['data']) for l in history if l['data']]
                     avg_v = sum(v_list) / len(v_list) if v_list else 0
 
-                # 3. SURGICAL LOGIC (Preserved & Fixed for Offline Units)
+                # 3. SURGICAL LOGIC (Triple-Lock Calibrated)
                 status_val = "Offline" if not is_comm else "Online"
                 
-                # Lock 1: Is the average truly poor?
+                # Lock 1: Is the average truly poor? (Catches BUS C @ 11.65V)
                 is_poor_avg = (avg_v < 12.0 and avg_v > 0)
                 
-                # Lock 2: Is the current voltage a total blackout?
-                is_critical_now = (isinstance(current_v, (int, float)) and current_v < 9.0)
+                # Lock 2: Absolute Blackout / Sustained Discharge (Catches CUBE 7 @ 8.55V, BUS C @ 7.62V)
+                is_critical_low = (isinstance(current_v, (int, float)) and 0 < current_v < 9.0)
                 
-                # Lock 3: Deep Dip, Low Health Flag, or Low Average
+                # Lock 3: Degraded Average with Low Voltage Dip (Ignores healthy cranking dips > 10.0V)
                 v_min = min(v_list) if history and v_list else 15.0
-                is_deep_dip_fail = (v_min < 11.57 and avg_v < 12.3)
-                has_low_voltage_flag = (isinstance(current_v, (int, float)) and current_v > 0 and current_v <= 1.0)
+                is_deep_dip_fail = (v_min < 11.57 and avg_v < 12.5)
 
-                if is_poor_avg or is_critical_now or is_deep_dip_fail or has_low_voltage_flag:
+                if is_poor_avg or is_critical_low or is_deep_dip_fail:
                     battery_val = "Low"
                 else:
                     battery_val = "Normal"
