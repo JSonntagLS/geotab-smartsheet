@@ -609,11 +609,27 @@ if current_page == "Fleet Rotation Analysis":
         st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
 
 elif current_page == "Current Lease Rotations":
-    st.title("Current Lease Rotations")
+    col_title, col_clear = st.columns([4, 1])
+    with col_title:
+        st.title("Current Lease Rotations")
     
     try:
         smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
         swaps_sheet = smart.Sheets.get_sheet(st.secrets["swaps_sheet_id"])
+        
+        all_row_ids = [row.id for row in swaps_sheet.rows]
+        
+        with col_clear:
+            if all_row_ids:
+                with st.popover("🗑️ Clear All", use_container_width=True):
+                    st.warning("Delete ALL saved lease rotations?")
+                    if st.button("Confirm Delete All", type="primary", key="btn_confirm_clear_all", use_container_width=True):
+                        try:
+                            smart.Sheets.delete_rows(st.secrets["swaps_sheet_id"], all_row_ids)
+                            st.toast("Cleared all rotations from Smartsheet!", icon="🗑️")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to clear rows: {e}")
         
         col_id_to_name = {col.id: col.title for col in swaps_sheet.columns}
         col_name_to_id = {col.title: col.id for col in swaps_sheet.columns}
