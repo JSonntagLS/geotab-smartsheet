@@ -343,9 +343,15 @@ st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
 
+if 'saved_rotations' not in st.session_state:
+    st.session_state.saved_rotations = []
+
 # Using link-style buttons to get the clean text-only look
 if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
+
+if st.sidebar.button("Current Lease Rotations", type="secondary", use_container_width=True, key="btn_lease_rot"):
+    st.session_state.active_page = "Current Lease Rotations"
 
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
@@ -532,7 +538,16 @@ if current_page == "Fleet Rotation Analysis":
                             used_vehicles.add(s['l_name'])
     
                     if final_recs:
+                        st.session_state.last_analysis_recs = final_recs
                         st.write("### Fleet Rotation Analysis")
+                        if st.button("Save this rotation", type="primary", key="btn_save_rotation"):
+                            st.session_state.saved_rotations.append({
+                                "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "swaps": [
+                                    {**rec, "status": "Pending"} for rec in final_recs
+                                ]
+                            })
+                            st.toast("Rotation analysis saved to Current Lease Rotations!", icon="✅")
                         st.table(pd.DataFrame(final_recs))
                     else:
                         st.info("No matching swaps found within constraints.")
@@ -553,6 +568,42 @@ if current_page == "Fleet Rotation Analysis":
         st.dataframe(df[available_rot_cols], use_container_width=True, hide_index=True)
     else:
         st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
+
+elif current_page == "Current Lease Rotations":
+    st.title("Current Lease Rotations")
+
+    if not st.session_state.get("saved_rotations"):
+        st.info("No saved rotation analyses found. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
+    else:
+        for saved_idx, snapshot in enumerate(st.session_state.saved_rotations):
+            st.subheader(f"Saved Rotation - {snapshot['date']}")
+            
+            # Header Row
+            h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([2, 2, 1, 1, 1])
+            h_col1.write("**Over-Paced Asset**")
+            h_col2.write("**Under-Used Asset**")
+            h_col3.write("**Distance**")
+            h_col4.write("**Status**")
+            h_col5.write("**Action**")
+            st.divider()
+
+            for swap_idx, swap in enumerate(snapshot["swaps"]):
+                r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([2, 2, 1, 1, 1])
+                
+                r_col1.write(f"**{swap['Over-Paced Vehicle']}**\n{swap['Post-Swap: Current High-Use Asset']}")
+                r_col2.write(f"**{swap['Under-Used Vehicle']}**\n{swap['Post-Swap: Current Low-Use Asset']}")
+                r_col3.write(swap["Distance"])
+                
+                if swap["status"] == "Completed":
+                    r_col4.write("🟢 Completed")
+                    r_col5.write("—")
+                else:
+                    r_col4.write("🟡 Pending")
+                    if r_col5.button("Swap Complete", key=f"swap_comp_{saved_idx}_{swap_idx}", use_container_width=True):
+                        swap["status"] = "Completed"
+                        st.toast(f"Marked swap between {swap['Over-Paced Vehicle']} and {swap['Under-Used Vehicle']} as complete!", icon="✅")
+                        st.rerun()
+                st.divider()
 
 elif current_page == "Oil Changes":
     st.title("Oil Change Management")
