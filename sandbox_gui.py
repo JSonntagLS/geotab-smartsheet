@@ -917,8 +917,6 @@ elif current_page == "Recalls":
                             })
                 st.session_state.scanned_recalls = scanned_results
                 st.toast(f"Scan Complete! Located {len(scanned_results)} total active campaigns.", icon="🔍")
-            except Exception as e:
-                st.error(f"Error scanning for recalls: {e}")
     # Render filtered layout from session memory cache
     if "scanned_recalls" in st.session_state:
         # Clean upper case string alignment matching criteria
