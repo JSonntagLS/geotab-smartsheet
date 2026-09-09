@@ -470,20 +470,14 @@ if current_page == "Fleet Rotation Analysis":
                         _, months_rem_A = calculate_runway(high_row)
                         without_swap_proj_A = odo_A + (route_A_baseline * months_rem_A)
     
-                        # Target Range Check: Exclude if Vehicle A is already in IDEAL target range (95k-105k)
-                        if 95000 <= without_swap_proj_A <= 105000:
+                        # Guardrail: Ignore Vehicle A if it's already under or inside ideal range (< 105k)
+                        if without_swap_proj_A <= 105000:
                             continue
                         
                         # Calculate original runway months until hitting 105k cap for Vehicle A
                         orig_runway_A = max(0.0, (105000 - odo_A) / route_A_baseline) if route_A_baseline > 0 else 999.0
     
                         for l_idx, low_row in low_usage_assets.iterrows():
-                            # Guardrail: Strict description matching (like-for-like)
-                            h_desc = str(high_row.get(col_map["desc"], "")).strip().lower()
-                            l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
-                            if h_desc != l_desc: 
-                                continue
-
                             # Guardrail: Check low-use vehicle lock
                             low_lock_val = str(low_row.get("Vehicle Lock", "")).strip().lower()
                             if low_lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
@@ -510,10 +504,6 @@ if current_page == "Fleet Rotation Analysis":
                             _, months_rem_B = calculate_runway(low_row)
                             without_swap_proj_B = odo_B + (route_B_baseline * months_rem_B)
 
-                            # Guardrail: Never use Vehicle B if it is already in IDEAL target range (95k-105k)
-                            if 95000 <= without_swap_proj_B <= 105000:
-                                continue
-
                             dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
                             if dist > max_dist: 
                                 continue
@@ -521,18 +511,30 @@ if current_page == "Fleet Rotation Analysis":
                             proj_A = odo_A + (route_B_baseline * months_rem_A)
                             proj_B = odo_B + (route_A_baseline * months_rem_B)
 
-                            # Calculate post-swap runway extension for Vehicle A
-                            post_runway_A = max(0.0, (105000 - odo_A) / route_B_baseline) if route_B_baseline > 0 else 999.0
-                            delta_runway_A = post_runway_A - orig_runway_A
-
-                            # Guardrail: Ensure swap does not make Vehicle B reach 105k sooner than Vehicle A's original timeline
-                            runway_B_post = max(0.0, (105000 - odo_B) / route_A_baseline) if route_A_baseline > 0 else 999.0
-                            if runway_B_post < orig_runway_A:
+                            # Calculate post-swap projections & overages
+                            pre_total_overage = max(0.0, without_swap_proj_A - 105000) + max(0.0, without_swap_proj_B - 105000)
+                            post_total_overage = max(0.0, proj_A - 105000) + max(0.0, proj_B - 105000)
+                            
+                            # Guardrail: Reject swap if it increases overall fleet overage
+                            if post_total_overage >= pre_total_overage:
                                 continue
 
-                            # Weighted Scoring Formula
-                            net_miles_saved = without_swap_proj_A - proj_A
-                            score = (delta_runway_A * 15.0) + (net_miles_saved * 0.005) - ((dist ** 1.2) * 0.05)
+                            # Guardrail: Check that Vehicle A actually gains runway
+                            post_runway_A = max(0.0, (105000 - odo_A) / route_B_baseline) if route_B_baseline > 0 else 999.0
+                            delta_runway_A = post_runway_A - orig_runway_A
+                            if delta_runway_A <= 0:
+                                continue
+
+                            # Weighted Scoring Formula (Heavy Route Damage Control)
+                            net_overage_reduction = pre_total_overage - post_total_overage
+                            
+                            # Prefer lower odometers on heavy routes to give maximum absorption room
+                            odo_headroom_bonus = (105000 - odo_B) * 0.05 if route_A_baseline > 2000 else 0.0
+                            
+                            # Give a high bonus for same-location or local trades
+                            location_bonus = 250.0 if dist == 0 else max(0.0, 100.0 - dist)
+
+                            score = (net_overage_reduction * 1.0) + (delta_runway_A * 20.0) + odo_headroom_bonus + location_bonus - ((dist ** 1.2) * 0.05)
     
                             possible_swaps.append({
                                 "score": score,
