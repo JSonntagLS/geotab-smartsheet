@@ -31,42 +31,102 @@ def run_health_sync():
                 fleet_map[str(name_cell).strip()] = row.id
         print(f"Mapped {len(fleet_map)} vehicles from Smartsheet.", flush=True)
 
-        # 2. Fetch Native Geotab Device and Status Objects
-        print("Fetching native Geotab DeviceStatusInfo...", flush=True)
-        raw_devices = client.get('Device')
-        devices = {d['id']: d['name'].strip() for d in raw_devices}
+        # 2. Setup Dates
+        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        two_days_ago = (datetime.utcnow() - timedelta(days=2)).isoformat()
         
-        status_info_list = client.get('DeviceStatusInfo')
-        
-        # 3. Fetch Active Faults for Low Battery Detection
-        print("Fetching active Geotab ExceptionEvents...", flush=True)
-        active_exceptions = client.get('ExceptionEvent', search={'isDismissed': False})
-        low_battery_device_ids = set()
-        
-        for exc in active_exceptions:
-            rule_id = exc.get('rule', {}).get('id', '')
-            dev_id = exc.get('device', {}).get('id')
-            if dev_id and ('Battery' in rule_id or 'Voltage' in rule_id or 'LowPower' in rule_id):
-                low_battery_device_ids.add(dev_id)
+        diags = [
+            'DiagnosticGoDeviceVoltageId', 
+            'DiagnosticDeviceBatteryVoltageId', 
+            'DiagnosticDeviceHealthBatteryVoltageLowId'
+        ]
+        all_raw_data = []
 
-        # 4. Build Updates Direct from Geotab Status Flags
+        for diag in diags:
+            print(f"Fetching {diag}...", flush=True)
+            search_date = two_days_ago if 'Health' in diag else seven_days_ago
+            batch = client.get('StatusData', search={
+                'diagnosticSearch': {'id': diag},
+                'fromDate': search_date
+            })
+            if batch:
+                all_raw_data.extend(batch)
+                print(f"  -> Found {len(batch)} records.", flush=True)
+
+        # 3. Flatten data
+        df = pd.DataFrame(all_raw_data)
+        if df.empty:
+            print("CRITICAL: No voltage data found in Geotab.", flush=True)
+            df = pd.DataFrame(columns=['dateTime', 'data', 'device', 'diagnostic'])
+        else:
+            # Convert 'data' column to actual numbers, ignoring errors
+            df['voltage'] = pd.to_numeric(df['data'], errors='coerce')
+            df['device_id'] = df['device'].apply(lambda x: x['id'] if isinstance(x, dict) else None)
+            
+            # SORT: Lowest voltage at the top
+            df = df.sort_values(['device_id', 'voltage'], ascending=[True, True])
+            
+            # KEEP the lowest one per device
+            df = df.drop_duplicates('device_id')
+
+        # 4. Get Devices and Status
+        status_infos = {si['device']['id']: si['isDeviceCommunicating'] for si in client.get('DeviceStatusInfo')}
+        devices = {d['id']: d['name'].strip() for d in client.get('Device')}
+
+        # 5. VAN 2 FORENSIC DEBUGGER
+        print("\n--- Van 2 Deep Dive ---", flush=True)
+        van_2_id = next((i for i, n in devices.items() if "VAN 2" in n.upper()), None)
+        if van_2_id:
+            logs = client.get('StatusData', search={'deviceSearch': {'id': van_2_id}, 'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'}, 'fromDate': seven_days_ago})
+            if logs:
+                v_list = [float(l['data']) for l in logs]
+                print(f"Van 2 Range: {min(v_list)}V - {max(v_list)}V")
+                if min(v_list) < 10.5: print(">>> CRANK DIP DETECTED")
+
+        # 6. Build Updates with Pattern Logic
         updates = []
         print("\n--- Processing Fleet Updates ---", flush=True)
-        for si in status_info_list:
-            dev_id = si.get('device', {}).get('id')
+        for dev_id, is_comm in status_infos.items():
             dev_name = devices.get(dev_id)
-            
-            if dev_name and dev_name in fleet_map:
-                # Direct Offline Check using Geotab's native state
-                is_comm = si.get('isDeviceCommunicating', True)
-                status_val = "Online" if is_comm else "Offline"
+            if dev_name in fleet_map:
+                device_data = df[df['device_id'] == dev_id]
                 
-                # Direct Low Battery Check from Geotab's active exception flags
-                battery_val = "Low" if dev_id in low_battery_device_ids else "Normal"
+                # 1. Variables for Logic
+                current_v = "N/A"
+                avg_v = 0
+                if not device_data.empty:
+                    current_v = device_data.iloc[0]['voltage']
                 
-                print(f"RESULT: {dev_name[:30]:<30} | GPS: {status_val:<7} | Battery: {battery_val}")
+                # 2. Pull 7-day history to check for the "Van 2" pattern
+                history = client.get('StatusData', search={'deviceSearch': {'id': dev_id}, 'diagnosticSearch': {'id': 'DiagnosticGoDeviceVoltageId'}, 'fromDate': seven_days_ago})
+                if history:
+                    v_list = [float(l['data']) for l in history if l['data']]
+                    avg_v = sum(v_list) / len(v_list) if v_list else 0
 
-                # Prepare Smartsheet Row
+                # 3. SURGICAL LOGIC (Preserved & Fixed for Offline Units)
+                status_val = "Offline" if not is_comm else "Online"
+                
+                # Lock 1: Is the average truly poor?
+                is_poor_avg = (avg_v < 12.0 and avg_v > 0)
+                
+                # Lock 2: Is the current voltage a total blackout?
+                is_critical_now = (isinstance(current_v, (int, float)) and current_v < 9.0)
+                
+                # Lock 3: Deep Dip, Low Health Flag, or Low Average
+                v_min = min(v_list) if history and v_list else 15.0
+                is_deep_dip_fail = (v_min < 11.57 and avg_v < 12.3)
+                has_low_voltage_flag = (isinstance(current_v, (int, float)) and current_v > 0 and current_v <= 1.0)
+
+                if is_poor_avg or is_critical_now or is_deep_dip_fail or has_low_voltage_flag:
+                    battery_val = "Low"
+                else:
+                    battery_val = "Normal"
+
+                # 4. Debug Output
+                if battery_val == "Low" or any(x in dev_name.upper() for x in ["VAN 2", "BUS 1", "BUS A", "CUBE 4", "CUBE 7", "73A", "BUS C"]):
+                    print(f"RESULT: {dev_name[:30]:<30} | GPS: {status_val:<7} | Battery: {battery_val:<7} | Avg: {round(avg_v, 2):<5} | Low Read: {current_v}")
+
+                # 5. Prepare Smartsheet Row
                 new_row = smartsheet.models.Row()
                 new_row.id = fleet_map[dev_name]
                 new_row.cells.append(smartsheet.models.Cell({'column_id': STATUS_COL_ID, 'value': status_val}))
