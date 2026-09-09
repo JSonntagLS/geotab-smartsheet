@@ -434,7 +434,7 @@ if current_page == "Fleet Rotation Analysis":
             with st.spinner("Analyzing trajectories..."):
                 try:
                     # 1. IDENTIFY ASSETS
-                    # Ensure lock flag and rotation criteria are strictly evaluated
+                    # Filter candidate pools
                     high_usage_assets = df[
                         df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)
                     ]
@@ -444,18 +444,17 @@ if current_page == "Fleet Rotation Analysis":
                     
                     possible_swaps = []
                     for h_idx, high_row in high_usage_assets.iterrows():
-                        # Skip processing if the vehicle has a Lock flag active or marked non-rotatable
+                        # Guardrail: Check vehicle lock
                         lock_val = str(high_row.get("Vehicle Lock", "")).strip().lower()
                         if lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
                             continue
 
-                        odo_val = force_num(high_row[col_map["odo"]], fallback=0.0)
+                        odo_A = force_num(high_row[col_map["odo"]], fallback=0.0)
                         proj_m_val = force_num(high_row[col_map["projected"]])
                         act_m_val = force_num(high_row[col_map["actual"]])
                         wk_val = force_num(high_row[col_map["weekly_actual"]])
                         
-                        # Catch anomalous odometer data corruption sitting in actuals
-                        if act_m_val and odo_val > 0 and act_m_val >= (odo_val * 0.5):
+                        if act_m_val and odo_A > 0 and act_m_val >= (odo_A * 0.5):
                             act_m_val = 0.0
 
                         if proj_m_val and proj_m_val > 0:
@@ -468,33 +467,33 @@ if current_page == "Fleet Rotation Analysis":
                             raw_route_A = 0.0
 
                         route_A_baseline = max(raw_route_A, 200.0)
-                        
                         _, months_rem_A = calculate_runway(high_row)
-                        odo_A = force_num(high_row[col_map["odo"]])
                         without_swap_proj_A = odo_A + (route_A_baseline * months_rem_A)
     
-                        if without_swap_proj_A <= 103000:
-                            continue 
+                        # Target Range Check: Exclude if Vehicle A is already in IDEAL target range (95k-105k)
+                        if 95000 <= without_swap_proj_A <= 105000:
+                            continue
+                        
+                        # Calculate original runway months until hitting 105k cap for Vehicle A
+                        orig_runway_A = max(0.0, (105000 - odo_A) / route_A_baseline) if route_A_baseline > 0 else 999.0
     
                         for l_idx, low_row in low_usage_assets.iterrows():
+                            # Guardrail: Strict description matching (like-for-like)
                             h_desc = str(high_row.get(col_map["desc"], "")).strip().lower()
                             l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
-                            if h_desc != l_desc: continue
+                            if h_desc != l_desc: 
+                                continue
 
-                            # Skip processing if the candidate low-use vehicle is locked or restricted
+                            # Guardrail: Check low-use vehicle lock
                             low_lock_val = str(low_row.get("Vehicle Lock", "")).strip().lower()
                             if low_lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
                                 continue
 
-                            dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
-                            if dist > max_dist: continue
-                            
                             odo_B = force_num(low_row[col_map["odo"]], fallback=0.0)
                             proj_m_val_B = force_num(low_row[col_map["projected"]])
                             act_m_val_B = force_num(low_row[col_map["actual"]])
                             wk_val_B = force_num(low_row[col_map["weekly_actual"]])
 
-                            # Catch anomalous odometer data corruption sitting in actuals
                             if act_m_val_B and odo_B > 0 and act_m_val_B >= (odo_B * 0.5):
                                 act_m_val_B = 0.0
 
@@ -509,10 +508,31 @@ if current_page == "Fleet Rotation Analysis":
 
                             route_B_baseline = max(raw_route_B, 200.0)
                             _, months_rem_B = calculate_runway(low_row)
-    
+                            without_swap_proj_B = odo_B + (route_B_baseline * months_rem_B)
+
+                            # Guardrail: Never use Vehicle B if it is already in IDEAL target range (95k-105k)
+                            if 95000 <= without_swap_proj_B <= 105000:
+                                continue
+
+                            dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
+                            if dist > max_dist: 
+                                continue
+
                             proj_A = odo_A + (route_B_baseline * months_rem_A)
                             proj_B = odo_B + (route_A_baseline * months_rem_B)
-                            score = ((route_A_baseline - route_B_baseline) * 0.7) - ((dist ** 1.5) * 0.1)
+
+                            # Calculate post-swap runway extension for Vehicle A
+                            post_runway_A = max(0.0, (105000 - odo_A) / route_B_baseline) if route_B_baseline > 0 else 999.0
+                            delta_runway_A = post_runway_A - orig_runway_A
+
+                            # Guardrail: Ensure swap does not make Vehicle B reach 105k sooner than Vehicle A's original timeline
+                            runway_B_post = max(0.0, (105000 - odo_B) / route_A_baseline) if route_A_baseline > 0 else 999.0
+                            if runway_B_post < orig_runway_A:
+                                continue
+
+                            # Weighted Scoring Formula
+                            net_miles_saved = without_swap_proj_A - proj_A
+                            score = (delta_runway_A * 15.0) + (net_miles_saved * 0.005) - ((dist ** 1.2) * 0.05)
     
                             possible_swaps.append({
                                 "score": score,
@@ -520,7 +540,7 @@ if current_page == "Fleet Rotation Analysis":
                                 "l_name": low_row[col_map["name"]],
                                 "dist": f"{dist:.1f} miles",
                                 "data_A": {"odo": odo_A, "route_in": route_B_baseline, "route_out": route_A_baseline, "months": months_rem_A, "proj": proj_A, "orig_proj": without_swap_proj_A},
-                                "data_B": {"odo": odo_B, "route_in": route_A_baseline, "route_out": route_B_baseline, "months": months_rem_B, "proj": proj_B, "orig_proj": odo_B + (route_B_baseline * months_rem_B)}
+                                "data_B": {"odo": odo_B, "route_in": route_A_baseline, "route_out": route_B_baseline, "months": months_rem_B, "proj": proj_B, "orig_proj": without_swap_proj_B}
                             })
     
                     sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
@@ -533,7 +553,7 @@ if current_page == "Fleet Rotation Analysis":
                             miles_to_go = 105000 - current_odo
                             time_text = f"Hits limit in {max(0, miles_to_go / route_val):.1f} months" if route_val > 0 else "Hits limit in 0.0 months"
                             return f"🔴 OVER: {proj_val:,.0f} mi ({time_text})"
-                        elif proj_val < 85000:
+                        elif proj_val < 95000:
                             status_text = "🔵 UNDER"
                             if is_stationary:
                                 return f"{status_text}: {proj_val:,.0f} mi (Minimal Usage)"
