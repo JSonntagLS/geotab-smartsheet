@@ -1,4 +1,4 @@
-name: Get Smartsheet Column IDs
+name: Get Vehicle Swap Column IDs
 
 on:
   workflow_dispatch: # Allows manual trigger from GitHub UI
