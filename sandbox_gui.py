@@ -549,33 +549,41 @@ if current_page == "Fleet Rotation Analysis":
     
                     if final_recs:
                         st.session_state.last_analysis_recs = final_recs
-                        st.write("### Fleet Rotation Analysis")
-                        if st.button("Save this rotation", type="primary", key="btn_save_rotation"):
-                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-                            csv_path = 'Current Lease Swaps.csv'
-                            
-                            save_rows = []
-                            for rec in final_recs:
-                                save_rows.append({
-                                    "Date": timestamp,
-                                    "Over-Paced Vehicle": rec["Over-Paced Vehicle"],
-                                    "Under-Used Vehicle": rec["Under-Used Vehicle"],
-                                    "Distance": rec["Distance"],
-                                    "Without-Swap: Current High-Use Asset": rec["Without-Swap: Current High-Use Asset"],
-                                    "Post-Swap: Current High-Use Asset": rec["Post-Swap: Current High-Use Asset"],
-                                    "Without-Swap: Current Low-Use Asset": rec["Without-Swap: Current Low-Use Asset"],
-                                    "Post-Swap: Current Low-Use Asset": rec["Post-Swap: Current Low-Use Asset"],
-                                    "Status": "Pending"
-                                })
-                            
-                            new_df = pd.DataFrame(save_rows)
-                            file_exists = os.path.exists(csv_path) and os.path.getsize(csv_path) > 0
-                            new_df.to_csv(csv_path, mode='a', header=not file_exists, index=False)
-                            
-                            st.toast("Rotation analysis saved to Current Lease Swaps.csv!", icon="✅")
-                        st.table(pd.DataFrame(final_recs))
                     else:
+                        st.session_state.last_analysis_recs = []
                         st.info("No matching swaps found within constraints.")
+    
+                except Exception as e:
+                    st.error(f"Rotation Analysis Error: {e}")
+
+        # Render recommendations outside the run_analysis conditional execution block
+        if "last_analysis_recs" in st.session_state and st.session_state.last_analysis_recs:
+            final_recs = st.session_state.last_analysis_recs
+            st.write("### Fleet Rotation Analysis")
+            if st.button("Save this rotation", type="primary", key="btn_save_rotation"):
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                csv_path = 'Current Lease Swaps.csv'
+                
+                save_rows = []
+                for rec in final_recs:
+                    save_rows.append({
+                        "Date": timestamp,
+                        "Over-Paced Vehicle": rec["Over-Paced Vehicle"],
+                        "Under-Used Vehicle": rec["Under-Used Vehicle"],
+                        "Distance": rec["Distance"],
+                        "Without-Swap: Current High-Use Asset": rec["Without-Swap: Current High-Use Asset"],
+                        "Post-Swap: Current High-Use Asset": rec["Post-Swap: Current High-Use Asset"],
+                        "Without-Swap: Current Low-Use Asset": rec["Without-Swap: Current Low-Use Asset"],
+                        "Post-Swap: Current Low-Use Asset": rec["Post-Swap: Current Low-Use Asset"],
+                        "Status": "Pending"
+                    })
+                
+                new_df = pd.DataFrame(save_rows)
+                file_has_data = os.path.exists(csv_path) and os.path.getsize(csv_path) > 0
+                new_df.to_csv(csv_path, mode='a', header=not file_has_data, index=False)
+                
+                st.toast("Rotation analysis saved to Current Lease Swaps.csv!", icon="✅")
+            st.table(pd.DataFrame(final_recs))
     
                 except Exception as e:
                     st.error(f"Rotation Analysis Error: {e}")
