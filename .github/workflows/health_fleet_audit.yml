@@ -1,1 +1,27 @@
+name: Health Fleet Audit
 
+on:
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install mygeotab pandas smartsheet-python-sdk
+
+      - name: Run Fleet Audit
+        env:
+          GEOTAB_USER: ${{ secrets.GEOTAB_USER }}
+          GEOTAB_PASSWORD: ${{ secrets.GEOTAB_PASSWORD }}
+          GEOTAB_DB: ${{ secrets.GEOTAB_DB }}
+        run: python health_fleet_audit.py
