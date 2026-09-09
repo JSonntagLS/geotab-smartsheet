@@ -889,17 +889,6 @@ elif current_page == "Recalls":
 
                     if make_val and model_val and year_val:
                         recalls = check_vehicle_recall(make_val, model_val, year_val)
-                    elif "TRANSIT" in model_val and "CONNECT" not in model_val:
-                        model_val = "TRANSIT"
-                    elif "PC205" in model_val or "CE" in model_val:
-                        model_val = "CE"
-                    elif "COMMERCIAL" in model_val:
-                        model_val = "COMMERCIAL"
-                    elif model_val == "PACIFICA":
-                        model_val = "VOYAGER"
-
-                    if make_val and model_val and year_val:
-                        recalls = check_vehicle_recall(make_val, model_val, year_val)
                         for r in recalls:
                             camp_id = str(r.get("NHTSACampaignNumber", "")).strip()
                             if not camp_id:
@@ -931,7 +920,8 @@ elif current_page == "Recalls":
                             })
                 st.session_state.scanned_recalls = scanned_results
                 st.toast(f"Scan Complete! Located {len(scanned_results)} total active campaigns.", icon="🔍")
-
+            except Exception as e:
+                st.error(f"Error scanning for recalls: {e}")
     # Render filtered layout from session memory cache
     if "scanned_recalls" in st.session_state:
         # Clean upper case string alignment matching criteria
