@@ -551,13 +551,28 @@ if current_page == "Fleet Rotation Analysis":
                         st.session_state.last_analysis_recs = final_recs
                         st.write("### Fleet Rotation Analysis")
                         if st.button("Save this rotation", type="primary", key="btn_save_rotation"):
-                            st.session_state.saved_rotations.append({
-                                "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                                "swaps": [
-                                    {**rec, "status": "Pending"} for rec in final_recs
-                                ]
-                            })
-                            st.toast("Rotation analysis saved to Current Lease Rotations!", icon="✅")
+                            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                            csv_path = 'Current Lease Swaps.csv'
+                            
+                            save_rows = []
+                            for rec in final_recs:
+                                save_rows.append({
+                                    "Date": timestamp,
+                                    "Over-Paced Vehicle": rec["Over-Paced Vehicle"],
+                                    "Under-Used Vehicle": rec["Under-Used Vehicle"],
+                                    "Distance": rec["Distance"],
+                                    "Without-Swap: Current High-Use Asset": rec["Without-Swap: Current High-Use Asset"],
+                                    "Post-Swap: Current High-Use Asset": rec["Post-Swap: Current High-Use Asset"],
+                                    "Without-Swap: Current Low-Use Asset": rec["Without-Swap: Current Low-Use Asset"],
+                                    "Post-Swap: Current Low-Use Asset": rec["Post-Swap: Current Low-Use Asset"],
+                                    "Status": "Pending"
+                                })
+                            
+                            new_df = pd.DataFrame(save_rows)
+                            file_exists = os.path.exists(csv_path) and os.path.getsize(csv_path) > 0
+                            new_df.to_csv(csv_path, mode='a', header=not file_exists, index=False)
+                            
+                            st.toast("Rotation analysis saved to Current Lease Swaps.csv!", icon="✅")
                         st.table(pd.DataFrame(final_recs))
                     else:
                         st.info("No matching swaps found within constraints.")
@@ -581,39 +596,48 @@ if current_page == "Fleet Rotation Analysis":
 
 elif current_page == "Current Lease Rotations":
     st.title("Current Lease Rotations")
+    csv_path = 'Current Lease Swaps.csv'
 
-    if not st.session_state.get("saved_rotations"):
-        st.info("No saved rotation analyses found. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
+    if not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0:
+        st.info("No saved rotation analyses found in Current Lease Swaps.csv. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
     else:
-        for saved_idx, snapshot in enumerate(st.session_state.saved_rotations):
-            st.subheader(f"Saved Rotation - {snapshot['date']}")
+        try:
+            swaps_df = pd.read_csv(csv_path)
             
-            # Header Row
-            h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([2, 2, 1, 1, 1])
-            h_col1.write("**Over-Paced Asset**")
-            h_col2.write("**Under-Used Asset**")
-            h_col3.write("**Distance**")
-            h_col4.write("**Status**")
-            h_col5.write("**Action**")
-            st.divider()
-
-            for swap_idx, swap in enumerate(snapshot["swaps"]):
-                r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([2, 2, 1, 1, 1])
+            # Group entries by Date timestamp
+            grouped = swaps_df.groupby("Date", sort=False)
+            
+            for date_str, group in grouped:
+                st.subheader(f"Saved Rotation - {date_str}")
                 
-                r_col1.write(f"**{swap['Over-Paced Vehicle']}**\n{swap['Post-Swap: Current High-Use Asset']}")
-                r_col2.write(f"**{swap['Under-Used Vehicle']}**\n{swap['Post-Swap: Current Low-Use Asset']}")
-                r_col3.write(swap["Distance"])
-                
-                if swap["status"] == "Completed":
-                    r_col4.write("🟢 Completed")
-                    r_col5.write("—")
-                else:
-                    r_col4.write("🟡 Pending")
-                    if r_col5.button("Swap Complete", key=f"swap_comp_{saved_idx}_{swap_idx}", use_container_width=True):
-                        swap["status"] = "Completed"
-                        st.toast(f"Marked swap between {swap['Over-Paced Vehicle']} and {swap['Under-Used Vehicle']} as complete!", icon="✅")
-                        st.rerun()
+                h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([2, 2, 1, 1, 1])
+                h_col1.write("**Over-Paced Asset**")
+                h_col2.write("**Under-Used Asset**")
+                h_col3.write("**Distance**")
+                h_col4.write("**Status**")
+                h_col5.write("**Action**")
                 st.divider()
+
+                for idx, row in group.iterrows():
+                    r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([2, 2, 1, 1, 1])
+                    
+                    r_col1.write(f"**{row['Over-Paced Vehicle']}**\n{row['Post-Swap: Current High-Use Asset']}")
+                    r_col2.write(f"**{row['Under-Used Vehicle']}**\n{row['Post-Swap: Current Low-Use Asset']}")
+                    r_col3.write(str(row["Distance"]))
+                    
+                    if str(row["Status"]) == "Completed":
+                        r_col4.write("🟢 Completed")
+                        r_col5.write("—")
+                    else:
+                        r_col4.write("🟡 Pending")
+                        if r_col5.button("Swap Complete", key=f"swap_comp_csv_{idx}", use_container_width=True):
+                            swaps_df.at[idx, "Status"] = "Completed"
+                            swaps_df.to_csv(csv_path, index=False)
+                            st.toast(f"Marked swap between {row['Over-Paced Vehicle']} and {row['Under-Used Vehicle']} as complete!", icon="✅")
+                            st.rerun()
+                    st.divider()
+        except Exception as e:
+            st.error(f"Error reading Current Lease Swaps.csv: {e}")
 
 elif current_page == "Oil Changes":
     st.title("Oil Change Management")
