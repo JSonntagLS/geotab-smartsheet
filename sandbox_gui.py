@@ -604,8 +604,11 @@ elif current_page == "Current Lease Rotations":
         try:
             swaps_df = pd.read_csv(csv_path)
             
-            # Group entries by Date timestamp
-            grouped = swaps_df.groupby("Date", sort=False)
+            if swaps_df.empty:
+                st.info("No saved rotation analyses found in Current Lease Swaps.csv. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
+            else:
+                # Group entries by Date timestamp
+                grouped = swaps_df.groupby("Date", sort=False)
             
             for date_str, group in grouped:
                 st.subheader(f"Saved Rotation - {date_str}")
@@ -636,6 +639,8 @@ elif current_page == "Current Lease Rotations":
                             st.toast(f"Marked swap between {row['Over-Paced Vehicle']} and {row['Under-Used Vehicle']} as complete!", icon="✅")
                             st.rerun()
                     st.divider()
+        except pd.errors.EmptyDataError:
+            st.info("No saved rotation analyses found in Current Lease Swaps.csv. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
         except Exception as e:
             st.error(f"Error reading Current Lease Swaps.csv: {e}")
 
