@@ -567,12 +567,27 @@ if current_page == "Fleet Rotation Analysis":
         if "last_analysis_recs" in st.session_state and st.session_state.last_analysis_recs:
             final_recs = st.session_state.last_analysis_recs
             st.write("### Fleet Rotation Analysis")
-            if st.button("Save this rotation", type="primary", key="btn_save_rotation"):
+            
+            # Check if Smartsheet currently has any existing rows saved
+            has_existing_swaps = False
+            try:
+                smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+                target_sheet = smart.Sheets.get_sheet(st.secrets["swaps_sheet_id"])
+                has_existing_swaps = len(target_sheet.rows) > 0
+            except Exception:
+                has_existing_swaps = False
+
+            if has_existing_swaps:
+                st.info("⚠️ Saved rotation already exists in Smartsheet. Clear active rotations under 'Current Lease Rotations' to save a new one.")
+
+            if st.button(
+                "Save this rotation", 
+                type="primary", 
+                key="btn_save_rotation", 
+                disabled=has_existing_swaps
+            ):
                 timestamp = datetime.now().strftime("%Y-%m-%d")
                 try:
-                    smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
-                    target_sheet = smart.Sheets.get_sheet(st.secrets["swaps_sheet_id"])
-                    
                     # Create Column Map by Name
                     col_id_map = {col.title: col.id for col in target_sheet.columns}
                     
@@ -590,6 +605,7 @@ if current_page == "Fleet Rotation Analysis":
                         
                     smart.Sheets.add_rows(st.secrets["swaps_sheet_id"], new_rows)
                     st.toast("Saved rotation directly to Smartsheet!", icon="✅")
+                    st.rerun()
                 except Exception as e:
                     st.error(f"Failed to save to Smartsheet: {e}")
             st.table(pd.DataFrame(final_recs))
