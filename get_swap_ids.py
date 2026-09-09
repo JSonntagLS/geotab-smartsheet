@@ -1,9 +1,12 @@
+import os
 import smartsheet
-import streamlit as st
 
-# Pulls credentials directly from your Streamlit secrets file
-access_token = st.secrets["smartsheet_token"]
-sheet_id = st.secrets["swaps_sheet_id"]
+access_token = os.environ.get('SMARTSHEET_TOKEN')
+sheet_id = os.environ.get('SWAPS_SHEET_ID')  # Updated to match your new secret name
+
+if not access_token or not sheet_id:
+    print("Error: Missing SMARTSHEET_TOKEN or SWAPS_SHEET_ID in GitHub Secrets.")
+    exit(1)
 
 ss_client = smartsheet.Smartsheet(access_token)
 
