@@ -51,7 +51,11 @@ def run_fleet_audit():
             
             # Query last known GPS position timestamp directly
             last_log = client.get('LogRecord', search={'deviceSearch': {'id': dev_id}}, resultsLimit=1)
-            last_gps_time = last_log[0]['dateTime'][:16].replace('T', ' ') if last_log else "No GPS Data"
+            if last_log and 'dateTime' in last_log[0]:
+                dt = last_log[0]['dateTime']
+                last_gps_time = dt.strftime('%Y-%m-%d %H:%M') if hasattr(dt, 'strftime') else str(dt)[:16].replace('T', ' ')
+            else:
+                last_gps_time = "No GPS Data"
             
             # Filter readings for specific device
             dev_df = df[df['device'].apply(lambda x: x.get('id') if isinstance(x, dict) else None) == dev_id] if not df.empty else pd.DataFrame()
