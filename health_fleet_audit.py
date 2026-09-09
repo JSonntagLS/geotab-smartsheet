@@ -40,7 +40,7 @@ def run_fleet_audit():
                 all_raw_data.extend(batch)
                 print(f"  -> Found {len(batch)} records.", flush=True)
 
-        # 4. Process Data in Pandas
+        ## 4. Process Data in Pandas
         df = pd.DataFrame(all_raw_data)
         
         audit_results = []
@@ -48,6 +48,10 @@ def run_fleet_audit():
         for dev_id, dev_name in devices.items():
             is_comm = status_infos.get(dev_id, False)
             comm_status = "Online" if is_comm else "Offline"
+            
+            # Query last known GPS position timestamp directly
+            last_log = client.get('LogRecord', search={'deviceSearch': {'id': dev_id}}, resultsLimit=1)
+            last_gps_time = last_log[0]['dateTime'][:16].replace('T', ' ') if last_log else "No GPS Data"
             
             # Filter readings for specific device
             dev_df = df[df['device'].apply(lambda x: x.get('id') if isinstance(x, dict) else None) == dev_id] if not df.empty else pd.DataFrame()
@@ -69,7 +73,9 @@ def run_fleet_audit():
 
             audit_results.append({
                 'Vehicle Name': dev_name,
+                'Geotab Comm Flag': is_comm,
                 'GPS Status': comm_status,
+                'Last GPS Fixed (UTC)': last_gps_time,
                 'Min Volts': min_v,
                 '7-Day Avg': avg_v,
                 'Max Volts': max_v,
