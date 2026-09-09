@@ -584,9 +584,6 @@ if current_page == "Fleet Rotation Analysis":
                 
                 st.toast("Rotation analysis saved to Current Lease Swaps.csv!", icon="✅")
             st.table(pd.DataFrame(final_recs))
-    
-            except Exception as e:
-                    st.error(f"Rotation Analysis Error: {e}")
 
         st.divider()
         st.subheader("Asset Details")
