@@ -286,6 +286,9 @@ if 'df' not in st.session_state:
         sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
         columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
         rows = []
+        # Locate Vehicle Lock column index if available
+        lock_col_title = next((col.title for col in sheet.columns if "lock" in col.title.lower()), "Vehicle Lock")
+
         for row in sheet.rows:
             row_data = [cell.value for cell in row.cells]
             row_data.append(row.id)
@@ -424,13 +427,19 @@ if current_page == "Fleet Rotation Analysis":
             with st.spinner("Analyzing trajectories..."):
                 try:
                     # 1. IDENTIFY ASSETS
-                    high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
-                    low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
+                    # Ensure lock flag and rotation criteria are strictly evaluated
+                    high_usage_assets = df[
+                        df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)
+                    ]
+                    low_usage_assets = df[
+                        df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)
+                    ]
                     
                     possible_swaps = []
                     for h_idx, high_row in high_usage_assets.iterrows():
-                        # Skip processing if the vehicle has a Lock flag active
-                        if str(high_row.get("Vehicle Lock", "")).strip().lower() in ["yes", "true", "1", "locked"]:
+                        # Skip processing if the vehicle has a Lock flag active or marked non-rotatable
+                        lock_val = str(high_row.get("Vehicle Lock", "")).strip().lower()
+                        if lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
                             continue
 
                         odo_val = force_num(high_row[col_map["odo"]], fallback=0.0)
@@ -465,8 +474,9 @@ if current_page == "Fleet Rotation Analysis":
                             l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
                             if h_desc != l_desc: continue
 
-                            # Skip processing if the candidate low-use vehicle is locked
-                            if str(low_row.get("Vehicle Lock", "")).strip().lower() in ["yes", "true", "1", "locked"]:
+                            # Skip processing if the candidate low-use vehicle is locked or restricted
+                            low_lock_val = str(low_row.get("Vehicle Lock", "")).strip().lower()
+                            if low_lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
                                 continue
 
                             dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
