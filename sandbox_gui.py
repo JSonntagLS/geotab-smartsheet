@@ -561,28 +561,30 @@ if current_page == "Fleet Rotation Analysis":
             final_recs = st.session_state.last_analysis_recs
             st.write("### Fleet Rotation Analysis")
             if st.button("Save this rotation", type="primary", key="btn_save_rotation"):
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-                csv_path = 'Current Lease Swaps.csv'
-                
-                save_rows = []
-                for rec in final_recs:
-                    save_rows.append({
-                        "Date": timestamp,
-                        "Over-Paced Vehicle": rec["Over-Paced Vehicle"],
-                        "Under-Used Vehicle": rec["Under-Used Vehicle"],
-                        "Distance": rec["Distance"],
-                        "Without-Swap: Current High-Use Asset": rec["Without-Swap: Current High-Use Asset"],
-                        "Post-Swap: Current High-Use Asset": rec["Post-Swap: Current High-Use Asset"],
-                        "Without-Swap: Current Low-Use Asset": rec["Without-Swap: Current Low-Use Asset"],
-                        "Post-Swap: Current Low-Use Asset": rec["Post-Swap: Current Low-Use Asset"],
-                        "Status": "Pending"
-                    })
-                
-                new_df = pd.DataFrame(save_rows)
-                file_has_data = os.path.exists(csv_path) and os.path.getsize(csv_path) > 0
-                new_df.to_csv(csv_path, mode='a', header=not file_has_data, index=False)
-                
-                st.toast("Rotation analysis saved to Current Lease Swaps.csv!", icon="✅")
+                timestamp = datetime.now().strftime("%Y-%m-%d")
+                try:
+                    smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+                    target_sheet = smart.Sheets.get_sheet(st.secrets["swaps_sheet_id"])
+                    
+                    # Create Column Map by Name
+                    col_id_map = {col.title: col.id for col in target_sheet.columns}
+                    
+                    new_rows = []
+                    for rec in final_recs:
+                        row = smartsheet.models.Row()
+                        row.to_bottom = True
+                        
+                        row.cells.append(smartsheet.models.Cell({'column_id': col_id_map['Date'], 'value': timestamp}))
+                        row.cells.append(smartsheet.models.Cell({'column_id': col_id_map['Vehicle 1'], 'value': rec["Over-Paced Vehicle"]}))
+                        row.cells.append(smartsheet.models.Cell({'column_id': col_id_map['Vehicle 2'], 'value': rec["Under-Used Vehicle"]}))
+                        row.cells.append(smartsheet.models.Cell({'column_id': col_id_map['Status'], 'value': "Pending"}))
+                        
+                        new_rows.append(row)
+                        
+                    smart.Sheets.add_rows(st.secrets["swaps_sheet_id"], new_rows)
+                    st.toast("Saved rotation directly to Smartsheet!", icon="✅")
+                except Exception as e:
+                    st.error(f"Failed to save to Smartsheet: {e}")
             st.table(pd.DataFrame(final_recs))
 
         st.divider()
@@ -601,53 +603,73 @@ if current_page == "Fleet Rotation Analysis":
 
 elif current_page == "Current Lease Rotations":
     st.title("Current Lease Rotations")
-    csv_path = 'Current Lease Swaps.csv'
+    
+    try:
+        smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+        swaps_sheet = smart.Sheets.get_sheet(st.secrets["swaps_sheet_id"])
+        
+        col_id_to_name = {col.id: col.title for col in swaps_sheet.columns}
+        col_name_to_id = {col.title: col.id for col in swaps_sheet.columns}
+        
+        rows_data = []
+        for row in swaps_sheet.rows:
+            r_dict = {"row_id": row.id}
+            for cell in row.cells:
+                col_name = col_id_to_name.get(cell.column_id)
+                if col_name:
+                    r_dict[col_name] = cell.value
+            rows_data.append(r_dict)
+            
+        swaps_df = pd.DataFrame(rows_data)
+        
+        if swaps_df.empty or "Date" not in swaps_df.columns:
+            st.info("No saved rotation analyses found in Smartsheet. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
+        else:
+            h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([1.5, 2, 2, 1, 1.5, 1])
+            h_col1.write("**Date**")
+            h_col2.write("**Vehicle 1**")
+            h_col3.write("**Vehicle 2**")
+            h_col4.write("**Status**")
+            h_col5.write("**Action**")
+            h_col6.write("**Remove**")
+            st.divider()
 
-    if not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0:
-        st.info("No saved rotation analyses found in Current Lease Swaps.csv. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
-    else:
-        try:
-            swaps_df = pd.read_csv(csv_path)
-            
-            if swaps_df.empty:
-                st.info("No saved rotation analyses found in Current Lease Swaps.csv. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
-            else:
-                # Group entries by Date timestamp
-                grouped = swaps_df.groupby("Date", sort=False)
-            
-            for date_str, group in grouped:
-                st.subheader(f"Saved Rotation - {date_str}")
+            for idx, row in swaps_df.iterrows():
+                row_id = row["row_id"]
+                v1 = row.get("Vehicle 1", "N/A")
+                v2 = row.get("Vehicle 2", "N/A")
+                dt = row.get("Date", "N/A")
+                status = str(row.get("Status", "Pending"))
+
+                c1, c2, c3, c4, c5, c6 = st.columns([1.5, 2, 2, 1, 1.5, 1])
+                c1.write(str(dt))
+                c2.write(f"**{v1}**")
+                c3.write(f"**{v2}**")
                 
-                h_col1, h_col2, h_col3, h_col4, h_col5 = st.columns([2, 2, 1, 1, 1])
-                h_col1.write("**Over-Paced Asset**")
-                h_col2.write("**Under-Used Asset**")
-                h_col3.write("**Distance**")
-                h_col4.write("**Status**")
-                h_col5.write("**Action**")
+                if status == "Completed":
+                    c4.write("🟢 Completed")
+                    c5.write("—")
+                else:
+                    c4.write("🟡 Pending")
+                    if c5.button("Swap Complete", key=f"comp_{row_id}", use_container_width=True):
+                        updated_row = smartsheet.models.Row({'id': row_id})
+                        updated_row.cells.append(smartsheet.models.Cell({
+                            'column_id': col_name_to_id['Status'],
+                            'value': 'Completed'
+                        }))
+                        smart.Sheets.update_rows(st.secrets["swaps_sheet_id"], [updated_row])
+                        st.toast(f"Marked swap as completed!", icon="✅")
+                        st.rerun()
+
+                if c6.button("🗑️", key=f"del_{row_id}"):
+                    smart.Sheets.delete_rows(st.secrets["swaps_sheet_id"], [row_id])
+                    st.toast("Row deleted from Smartsheet!", icon="🗑️")
+                    st.rerun()
+
                 st.divider()
 
-                for idx, row in group.iterrows():
-                    r_col1, r_col2, r_col3, r_col4, r_col5 = st.columns([2, 2, 1, 1, 1])
-                    
-                    r_col1.write(f"**{row['Over-Paced Vehicle']}**\n{row['Post-Swap: Current High-Use Asset']}")
-                    r_col2.write(f"**{row['Under-Used Vehicle']}**\n{row['Post-Swap: Current Low-Use Asset']}")
-                    r_col3.write(str(row["Distance"]))
-                    
-                    if str(row["Status"]) == "Completed":
-                        r_col4.write("🟢 Completed")
-                        r_col5.write("—")
-                    else:
-                        r_col4.write("🟡 Pending")
-                        if r_col5.button("Swap Complete", key=f"swap_comp_csv_{idx}", use_container_width=True):
-                            swaps_df.at[idx, "Status"] = "Completed"
-                            swaps_df.to_csv(csv_path, index=False)
-                            st.toast(f"Marked swap between {row['Over-Paced Vehicle']} and {row['Under-Used Vehicle']} as complete!", icon="✅")
-                            st.rerun()
-                    st.divider()
-        except pd.errors.EmptyDataError:
-            st.info("No saved rotation analyses found in Current Lease Swaps.csv. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
-        except Exception as e:
-            st.error(f"Error reading Current Lease Swaps.csv: {e}")
+    except Exception as e:
+        st.error(f"Error loading Smartsheet swaps: {e}")
 
 elif current_page == "Oil Changes":
     st.title("Oil Change Management")
