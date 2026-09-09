@@ -122,7 +122,7 @@ def run_health_sync():
                     battery_val = "Normal"
 
                 # 4. Debug Output
-                if battery_val == "Low" or any(x in dev_name.upper() for x in ["VAN 2", "BUS 1", "BUS A", "CUBE 4", "CUBE 7", "73A", "BUS C"]):
+                if battery_val == "Low" or any(x in dev_name.upper() for x in ["VAN 2", "BUS 1", "BUS A", "BUS E", "CUBE 1", "CUBE 7", "73A", "BUS C"]):
                     print(f"RESULT: {dev_name[:30]:<30} | GPS: {status_val:<7} | Battery: {battery_val:<7} | Avg: {round(avg_v, 2):<5} | Low Read: {current_v}")
 
                 # 5. Prepare Smartsheet Row
