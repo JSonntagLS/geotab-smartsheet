@@ -1,0 +1,26 @@
+name: Get Smartsheet Column IDs
+
+on:
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install smartsheet-python-sdk
+
+      - name: Run ID script
+        env:
+          SMARTSHEET_TOKEN: ${{ secrets.SMARTSHEET_TOKEN }}
+          SWAPS_SHEET_ID: ${{ secrets.SWAPS_SHEET_ID }}
+        run: python get_swap_ids.py
