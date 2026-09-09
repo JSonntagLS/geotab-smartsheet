@@ -504,6 +504,10 @@ if current_page == "Fleet Rotation Analysis":
                             _, months_rem_B = calculate_runway(low_row)
                             without_swap_proj_B = odo_B + (route_B_baseline * months_rem_B)
 
+                            # Guardrail: Never pull Vehicle B if it is ALREADY projected in the IDEAL target range (95k-105k)
+                            if 95000 <= without_swap_proj_B <= 105000:
+                                continue
+
                             dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
                             if dist > max_dist: 
                                 continue
