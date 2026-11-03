@@ -91,17 +91,33 @@ def get_distance_miles(loc1, loc2):
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)) * 1.2
 
 def force_num(val, fallback=None):
-    if val is None:
-        return fallback
-    # Convert to string and clean
-    s_val = str(val).strip().lower()
-    if s_val in ["", "nan", "none", "n/a"]: 
-        return None  # This is the key change
-    cleaned = re.sub(r'[^0-9.]', '', s_val)
-    try:
-        return float(cleaned)
-    except:
-        return fallback
+        if val is None:
+            return fallback
+        # Convert to string and clean
+        s_val = str(val).strip().lower()
+        if s_val in ["", "nan", "none", "n/a"]: 
+            return None  # This is the key change
+        cleaned = re.sub(r'[^0-9.]', '', s_val)
+        try:
+            return float(cleaned)
+        except:
+            return fallback
+
+    def get_state_group(location):
+        if not location:
+            return "IA"
+        if "SD" in location:
+            return "SD"
+        return "IA"
+
+    def get_vehicle_class(desc, name):
+        text = f"{str(desc)} {str(name)}".upper()
+        if any(k in text for k in ["TRANSIT", "EXPRESS", "SAVANNA", "VAN"]):
+            return "Van"
+        elif any(k in text for k in ["BUS", "CE"]):
+            return "Bus"
+        else:
+            return "Passenger"
 
 def calculate_runway(row):
     try:
@@ -523,6 +539,28 @@ if current_page == "Fleet Rotation Analysis":
                             dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
                             if dist > max_dist: 
                                 continue
+
+                            # --- NEW SWAP RULES GUARDRAILS ---
+                            loc_A = high_row.get(col_map["loc"], "")
+                            loc_B = low_row.get(col_map["loc"], "")
+                            
+                            state_A = get_state_group(loc_A)
+                            state_B = get_state_group(loc_B)
+                            
+                            # Rule 1 & 2: SD / IA / Sioux City Geographic Logic
+                            if state_A == "SD" and state_B == "SD" and "SIOUX CITY" not in str(loc_A).upper() and "SIOUX CITY" not in str(loc_B).upper():
+                                pass
+                            elif state_A == "SD" or state_B == "SD":
+                                if not ("SIOUX CITY" in str(loc_A).upper() or "SIOUX CITY" in str(loc_B).upper()):
+                                    continue
+                            
+                            # Rule 3: Like-for-Like Category Matching (Vans, Buses, Passengers)
+                            class_A = get_vehicle_class(high_row.get(col_map["desc"]), high_row.get(col_map["name"]))
+                            class_B = get_vehicle_class(low_row.get(col_map["desc"]), low_row.get(col_map["name"]))
+                            
+                            if class_A != class_B:
+                                continue
+                            # ---------------------------------
 
                             proj_A = odo_A + (route_B_baseline * months_rem_A)
                             proj_B = odo_B + (route_A_baseline * months_rem_B)
