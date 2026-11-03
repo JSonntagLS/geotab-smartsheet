@@ -382,11 +382,69 @@ if st.sidebar.button("Current Lease Rotations", type="secondary", use_container_
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
 
-if st.sidebar.button("GPS and Battery Health", type="secondary", use_container_width=True, key="btn_gps"):
-    st.session_state.active_page = "GPS and Battery Health"
+st.sidebar.markdown("""
+<style>
+.caution-tape-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 8px;
+}
+.caution-tape-btn {
+    display: block;
+    width: 100%;
+    background-color: #f0f2f6;
+    color: #31333F;
+    text-align: center;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(49, 51, 63, 0.2);
+    font-size: 14px;
+    font-weight: 400;
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+.caution-tape-btn:hover {
+    border-color: #ff4b4b;
+    color: #ff4b4b;
+}
+.caution-tape-btn::after {
+    content: "";
+    position: absolute;
+    top: -100%;
+    left: -100%;
+    width: 300%;
+    height: 300%;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 204, 0, 0.45),
+        rgba(255, 204, 0, 0.45) 12px,
+        rgba(0, 0, 0, 0.55) 12px,
+        rgba(0, 0, 0, 0.55) 24px
+    );
+    pointer-events: none;
+    transform: rotate(-15deg);
+}
+</style>
 
-if st.sidebar.button("Recalls", type="secondary", use_container_width=True, key="btn_recall"):
-    st.session_state.active_page = "Recalls"
+<div class="caution-tape-wrapper">
+    <a href="?page=gps" class="caution-tape-btn">GPS and Battery Health</a>
+</div>
+<div class="caution-tape-wrapper">
+    <a href="?page=recalls" class="caution-tape-btn">Recalls</a>
+</div>
+""", unsafe_allow_html=True)
+
+query_params = st.query_params
+if "page" in query_params:
+    p = query_params["page"]
+    if p == "gps" and st.session_state.active_page != "GPS and Battery Health":
+        st.session_state.active_page = "GPS and Battery Health"
+        st.rerun()
+    elif p == "recalls" and st.session_state.active_page != "Recalls":
+        st.session_state.active_page = "Recalls"
+        st.rerun()
 
 st.sidebar.divider()
 
