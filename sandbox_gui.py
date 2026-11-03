@@ -373,6 +373,34 @@ if 'active_page' not in st.session_state:
 if 'saved_rotations' not in st.session_state:
     st.session_state.saved_rotations = []
 
+st.sidebar.markdown("""
+<style>
+[data-testid="stSidebar"] button:nth-of-type(4),
+[data-testid="stSidebar"] button:nth-of-type(5) {
+    position: relative;
+    overflow: hidden;
+}
+[data-testid="stSidebar"] button:nth-of-type(4)::after,
+[data-testid="stSidebar"] button:nth-of-type(5)::after {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 215, 0, 0.45),
+        rgba(255, 215, 0, 0.45) 10px,
+        rgba(0, 0, 0, 0.45) 10px,
+        rgba(0, 0, 0, 0.45) 20px
+    );
+    pointer-events: none;
+    transform: rotate(-15deg);
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Using link-style buttons to get the clean text-only look
 if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
