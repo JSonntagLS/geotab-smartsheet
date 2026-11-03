@@ -413,11 +413,28 @@ if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, 
 
 st.sidebar.markdown("""
 <style>
-.caution-tape-btn {
-    position: relative;
-    overflow: hidden;
+/* Target sidebar buttons by their unique keys or text content via attribute matching */
+div[data-testid="stSidebar"] button:has(div:pfx), 
+div[data-testid="stSidebar"] button p {
 }
-.caution-tape-btn::after {
+/* Directly inject diagonal tape over the buttons containing these labels */
+div[data-testid="stSidebar"] button {
+    position: relative;
+}
+</style>
+<script>
+// Pure CSS attribute selector for Streamlit button wrappers
+</script>
+<style>
+/* Target the specific buttons using structural matching in sidebar */
+div[data-testid="stSidebar"] div.stButton:nth-of-type(4) button,
+div[data-testid="stSidebar"] div.stButton:nth-of-type(5) button {
+    position: relative;
+    overflow: hidden !important;
+}
+
+div[data-testid="stSidebar"] div.stButton:nth-of-type(4) button::before,
+div[data-testid="stSidebar"] div.stButton:nth-of-type(5) button::before {
     content: "";
     position: absolute;
     top: -50%;
@@ -425,27 +442,24 @@ st.sidebar.markdown("""
     width: 200%;
     height: 200%;
     background: repeating-linear-gradient(
-        45deg,
-        rgba(255, 215, 0, 0.5),
-        rgba(255, 215, 0, 0.5) 10px,
-        rgba(0, 0, 0, 0.5) 10px,
-        rgba(0, 0, 0, 0.5) 20px
+        -45deg, 
+        rgba(255, 204, 0, 0.6), 
+        rgba(255, 204, 0, 0.6) 12px, 
+        rgba(0, 0, 0, 0.7) 12px, 
+        rgba(0, 0, 0, 0.7) 24px
     );
     pointer-events: none;
-    transform: rotate(-15deg);
+    transform: rotate(-25deg);
+    z-index: 99;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.sidebar.markdown('<div class="caution-tape-btn">', unsafe_allow_html=True)
 if st.sidebar.button("GPS and Battery Health", type="secondary", use_container_width=True, key="btn_gps"):
     st.session_state.active_page = "GPS and Battery Health"
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-st.sidebar.markdown('<div class="caution-tape-btn">', unsafe_allow_html=True)
 if st.sidebar.button("Recalls", type="secondary", use_container_width=True, key="btn_recall"):
     st.session_state.active_page = "Recalls"
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.divider()
 
