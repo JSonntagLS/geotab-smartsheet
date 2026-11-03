@@ -373,35 +373,6 @@ if 'active_page' not in st.session_state:
 if 'saved_rotations' not in st.session_state:
     st.session_state.saved_rotations = []
 
-st.sidebar.markdown("""
-<style>
-[data-testid="stSidebar"] button:nth-of-type(4),
-[data-testid="stSidebar"] button:nth-of-type(5) {
-    position: relative;
-    overflow: hidden;
-}
-[data-testid="stSidebar"] button:nth-of-type(4)::after,
-[data-testid="stSidebar"] button:nth-of-type(5)::after {
-    content: "";
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: repeating-linear-gradient(
-        45deg,
-        rgba(255, 215, 0, 0.45),
-        rgba(255, 215, 0, 0.45) 10px,
-        rgba(0, 0, 0, 0.45) 10px,
-        rgba(0, 0, 0, 0.45) 20px
-    );
-    pointer-events: none;
-    transform: rotate(-15deg);
-}
-</style>
-""", unsafe_allow_html=True)
-
-# Using link-style buttons to get the clean text-only look
 if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
 
@@ -411,115 +382,11 @@ if st.sidebar.button("Current Lease Rotations", type="secondary", use_container_
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
 
-st.sidebar.markdown("""
-<style>
-/* Target sidebar buttons by their unique keys or text content via attribute matching */
-div[data-testid="stSidebar"] button:has(div:pfx), 
-div[data-testid="stSidebar"] button p {
-}
-/* Directly inject diagonal tape over the buttons containing these labels */
-div[data-testid="stSidebar"] button {
-    position: relative;
-}
-</style>
-<script>
-// Pure CSS attribute selector for Streamlit button wrappers
-</script>
-<style>
-/* Target the specific buttons using structural matching in sidebar */
-div[data-testid="stSidebar"] div.stButton:nth-of-type(4) button,
-div[data-testid="stSidebar"] div.stButton:nth-of-type(5) button {
-    position: relative;
-    overflow: hidden !important;
-}
+if st.sidebar.button("GPS and Battery Health", type="secondary", use_container_width=True, key="btn_gps"):
+    st.session_state.active_page = "GPS and Battery Health"
 
-div[data-testid="stSidebar"] div.stButton:nth-of-type(4) button::before,
-div[data-testid="stSidebar"] div.stButton:nth-of-type(5) button::before {
-    content: "";
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: repeating-linear-gradient(
-        -45deg, 
-        rgba(255, 204, 0, 0.6), 
-        rgba(255, 204, 0, 0.6) 12px, 
-        rgba(0, 0, 0, 0.7) 12px, 
-        rgba(0, 0, 0, 0.7) 24px
-    );
-    pointer-events: none;
-    transform: rotate(-25deg);
-    z-index: 99;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# Custom HTML/CSS styled buttons with diagonal caution tape overlay
-st.sidebar.markdown("""
-<style>
-.caution-tape-wrapper {
-    position: relative;
-    width: 100%;
-    margin-bottom: 8px;
-}
-.caution-tape-btn {
-    display: block;
-    width: 100%;
-    background-color: #f0f2f6;
-    color: #31333F;
-    text-align: center;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    border: 1px solid rgba(49, 51, 63, 0.2);
-    font-size: 14px;
-    font-weight: 400;
-    text-decoration: none;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.2s ease;
-}
-.caution-tape-btn:hover {
-    border-color: #ff4b4b;
-    color: #ff4b4b;
-}
-.caution-tape-btn::after {
-    content: "";
-    position: absolute;
-    top: -100%;
-    left: -100%;
-    width: 300%;
-    height: 300%;
-    background: repeating-linear-gradient(
-        45deg,
-        rgba(255, 204, 0, 0.45),
-        rgba(255, 204, 0, 0.45) 12px,
-        rgba(0, 0, 0, 0.55) 12px,
-        rgba(0, 0, 0, 0.55) 24px
-    );
-    pointer-events: none;
-    transform: rotate(-15deg);
-}
-</style>
-
-<div class="caution-tape-wrapper">
-    <a href="?page=gps" class="caution-tape-btn">GPS and Battery Health</a>
-</div>
-<div class="caution-tape-wrapper">
-    <a href="?page=recalls" class="caution-tape-btn">Recalls</a>
-</div>
-""", unsafe_allow_html=True)
-
-# Handle query parameter clicks for the custom buttons
-query_params = st.query_params
-if "page" in query_params:
-    p = query_params["page"]
-    if p == "gps" and st.session_state.active_page != "GPS and Battery Health":
-        st.session_state.active_page = "GPS and Battery Health"
-        st.rerun()
-    elif p == "recalls" and st.session_state.active_page != "Recalls":
-        st.session_state.active_page = "Recalls"
-        st.rerun()
+if st.sidebar.button("Recalls", type="secondary", use_container_width=True, key="btn_recall"):
+    st.session_state.active_page = "Recalls"
 
 st.sidebar.divider()
 
