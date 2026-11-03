@@ -103,21 +103,21 @@ def force_num(val, fallback=None):
         except:
             return fallback
 
-    def get_state_group(location):
-        if not location:
-            return "IA"
-        if "SD" in location:
-            return "SD"
+def get_state_group(location):
+    if not location:
         return "IA"
+    if "SD" in location:
+        return "SD"
+    return "IA"
 
-    def get_vehicle_class(desc, name):
-        text = f"{str(desc)} {str(name)}".upper()
-        if any(k in text for k in ["TRANSIT", "EXPRESS", "SAVANNA", "VAN"]):
-            return "Van"
-        elif any(k in text for k in ["BUS", "CE"]):
-            return "Bus"
-        else:
-            return "Passenger"
+def get_vehicle_class(desc, name):
+    text = f"{str(desc)} {str(name)}".upper()
+    if any(k in text for k in ["TRANSIT", "EXPRESS", "SAVANNA", "VAN"]):
+        return "Van"
+    elif any(k in text for k in ["BUS", "CE"]):
+        return "Bus"
+    else:
+        return "Passenger"
 
 def calculate_runway(row):
     try:
