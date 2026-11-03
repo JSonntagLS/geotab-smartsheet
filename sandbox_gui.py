@@ -740,23 +740,26 @@ elif current_page == "Current Lease Rotations":
         if swaps_df.empty or "Date" not in swaps_df.columns:
             st.info("No saved rotation analyses found in Smartsheet. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
         else:
-            h_col1, h_col2, h_col3, h_col4, h_col5, h_col6 = st.columns([1.5, 2, 2, 1, 1.5, 1])
+            h_col1, h_col2, h_col3, h_col4, h_col5, h_col6, h_col7 = st.columns([1.5, 2, 2, 1, 1.5, 2, 1])
             h_col1.write("**Date**")
             h_col2.write("**Vehicle 1**")
             h_col3.write("**Vehicle 2**")
             h_col4.write("**Status**")
             h_col5.write("**Action**")
-            h_col6.write("**Remove**")
+            h_col6.write("**Name Changed in SmartSheets**")
+            h_col7.write("**Remove**")
             st.divider()
 
             for idx, row in swaps_df.iterrows():
                 row_id = row["row_id"]
                 v1 = row.get("Vehicle 1", "N/A")
                 v2 = row.get("Vehicle 2", "N/A")
-                dt = row.get("Date", "N/A")
+                dt_raw = row.get("Date", "N/A")
+                dt_parsed = pd.to_datetime(dt_raw, errors='coerce')
+                dt = dt_parsed.strftime('%m/%d/%Y') if pd.notnull(dt_parsed) else str(dt_raw)
                 status = str(row.get("Status", "Pending"))
 
-                c1, c2, c3, c4, c5, c6 = st.columns([1.5, 2, 2, 1, 1.5, 1])
+                c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 2, 2, 1, 1.5, 2, 1])
                 c1.write(str(dt))
                 c2.write(f"**{v1}**")
                 c3.write(f"**{v2}**")
@@ -776,7 +779,10 @@ elif current_page == "Current Lease Rotations":
                         st.toast(f"Marked swap as completed!", icon="✅")
                         st.rerun()
 
-                if c6.button("🗑️", key=f"del_{row_id}"):
+                if c6.button("Name Change Complete", key=f"name_change_{row_id}", use_container_width=True):
+                    st.toast(f"Name change recorded for {v1} / {v2}!", icon="🏷️")
+
+                if c7.button("🗑️", key=f"del_{row_id}"):
                     smart.Sheets.delete_rows(st.secrets["swaps_sheet_id"], [row_id])
                     st.toast("Row deleted from Smartsheet!", icon="🗑️")
                     st.rerun()
