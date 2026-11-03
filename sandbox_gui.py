@@ -746,7 +746,7 @@ elif current_page == "Current Lease Rotations":
             h_col3.write("**Vehicle 2**")
             h_col4.write("**Status**")
             h_col5.write("**Action**")
-            h_col6.write("**Name Changed in SmartSheets**")
+            h_col6.write("**Name Changed in Smartsheets**")
             h_col7.write("**Remove**")
             st.divider()
 
@@ -779,15 +779,15 @@ elif current_page == "Current Lease Rotations":
                         st.toast(f"Marked swap as completed!", icon="✅")
                         st.rerun()
 
-                name_change_status = str(row.get("Name Changed in SmartSheets", "Pending"))
+                name_change_status = str(row.get("Name Changed in Smartsheets", "Pending"))
                 if name_change_status in ["Completed", "Yes", "Done"]:
                     c6.write("🟢 Completed")
                 else:
                     if c6.button("Name Change Complete", key=f"name_change_{row_id}", use_container_width=True):
                         updated_row = smartsheet.models.Row({'id': row_id})
-                        if 'Name Changed in SmartSheets' in col_name_to_id:
+                        if 'Name Changed in Smartsheets' in col_name_to_id:
                             updated_row.cells.append(smartsheet.models.Cell({
-                                'column_id': col_name_to_id['Name Changed in SmartSheets'],
+                                'column_id': col_name_to_id['Name Changed in Smartsheets'],
                                 'value': 'Completed'
                             }))
                         smart.Sheets.update_rows(st.secrets["swaps_sheet_id"], [updated_row])
