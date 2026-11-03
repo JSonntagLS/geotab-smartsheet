@@ -411,11 +411,41 @@ if st.sidebar.button("Current Lease Rotations", type="secondary", use_container_
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
 
+st.sidebar.markdown("""
+<style>
+.caution-tape-btn {
+    position: relative;
+    overflow: hidden;
+}
+.caution-tape-btn::after {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 215, 0, 0.5),
+        rgba(255, 215, 0, 0.5) 10px,
+        rgba(0, 0, 0, 0.5) 10px,
+        rgba(0, 0, 0, 0.5) 20px
+    );
+    pointer-events: none;
+    transform: rotate(-15deg);
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown('<div class="caution-tape-btn">', unsafe_allow_html=True)
 if st.sidebar.button("GPS and Battery Health", type="secondary", use_container_width=True, key="btn_gps"):
     st.session_state.active_page = "GPS and Battery Health"
+st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
+st.sidebar.markdown('<div class="caution-tape-btn">', unsafe_allow_html=True)
 if st.sidebar.button("Recalls", type="secondary", use_container_width=True, key="btn_recall"):
     st.session_state.active_page = "Recalls"
+st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.divider()
 
