@@ -780,7 +780,7 @@ elif current_page == "Current Lease Rotations":
                         st.toast(f"Marked swap as completed!", icon="✅")
                         st.rerun()
 
-                name_change_status = str(row.get("Name Changed in SmartSheets", "Pending"))
+                name_change_status = str(row.get("Name Changed in Smartsheets", "Pending"))
                 if name_change_status in ["Completed", "Yes", "Done"]:
                     c6.write("🟢 Completed")
                 else:
