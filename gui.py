@@ -59,6 +59,14 @@ OIL_COL_IDS = {
     "last_service_date": 8061461955121028    
 }
 
+SWAP_COL_IDS = {
+    "date": 5034296878075780,
+    "v1": 2782497064390532,
+    "v2": 7286096691761028,
+    "status": 1656597157547908,
+    "name_change": 757212133494660
+}
+
 CITY_COORDS = {
     "Johnston, IA": (41.6730, -93.6977), "Ames, IA": (42.0308, -93.6319),
     "Ankeny, IA": (41.7297, -93.6058), "Cedar Falls, IA": (42.5349, -92.4455),
@@ -84,17 +92,33 @@ def get_distance_miles(loc1, loc2):
     return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)) * 1.2
 
 def force_num(val, fallback=None):
-    if val is None:
-        return fallback
-    # Convert to string and clean
-    s_val = str(val).strip().lower()
-    if s_val in ["", "nan", "none", "n/a"]: 
-        return None  # This is the key change
-    cleaned = re.sub(r'[^0-9.]', '', s_val)
-    try:
-        return float(cleaned)
-    except:
-        return fallback
+        if val is None:
+            return fallback
+        # Convert to string and clean
+        s_val = str(val).strip().lower()
+        if s_val in ["", "nan", "none", "n/a"]: 
+            return None  # This is the key change
+        cleaned = re.sub(r'[^0-9.]', '', s_val)
+        try:
+            return float(cleaned)
+        except:
+            return fallback
+
+def get_state_group(location):
+    if not location:
+        return "IA"
+    if "SD" in location:
+        return "SD"
+    return "IA"
+
+def get_vehicle_class(desc, name):
+    text = f"{str(desc)} {str(name)}".upper()
+    if any(k in text for k in ["TRANSIT", "EXPRESS", "SAVANNA", "VAN"]):
+        return "Van"
+    elif any(k in text for k in ["BUS", "CE"]):
+        return "Bus"
+    else:
+        return "Passenger"
 
 def calculate_runway(row):
     try:
@@ -286,6 +310,9 @@ if 'df' not in st.session_state:
         sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
         columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
         rows = []
+        # Locate Vehicle Lock column index if available
+        lock_col_title = next((col.title for col in sheet.columns if "lock" in col.title.lower()), "Vehicle Lock")
+
         for row in sheet.rows:
             row_data = [cell.value for cell in row.cells]
             row_data.append(row.id)
@@ -343,18 +370,81 @@ st.sidebar.markdown("### LifeServe<br>Fleet Management", unsafe_allow_html=True)
 if 'active_page' not in st.session_state:
     st.session_state.active_page = "Fleet Rotation Analysis"
 
-# Using link-style buttons to get the clean text-only look
+if 'saved_rotations' not in st.session_state:
+    st.session_state.saved_rotations = []
+
 if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_width=True, key="btn_rot"):
     st.session_state.active_page = "Fleet Rotation Analysis"
+
+if st.sidebar.button("Current Lease Rotations", type="secondary", use_container_width=True, key="btn_lease_rot"):
+    st.session_state.active_page = "Current Lease Rotations"
 
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
 
-if st.sidebar.button("GPS and Battery Health", type="secondary", use_container_width=True, key="btn_gps"):
-    st.session_state.active_page = "GPS and Battery Health"
+st.sidebar.markdown("""
+<style>
+.caution-tape-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 8px;
+}
+.caution-tape-btn {
+    display: block;
+    width: 100%;
+    background-color: #f0f2f6;
+    color: #31333F;
+    text-align: center;
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(49, 51, 63, 0.2);
+    font-size: 14px;
+    font-weight: 400;
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+.caution-tape-btn:hover {
+    border-color: #ff4b4b;
+    color: #ff4b4b;
+}
+.caution-tape-btn::after {
+    content: "";
+    position: absolute;
+    top: -100%;
+    left: -100%;
+    width: 300%;
+    height: 300%;
+    background: repeating-linear-gradient(
+        45deg,
+        rgba(255, 204, 0, 0.45),
+        rgba(255, 204, 0, 0.45) 12px,
+        rgba(0, 0, 0, 0.55) 12px,
+        rgba(0, 0, 0, 0.55) 24px
+    );
+    pointer-events: none;
+    transform: rotate(-15deg);
+}
+</style>
 
-if st.sidebar.button("Recalls", type="secondary", use_container_width=True, key="btn_recall"):
-    st.session_state.active_page = "Recalls"
+<div class="caution-tape-wrapper">
+    <a href="?page=gps" class="caution-tape-btn">GPS and Battery Health</a>
+</div>
+<div class="caution-tape-wrapper">
+    <a href="?page=recalls" class="caution-tape-btn">Recalls</a>
+</div>
+""", unsafe_allow_html=True)
+
+query_params = st.query_params
+if "page" in query_params:
+    p = query_params["page"]
+    if p == "gps" and st.session_state.active_page != "GPS and Battery Health":
+        st.session_state.active_page = "GPS and Battery Health"
+        st.rerun()
+    elif p == "recalls" and st.session_state.active_page != "Recalls":
+        st.session_state.active_page = "Recalls"
+        st.rerun()
 
 st.sidebar.divider()
 
@@ -418,22 +508,33 @@ if current_page == "Fleet Rotation Analysis":
             with st.spinner("Analyzing trajectories..."):
                 try:
                     # 1. IDENTIFY ASSETS
-                    high_usage_assets = df[df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)]
-                    low_usage_assets = df[df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)]
+                    # Filter candidate pools
+                    high_usage_assets = df[
+                        df[col_map["priority"]].astype(str).str.contains('URGENT|HIGH', na=False, case=False)
+                    ]
+                    low_usage_assets = df[
+                        df[col_map["tier"]].astype(str).str.contains('UNDERUSED', na=False, case=False)
+                    ]
                     
                     possible_swaps = []
                     for h_idx, high_row in high_usage_assets.iterrows():
-                        # Skip processing if the vehicle has a Lock flag active
-                        if str(high_row.get("Vehicle Lock", "")).strip().lower() in ["yes", "true", "1", "locked"]:
+                        # Guardrail: Exclude Transits entirely from high-use pool
+                        h_desc_check = str(high_row.get(col_map["desc"], "")).upper()
+                        h_name_check = str(high_row.get(col_map["name"], "")).upper()
+                        if "TRANSIT" in h_desc_check or "TRANSIT" in h_name_check:
                             continue
 
-                        odo_val = force_num(high_row[col_map["odo"]], fallback=0.0)
+                        # Guardrail: Check vehicle lock
+                        lock_val = str(high_row.get("Vehicle Lock", "")).strip().lower()
+                        if lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
+                            continue
+
+                        odo_A = force_num(high_row[col_map["odo"]], fallback=0.0)
                         proj_m_val = force_num(high_row[col_map["projected"]])
                         act_m_val = force_num(high_row[col_map["actual"]])
                         wk_val = force_num(high_row[col_map["weekly_actual"]])
                         
-                        # Catch anomalous odometer data corruption sitting in actuals
-                        if act_m_val and odo_val > 0 and act_m_val >= (odo_val * 0.5):
+                        if act_m_val and odo_A > 0 and act_m_val >= (odo_A * 0.5):
                             act_m_val = 0.0
 
                         if proj_m_val and proj_m_val > 0:
@@ -446,32 +547,33 @@ if current_page == "Fleet Rotation Analysis":
                             raw_route_A = 0.0
 
                         route_A_baseline = max(raw_route_A, 200.0)
-                        
                         _, months_rem_A = calculate_runway(high_row)
-                        odo_A = force_num(high_row[col_map["odo"]])
                         without_swap_proj_A = odo_A + (route_A_baseline * months_rem_A)
     
-                        if without_swap_proj_A <= 103000:
-                            continue 
+                        # Guardrail: Ignore Vehicle A if it's already under or inside ideal range (< 105k)
+                        if without_swap_proj_A <= 105000:
+                            continue
+                        
+                        # Calculate original runway months until hitting 105k cap for Vehicle A
+                        orig_runway_A = max(0.0, (105000 - odo_A) / route_A_baseline) if route_A_baseline > 0 else 999.0
     
                         for l_idx, low_row in low_usage_assets.iterrows():
-                            h_desc = str(high_row.get(col_map["desc"], "")).strip().lower()
-                            l_desc = str(low_row.get(col_map["desc"], "")).strip().lower()
-                            if h_desc != l_desc: continue
-
-                            # Skip processing if the candidate low-use vehicle is locked
-                            if str(low_row.get("Vehicle Lock", "")).strip().lower() in ["yes", "true", "1", "locked"]:
+                            # Guardrail: Exclude Transits entirely from low-use pool
+                            l_desc_check = str(low_row.get(col_map["desc"], "")).upper()
+                            l_name_check = str(low_row.get(col_map["name"], "")).upper()
+                            if "TRANSIT" in l_desc_check or "TRANSIT" in l_name_check:
                                 continue
 
-                            dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
-                            if dist > max_dist: continue
-                            
+                            # Guardrail: Check low-use vehicle lock
+                            low_lock_val = str(low_row.get("Vehicle Lock", "")).strip().lower()
+                            if low_lock_val in ["yes", "true", "1", "locked", "do not rotate"]:
+                                continue
+
                             odo_B = force_num(low_row[col_map["odo"]], fallback=0.0)
                             proj_m_val_B = force_num(low_row[col_map["projected"]])
                             act_m_val_B = force_num(low_row[col_map["actual"]])
                             wk_val_B = force_num(low_row[col_map["weekly_actual"]])
 
-                            # Catch anomalous odometer data corruption sitting in actuals
                             if act_m_val_B and odo_B > 0 and act_m_val_B >= (odo_B * 0.5):
                                 act_m_val_B = 0.0
 
@@ -486,10 +588,65 @@ if current_page == "Fleet Rotation Analysis":
 
                             route_B_baseline = max(raw_route_B, 200.0)
                             _, months_rem_B = calculate_runway(low_row)
-    
+                            without_swap_proj_B = odo_B + (route_B_baseline * months_rem_B)
+
+                            # Guardrail: Never pull Vehicle B if it is ALREADY projected in the IDEAL target range (95k-105k)
+                            if 95000 <= without_swap_proj_B <= 105000:
+                                continue
+
+                            dist = get_distance_miles(high_row[col_map["loc"]], low_row[col_map["loc"]])
+                            if dist > max_dist: 
+                                continue
+
+                            # --- NEW SWAP RULES GUARDRAILS ---
+                            loc_A = high_row.get(col_map["loc"], "")
+                            loc_B = low_row.get(col_map["loc"], "")
+                            
+                            state_A = get_state_group(loc_A)
+                            state_B = get_state_group(loc_B)
+                            
+                            # Rule 1 & 2: SD / IA / Sioux City Geographic Logic
+                            if state_A == "SD" and state_B == "SD" and "SIOUX CITY" not in str(loc_A).upper() and "SIOUX CITY" not in str(loc_B).upper():
+                                pass
+                            elif state_A == "SD" or state_B == "SD":
+                                if not ("SIOUX CITY" in str(loc_A).upper() or "SIOUX CITY" in str(loc_B).upper()):
+                                    continue
+                            
+                            # Rule 3: Like-for-Like Category Matching (Vans, Buses, Passengers)
+                            class_A = get_vehicle_class(high_row.get(col_map["desc"]), high_row.get(col_map["name"]))
+                            class_B = get_vehicle_class(low_row.get(col_map["desc"]), low_row.get(col_map["name"]))
+                            
+                            if class_A != class_B:
+                                continue
+                            # ---------------------------------
+
                             proj_A = odo_A + (route_B_baseline * months_rem_A)
                             proj_B = odo_B + (route_A_baseline * months_rem_B)
-                            score = ((route_A_baseline - route_B_baseline) * 0.7) - ((dist ** 1.5) * 0.1)
+
+                            # Calculate post-swap projections & overages
+                            pre_total_overage = max(0.0, without_swap_proj_A - 105000) + max(0.0, without_swap_proj_B - 105000)
+                            post_total_overage = max(0.0, proj_A - 105000) + max(0.0, proj_B - 105000)
+                            
+                            # Guardrail: Reject swap if it increases overall fleet overage
+                            if post_total_overage >= pre_total_overage:
+                                continue
+
+                            # Guardrail: Check that Vehicle A actually gains runway
+                            post_runway_A = max(0.0, (105000 - odo_A) / route_B_baseline) if route_B_baseline > 0 else 999.0
+                            delta_runway_A = post_runway_A - orig_runway_A
+                            if delta_runway_A <= 0:
+                                continue
+
+                            # Weighted Scoring Formula (Heavy Route Damage Control)
+                            net_overage_reduction = pre_total_overage - post_total_overage
+                            
+                            # Prefer lower odometers on heavy routes to give maximum absorption room
+                            odo_headroom_bonus = (105000 - odo_B) * 0.05 if route_A_baseline > 2000 else 0.0
+                            
+                            # Give a high bonus for same-location or local trades
+                            location_bonus = 250.0 if dist == 0 else max(0.0, 100.0 - dist)
+
+                            score = (net_overage_reduction * 1.0) + (delta_runway_A * 20.0) + odo_headroom_bonus + location_bonus - ((dist ** 1.2) * 0.05)
     
                             possible_swaps.append({
                                 "score": score,
@@ -497,7 +654,7 @@ if current_page == "Fleet Rotation Analysis":
                                 "l_name": low_row[col_map["name"]],
                                 "dist": f"{dist:.1f} miles",
                                 "data_A": {"odo": odo_A, "route_in": route_B_baseline, "route_out": route_A_baseline, "months": months_rem_A, "proj": proj_A, "orig_proj": without_swap_proj_A},
-                                "data_B": {"odo": odo_B, "route_in": route_A_baseline, "route_out": route_B_baseline, "months": months_rem_B, "proj": proj_B, "orig_proj": odo_B + (route_B_baseline * months_rem_B)}
+                                "data_B": {"odo": odo_B, "route_in": route_A_baseline, "route_out": route_B_baseline, "months": months_rem_B, "proj": proj_B, "orig_proj": without_swap_proj_B}
                             })
     
                     sorted_swaps = sorted(possible_swaps, key=lambda x: x['score'], reverse=True)
@@ -510,7 +667,7 @@ if current_page == "Fleet Rotation Analysis":
                             miles_to_go = 105000 - current_odo
                             time_text = f"Hits limit in {max(0, miles_to_go / route_val):.1f} months" if route_val > 0 else "Hits limit in 0.0 months"
                             return f"🔴 OVER: {proj_val:,.0f} mi ({time_text})"
-                        elif proj_val < 85000:
+                        elif proj_val < 95000:
                             status_text = "🔵 UNDER"
                             if is_stationary:
                                 return f"{status_text}: {proj_val:,.0f} mi (Minimal Usage)"
@@ -532,13 +689,60 @@ if current_page == "Fleet Rotation Analysis":
                             used_vehicles.add(s['l_name'])
     
                     if final_recs:
-                        st.write("### Fleet Rotation Analysis")
-                        st.table(pd.DataFrame(final_recs))
+                        st.session_state.last_analysis_recs = final_recs
                     else:
+                        st.session_state.last_analysis_recs = []
                         st.info("No matching swaps found within constraints.")
     
                 except Exception as e:
                     st.error(f"Rotation Analysis Error: {e}")
+
+        # Render recommendations outside the run_analysis conditional execution block
+        if "last_analysis_recs" in st.session_state and st.session_state.last_analysis_recs:
+            final_recs = st.session_state.last_analysis_recs
+            st.write("### Fleet Rotation Analysis")
+            
+            # Check if Smartsheet currently has any existing rows saved
+            has_existing_swaps = False
+            try:
+                smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+                target_sheet = smart.Sheets.get_sheet(st.secrets["swaps_sheet_id"])
+                has_existing_swaps = len(target_sheet.rows) > 0
+            except Exception:
+                has_existing_swaps = False
+
+            if has_existing_swaps:
+                st.info("⚠️ Saved rotation already exists in Smartsheet. Clear active rotations under 'Current Lease Rotations' to save a new one.")
+
+            if st.button(
+                "Save this rotation", 
+                type="primary", 
+                key="btn_save_rotation", 
+                disabled=has_existing_swaps
+            ):
+                timestamp = datetime.now().strftime("%Y-%m-%d")
+                try:
+                    # Create Column Map by Name
+                    col_id_map = {col.title: col.id for col in target_sheet.columns}
+                    
+                    new_rows = []
+                    for rec in final_recs:
+                        row = smartsheet.models.Row()
+                        row.to_bottom = True
+                        
+                        row.cells.append(smartsheet.models.Cell({'column_id': col_id_map['Date'], 'value': timestamp}))
+                        row.cells.append(smartsheet.models.Cell({'column_id': col_id_map['Vehicle 1'], 'value': rec["Over-Paced Vehicle"]}))
+                        row.cells.append(smartsheet.models.Cell({'column_id': col_id_map['Vehicle 2'], 'value': rec["Under-Used Vehicle"]}))
+                        row.cells.append(smartsheet.models.Cell({'column_id': col_id_map['Status'], 'value': "Pending"}))
+                        
+                        new_rows.append(row)
+                        
+                    smart.Sheets.add_rows(st.secrets["swaps_sheet_id"], new_rows)
+                    st.toast("Saved rotation directly to Smartsheet!", icon="✅")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to save to Smartsheet: {e}")
+            st.table(pd.DataFrame(final_recs))
 
         st.divider()
         st.subheader("Asset Details")
@@ -553,6 +757,115 @@ if current_page == "Fleet Rotation Analysis":
         st.dataframe(df[available_rot_cols], use_container_width=True, hide_index=True)
     else:
         st.warning("Smartsheet data not detected. Please ensure the data loading section is above this logic.")
+
+elif current_page == "Current Lease Rotations":
+    col_title, col_clear = st.columns([4, 1])
+    with col_title:
+        st.title("Current Lease Rotations")
+    
+    try:
+        smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+        swaps_sheet = smart.Sheets.get_sheet(st.secrets["swaps_sheet_id"])
+        
+        all_row_ids = [row.id for row in swaps_sheet.rows]
+        
+        with col_clear:
+            if all_row_ids:
+                with st.popover("🗑️ Clear All", use_container_width=True):
+                    st.warning("Delete ALL saved lease rotations?")
+                    if st.button("Confirm Delete All", type="primary", key="btn_confirm_clear_all", use_container_width=True):
+                        try:
+                            smart.Sheets.delete_rows(st.secrets["swaps_sheet_id"], all_row_ids)
+                            st.toast("Cleared all rotations from Smartsheet!", icon="🗑️")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to clear rows: {e}")
+        
+        col_id_to_name = {col.id: col.title for col in swaps_sheet.columns}
+        col_name_to_id = {col.title: col.id for col in swaps_sheet.columns}
+        
+        rows_data = []
+        for row in swaps_sheet.rows:
+            r_dict = {"row_id": row.id}
+            for cell in row.cells:
+                col_name = col_id_to_name.get(cell.column_id)
+                if col_name:
+                    r_dict[col_name] = cell.value
+            rows_data.append(r_dict)
+            
+        swaps_df = pd.DataFrame(rows_data)
+        
+        if swaps_df.empty or "Date" not in swaps_df.columns:
+            st.info("No saved rotation analyses found in Smartsheet. Run an analysis on the Fleet Rotation Analysis page and click 'Save this rotation'.")
+        else:
+            h_col1, h_col2, h_col3, h_col4, h_col5, h_col6, h_col7 = st.columns([1.5, 2, 2, 1, 1.5, 2, 1])
+            h_col1.write("**Date**")
+            h_col2.write("**Vehicle 1**")
+            h_col3.write("**Vehicle 2**")
+            h_col4.write("**Status**")
+            h_col5.write("**Action**")
+            h_col6.write("**Name Changed in Smartsheets**")
+            h_col7.write("**Remove**")
+            st.divider()
+
+            for idx, row in swaps_df.iterrows():
+                row_id = row["row_id"]
+                v1 = row.get("Vehicle 1", "N/A")
+                v2 = row.get("Vehicle 2", "N/A")
+                dt_raw = row.get("Date", "N/A")
+                dt_parsed = pd.to_datetime(dt_raw, errors='coerce')
+                dt = dt_parsed.strftime('%m/%d/%Y') if pd.notnull(dt_parsed) else str(dt_raw)
+                status = str(row.get("Status", "Pending"))
+
+                c1, c2, c3, c4, c5, c6, c7 = st.columns([1.5, 2, 2, 1, 1.5, 2, 1])
+                c1.write(str(dt))
+                c2.write(f"**{v1}**")
+                c3.write(f"**{v2}**")
+                
+                if status == "Completed":
+                    c4.write("🟢 Completed")
+                    c5.write("—")
+                else:
+                    c4.write("🟡 Pending")
+                    if c5.button("Swap Complete", key=f"comp_{row_id}", use_container_width=True):
+                        updated_row = smartsheet.models.Row({'id': row_id})
+                        updated_row.cells.append(smartsheet.models.Cell({
+                            'column_id': col_name_to_id['Status'],
+                            'value': 'Completed'
+                        }))
+                        smart.Sheets.update_rows(st.secrets["swaps_sheet_id"], [updated_row])
+                        st.toast(f"Marked swap as completed!", icon="✅")
+                        st.rerun()
+
+                nc_key = f"nc_done_{row_id}"
+                name_change_status = str(row.get("Name Changed in Smartsheet", "Pending"))
+                
+                if name_change_status in ["Completed", "Yes", "Done"] or st.session_state.get(nc_key, False):
+                    c6.write("🟢 Completed")
+                else:
+                    if c6.button("Name Change Complete", key=f"name_change_{row_id}", use_container_width=True):
+                        st.session_state[nc_key] = True
+                        updated_row = smartsheet.models.Row({'id': row_id})
+                        updated_row.cells.append(smartsheet.models.Cell({
+                            'column_id': SWAP_COL_IDS["name_change"],
+                            'value': 'Completed'
+                        }))
+                        try:
+                            smart.Sheets.update_rows(st.secrets["swaps_sheet_id"], [updated_row])
+                        except Exception:
+                            pass
+                        st.toast(f"Name change recorded for {v1} / {v2}!", icon="✅")
+                        st.rerun()
+
+                if c7.button("🗑️", key=f"del_{row_id}"):
+                    smart.Sheets.delete_rows(st.secrets["swaps_sheet_id"], [row_id])
+                    st.toast("Row deleted from Smartsheet!", icon="🗑️")
+                    st.rerun()
+
+                st.divider()
+
+    except Exception as e:
+        st.error(f"Error loading Smartsheet swaps: {e}")
 
 elif current_page == "Oil Changes":
     st.title("Oil Change Management")
@@ -791,17 +1104,6 @@ elif current_page == "Recalls":
 
                     if make_val and model_val and year_val:
                         recalls = check_vehicle_recall(make_val, model_val, year_val)
-                    elif "TRANSIT" in model_val and "CONNECT" not in model_val:
-                        model_val = "TRANSIT"
-                    elif "PC205" in model_val or "CE" in model_val:
-                        model_val = "CE"
-                    elif "COMMERCIAL" in model_val:
-                        model_val = "COMMERCIAL"
-                    elif model_val == "PACIFICA":
-                        model_val = "VOYAGER"
-
-                    if make_val and model_val and year_val:
-                        recalls = check_vehicle_recall(make_val, model_val, year_val)
                         for r in recalls:
                             camp_id = str(r.get("NHTSACampaignNumber", "")).strip()
                             if not camp_id:
@@ -833,7 +1135,6 @@ elif current_page == "Recalls":
                             })
                 st.session_state.scanned_recalls = scanned_results
                 st.toast(f"Scan Complete! Located {len(scanned_results)} total active campaigns.", icon="🔍")
-
     # Render filtered layout from session memory cache
     if "scanned_recalls" in st.session_state:
         # Clean upper case string alignment matching criteria
