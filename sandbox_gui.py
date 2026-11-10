@@ -896,11 +896,25 @@ elif current_page == "Vehicle Requests":
     req_btn1, req_btn2 = st.columns(2)
     with req_btn1:
         if st.button("Add Vehicle Request", type="primary", use_container_width=True, key="btn_add_req_action"):
-            st.session_state.vehicle_requests_list.append({"name": "", "loc": "", "type": "Add"})
+            st.session_state.vehicle_requests_list.append({
+                "name": "", 
+                "loc": "", 
+                "type": "Add",
+                "loc_yes": False,
+                "gps_yes": False,
+                "master_yes": False
+            })
             st.rerun()
     with req_btn2:
         if st.button("Remove Vehicle Request", type="secondary", use_container_width=True, key="btn_rem_req_action"):
-            st.session_state.vehicle_requests_list.append({"name": "", "loc": "", "type": "Remove"})
+            st.session_state.vehicle_requests_list.append({
+                "name": "", 
+                "loc": "", 
+                "type": "Remove",
+                "loc_yes": False,
+                "gps_yes": False,
+                "master_yes": False
+            })
             st.rerun()
 
     st.divider()
@@ -908,17 +922,18 @@ elif current_page == "Vehicle Requests":
     if not st.session_state.vehicle_requests_list:
         st.info("No active requests. Click 'Add Vehicle Request' or 'Remove Vehicle Request' above to create an entry line.")
     else:
-        h1, h2, h3, h4, h5, h6 = st.columns([1.5, 2, 2, 1.5, 1.5, 1])
+        h1, h2, h3, h4, h5, h6, h7 = st.columns([1.2, 2, 2, 1.3, 1.3, 1.3, 0.8])
         h1.write("**Type**")
         h2.write("**Vehicle Name**")
         h3.write("**Vehicle Location**")
         h4.write("**Vehicle at Location?**")
         h5.write("**GPS Installed/Running?**")
-        h6.write("**Remove**")
+        h6.write("**Updated in Master Sheet?**")
+        h7.write("**Remove**")
         st.divider()
 
         for idx, req in enumerate(list(st.session_state.vehicle_requests_list)):
-            r1, r2, r3, r4, r5, r6 = st.columns([1.5, 2, 2, 1.5, 1.5, 1])
+            r1, r2, r3, r4, r5, r6, r7 = st.columns([1.2, 2, 2, 1.3, 1.3, 1.3, 0.8])
             
             with r1:
                 r1.write(f"**{req['type']}**")
@@ -927,11 +942,28 @@ elif current_page == "Vehicle Requests":
             with r3:
                 req['loc'] = st.text_input("Location", value=req['loc'], key=f"v_loc_{idx}", label_visibility="collapsed", placeholder="Location")
             with r4:
-                st.button("Yes", key=f"btn_loc_yes_{idx}", use_container_width=True, disabled=True)
+                if req.get('loc_yes', False):
+                    r4.write("🟢 Yes")
+                else:
+                    if r4.button("Yes", key=f"btn_loc_yes_{idx}", use_container_width=True):
+                        req['loc_yes'] = True
+                        st.rerun()
             with r5:
-                st.button("Yes", key=f"btn_gps_yes_{idx}", use_container_width=True, disabled=True)
+                if req.get('gps_yes', False):
+                    r5.write("🟢 Yes")
+                else:
+                    if r5.button("Yes", key=f"btn_gps_yes_{idx}", use_container_width=True):
+                        req['gps_yes'] = True
+                        st.rerun()
             with r6:
-                if st.button("🗑️", key=f"v_del_{idx}", use_container_width=True):
+                if req.get('master_yes', False):
+                    r6.write("🟢 Yes")
+                else:
+                    if r6.button("Yes", key=f"btn_master_yes_{idx}", use_container_width=True):
+                        req['master_yes'] = True
+                        st.rerun()
+            with r7:
+                if r7.button("🗑️", key=f"v_del_{idx}", use_container_width=True):
                     st.session_state.vehicle_requests_list.pop(idx)
                     st.rerun()
             st.divider()
