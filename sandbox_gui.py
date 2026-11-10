@@ -892,70 +892,23 @@ elif current_page == "Oil Changes":
         if df_due.empty:
             st.success("All vehicles are up to date on oil changes!")
         else:
-            st.write(f"### Vehicles Due for Service ({len(df_due)})")
+            top_col1, top_col2 = st.columns([4, 1])
+            with top_col1:
+                st.write(f"### Vehicles Due for Service ({len(df_due)})")
+            with top_col2:
+                if st.button("🔄 Refresh", use_container_width=True, key="btn_refresh_oil"):
+                    if 'df' in st.session_state:
+                        del st.session_state.df
+                    st.toast("Refreshed oil data from Smartsheet!", icon="🔄")
+                    st.rerun()
             
-            # Header Row
-            h_col1, h_col2, h_col3, h_col4, h_col5, h_col6, h_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
-            h_col1.write("**Vehicle**")
-            h_col2.write("**Current Odo**")
-            h_col3.write("**Date of Last Service**")
-            h_col4.write("**Next Service Due (Mi)**")
-            h_col5.write("**New Odo at Service**")
-            h_col6.write("**Date of New Service**")
-            h_col7.write("**Action**")
-            st.divider()
-
-            for idx, row in df_due.iterrows():
-                v_name = row[col_map["name"]]
-                curr_odo = int(row[col_map["odo"]]) if pd.notnull(row[col_map["odo"]]) else 0
-                next_due = int(row[col_map["next_oil"]]) if pd.notnull(row[col_map["next_oil"]]) else 0
-                last_date = row['Date of Last Oil Change']
-                # Surgical Fix: Cast row_id to string and handle potential NaNs
-                row_id = str(int(row["row_id"])) if pd.notnull(row["row_id"]) else str(idx)
-                
-                r_col1, r_col2, r_col3, r_col4, r_col5, r_col6, r_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
-                
-                r_col1.write(v_name)
-                r_col2.write(f"{curr_odo:,}")
-                r_col3.write(last_date.strftime('%m/%d/%Y') if pd.notnull(last_date) else "N/A")
-                r_col4.write(f"{next_due:,}")
-                
-                # New Service Odo - using the sanitized string row_id
-                new_mileage = r_col5.text_input("Mileage", key=f"odo_{row_id}", label_visibility="collapsed", placeholder="Odo")
-                
-                # New Service Date - Set to US Format
-                new_service_date = r_col6.date_input("Date", value=None, key=f"date_{row_id}", label_visibility="collapsed", format="MM/DD/YYYY")
-                
-                if r_col7.button("UPDATE", key=f"btn_{row_id}", use_container_width=True):
-                    if new_mileage or new_service_date:
-                        try:
-                            new_row = smartsheet.models.Row()
-                            new_row.id = int(row_id)
-                            
-                            # Logic: Only update fields that are NOT blank
-                            if new_mileage:
-                                cell_odo = smartsheet.models.Cell()
-                                cell_odo.column_id = OIL_COL_IDS["last_oil"]
-                                cell_odo.value = force_num(new_mileage)
-                                new_row.cells.append(cell_odo)
-                            
-                            if new_service_date:
-                                cell_date = smartsheet.models.Cell()
-                                cell_date.column_id = OIL_COL_IDS["last_service_date"]
-                                cell_date.value = new_service_date.strftime('%Y-%m-%d')
-                                new_row.cells.append(cell_date)
-                            
-                            smart.Sheets.update_rows(st.secrets["sheet_id"], [new_row])
-                            # Clear session cache so the app re-pulls fresh data from Smartsheet
-                            if 'df' in st.session_state:
-                                del st.session_state.df
-                            st.toast(f"Updated {v_name} successfully!", icon="✅")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Failed to update Smartsheet: {e}")
-                    else:
-                        st.warning("Enter data before updating.")
-                st.divider()
+            # Clean display table of due vehicles (no buttons)
+            due_display = df_due[[
+                col_map["name"], col_map["loc"], col_map["odo"], 
+                "Date of Last Oil Change", col_map["next_oil"]
+            ]].copy()
+            due_display["Date of Last Oil Change"] = due_display["Date of Last Oil Change"].dt.strftime('%m/%d/%Y').fillna("N/A")
+            st.dataframe(due_display, use_container_width=True, hide_index=True)
 
         # 3. Full Fleet Oil Service Log Table
         st.subheader("Full Fleet Oil Service Log")
