@@ -328,14 +328,14 @@ df = st.session_state.get('df', pd.DataFrame())
 
 if not df.empty:
     # Use global sheet if available, otherwise check if smartsheet client needs a quick fallback fetch
-    if 'sheet' not in locals() and 'sheet' not in globals():
+    if 'sheet' not in locals() or sheet is None:
         try:
             smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
             sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
         except Exception:
             sheet = None
 
-    date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None) if sheet else None
+    date_col_title = next((col.title for col in sheet.columns if col.id == OIL_COL_IDS["last_service_date"]), None) if sheet and hasattr(sheet, 'columns') else None
     # If found, rename it to a friendly key for the rest of the script
     if date_col_title:
         df = df.rename(columns={date_col_title: "Date of Last Oil Change"})
