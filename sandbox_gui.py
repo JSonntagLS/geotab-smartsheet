@@ -305,21 +305,23 @@ df_display = pd.DataFrame() # Initialize as empty
 labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
 
 if 'df' not in st.session_state:
+    if 'df' not in st.session_state:
     try:
         smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
         sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
-        columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
-        rows = []
-        # Locate Vehicle Lock column index if available
-        lock_col_title = next((col.title for col in sheet.columns if "lock" in col.title.lower()), "Vehicle Lock")
-
-        for row in sheet.rows:
-            row_data = [cell.value for cell in row.cells]
-            row_data.append(row.id)
-            rows.append(row_data)
-        
-        # Save directly to session state
-        st.session_state.df = pd.DataFrame(rows, columns=columns + ["row_id"])
+        if hasattr(sheet, 'columns') and hasattr(sheet, 'rows'):
+            columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
+            rows = []
+            
+            for row in sheet.rows:
+                row_data = [cell.value for cell in row.cells]
+                row_data.append(row.id)
+                rows.append(row_data)
+            
+            # Save directly to session state
+            st.session_state.df = pd.DataFrame(rows, columns=columns + ["row_id"])
+        else:
+            st.error("Error loading Smartsheet: Invalid response structure received from API.")
     except Exception as e:
         st.error(f"Error loading Smartsheet: {e}")
 
