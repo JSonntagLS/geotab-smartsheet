@@ -876,6 +876,20 @@ elif current_page == "Vehicle Requests":
     st.title("Add/Remove Vehicle Requests")
     st.write("Manage quarterly vehicle addition and removal requests for manual review and master synchronization.")
 
+    st.markdown("""
+    <style>
+    div[data-testid="column"]:nth-of-type(2) button[kind="secondary"] {
+        border-color: #ff4b4b !important;
+        color: #ff4b4b !important;
+    }
+    div[data-testid="column"]:nth-of-type(2) button[kind="secondary"]:hover {
+        border-color: #ff4b4b !important;
+        color: white !important;
+        background-color: #ff4b4b !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     if 'vehicle_requests_list' not in st.session_state:
         st.session_state.vehicle_requests_list = []
 
