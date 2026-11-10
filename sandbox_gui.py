@@ -305,7 +305,6 @@ df_display = pd.DataFrame() # Initialize as empty
 labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanced", "Slightly Underused", "Moderately Underused", "Highly Underused"]
 
 if 'df' not in st.session_state:
-    if 'df' not in st.session_state:
     try:
         smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
         sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
