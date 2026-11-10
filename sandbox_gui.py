@@ -379,7 +379,7 @@ if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_
 if st.sidebar.button("Current Lease Rotations", type="secondary", use_container_width=True, key="btn_lease_rot"):
     st.session_state.active_page = "Current Lease Rotations"
 
-if st.sidebar.button("Vehicle Requests", type="secondary", use_container_width=True, key="btn_vehicle_req"):
+if st.sidebar.button("Add/Remove Vehicle Requests", type="secondary", use_container_width=True, key="btn_vehicle_req"):
     st.session_state.active_page = "Vehicle Requests"
 
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
@@ -871,7 +871,7 @@ elif current_page == "Current Lease Rotations":
         st.error(f"Error loading Smartsheet swaps: {e}")
 
 elif current_page == "Vehicle Requests":
-    st.title("Vehicle Add & Remove Requests")
+    st.title("Add/Remove Vehicle Requests")
     st.write("Manage quarterly vehicle addition and removal requests for manual review and master synchronization.")
 
     if 'vehicle_requests_list' not in st.session_state:
@@ -923,7 +923,7 @@ elif current_page == "Vehicle Requests":
         if st.button("Submit Requests to Smartsheet", type="primary", use_container_width=True, key="submit_vehicle_requests"):
             try:
                 smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
-                target_sheet_id = st.secrets.get("vehicle_requests_sheet_id", st.secrets["swaps_sheet_id"])
+                target_sheet_id = st.secrets.get("add_remove_vehicle_requests_sheet_id", st.secrets["swaps_sheet_id"])
                 target_sheet = smart.Sheets.get_sheet(target_sheet_id)
                 col_id_map = {col.title: col.id for col in target_sheet.columns}
                 
