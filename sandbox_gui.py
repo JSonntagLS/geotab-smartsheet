@@ -979,10 +979,18 @@ elif current_page == "Vehicle Requests":
                 for req in st.session_state.vehicle_requests_list:
                     row = smartsheet.models.Row()
                     row.to_bottom = True
-                    for title, val in [("Date", datetime.now().strftime("%Y-%m-%d")), 
-                                       ("Vehicle Name", req['name']), 
-                                       ("Vehicle Location", req['loc']), 
-                                       ("Status", f"{req['type']} Request")]:
+                    
+                    fields_to_send = [
+                        ("Date", datetime.now().strftime("%Y-%m-%d")),
+                        ("Vehicle Name", req['name']),
+                        ("Vehicle Location", req['loc']),
+                        ("Status", f"{req['type']} Request"),
+                        ("Vehicle at Location?", "Yes" if req.get('loc_yes') else ""),
+                        ("GPS Installed/Activated?", "Yes" if req.get('gps_yes') else ""),
+                        ("Updated in Master Sheet?", "Yes" if req.get('master_yes') else "")
+                    ]
+                    
+                    for title, val in fields_to_send:
                         if title in col_id_map:
                             row.cells.append(smartsheet.models.Cell({'column_id': col_id_map[title], 'value': val}))
                     new_rows.append(row)
