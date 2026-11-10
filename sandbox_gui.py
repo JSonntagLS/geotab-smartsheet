@@ -947,6 +947,9 @@ elif current_page == "Oil Changes":
                                 new_row.cells.append(cell_date)
                             
                             smart.Sheets.update_rows(st.secrets["sheet_id"], [new_row])
+                            # Clear session cache so the app re-pulls fresh data from Smartsheet
+                            if 'df' in st.session_state:
+                                del st.session_state.df
                             st.toast(f"Updated {v_name} successfully!", icon="✅")
                             st.rerun()
                         except Exception as e:
