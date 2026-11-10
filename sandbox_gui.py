@@ -379,6 +379,9 @@ if st.sidebar.button("Fleet Rotation Analysis", type="secondary", use_container_
 if st.sidebar.button("Current Lease Rotations", type="secondary", use_container_width=True, key="btn_lease_rot"):
     st.session_state.active_page = "Current Lease Rotations"
 
+if st.sidebar.button("Vehicle Requests", type="secondary", use_container_width=True, key="btn_vehicle_req"):
+    st.session_state.active_page = "Vehicle Requests"
+
 if st.sidebar.button("Oil Changes", type="secondary", use_container_width=True, key="btn_oil"):
     st.session_state.active_page = "Oil Changes"
 
@@ -866,6 +869,83 @@ elif current_page == "Current Lease Rotations":
 
     except Exception as e:
         st.error(f"Error loading Smartsheet swaps: {e}")
+
+elif current_page == "Vehicle Requests":
+    st.title("Vehicle Add & Remove Requests")
+    st.write("Manage quarterly vehicle addition and removal requests for manual review and master synchronization.")
+
+    if 'vehicle_requests_list' not in st.session_state:
+        st.session_state.vehicle_requests_list = []
+
+    req_btn1, req_btn2 = st.columns(2)
+    with req_btn1:
+        if st.button("Add Vehicle Request", type="primary", use_container_width=True, key="btn_add_req_action"):
+            st.session_state.vehicle_requests_list.append({"name": "", "loc": "", "type": "Add"})
+            st.rerun()
+    with req_btn2:
+        if st.button("Remove Vehicle Request", type="secondary", use_container_width=True, key="btn_rem_req_action"):
+            st.session_state.vehicle_requests_list.append({"name": "", "loc": "", "type": "Remove"})
+            st.rerun()
+
+    st.divider()
+
+    if not st.session_state.vehicle_requests_list:
+        st.info("No active requests. Click 'Add Vehicle Request' or 'Remove Vehicle Request' above to create an entry line.")
+    else:
+        h1, h2, h3, h4, h5, h6 = st.columns([1.5, 2, 2, 1.5, 1.5, 1])
+        h1.write("**Type**")
+        h2.write("**Vehicle Name**")
+        h3.write("**Vehicle Location**")
+        h4.write("**Vehicle at Location?**")
+        h5.write("**GPS Installed/Running?**")
+        h6.write("**Remove**")
+        st.divider()
+
+        for idx, req in enumerate(list(st.session_state.vehicle_requests_list)):
+            r1, r2, r3, r4, r5, r6 = st.columns([1.5, 2, 2, 1.5, 1.5, 1])
+            
+            with r1:
+                r1.write(f"**{req['type']}**")
+            with r2:
+                req['name'] = st.text_input("Name", value=req['name'], key=f"v_name_{idx}", label_visibility="collapsed", placeholder="Vehicle Name")
+            with r3:
+                req['loc'] = st.text_input("Location", value=req['loc'], key=f"v_loc_{idx}", label_visibility="collapsed", placeholder="Location")
+            with r4:
+                st.button("Yes", key=f"btn_loc_yes_{idx}", use_container_width=True, disabled=True)
+            with r5:
+                st.button("Yes", key=f"btn_gps_yes_{idx}", use_container_width=True, disabled=True)
+            with r6:
+                if st.button("🗑️", key=f"v_del_{idx}", use_container_width=True):
+                    st.session_state.vehicle_requests_list.pop(idx)
+                    st.rerun()
+            st.divider()
+
+        if st.button("Submit Requests to Smartsheet", type="primary", use_container_width=True, key="submit_vehicle_requests"):
+            try:
+                smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
+                target_sheet_id = st.secrets.get("vehicle_requests_sheet_id", st.secrets["swaps_sheet_id"])
+                target_sheet = smart.Sheets.get_sheet(target_sheet_id)
+                col_id_map = {col.title: col.id for col in target_sheet.columns}
+                
+                new_rows = []
+                for req in st.session_state.vehicle_requests_list:
+                    row = smartsheet.models.Row()
+                    row.to_bottom = True
+                    for title, val in [("Date", datetime.now().strftime("%Y-%m-%d")), 
+                                       ("Vehicle Name", req['name']), 
+                                       ("Vehicle Location", req['loc']), 
+                                       ("Status", f"{req['type']} Request")]:
+                        if title in col_id_map:
+                            row.cells.append(smartsheet.models.Cell({'column_id': col_id_map[title], 'value': val}))
+                    new_rows.append(row)
+                
+                if new_rows:
+                    smart.Sheets.add_rows(target_sheet_id, new_rows)
+                st.toast("Requests submitted to Smartsheet successfully!", icon="✅")
+                st.session_state.vehicle_requests_list = []
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to submit requests: {e}")
 
 elif current_page == "Oil Changes":
     top_title_col, top_btn_col = st.columns([4, 1])
