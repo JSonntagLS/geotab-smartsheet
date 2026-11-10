@@ -894,69 +894,61 @@ elif current_page == "Oil Changes":
         else:
             st.write(f"### Vehicles Due for Service ({len(df_due)})")
             
-            # Header Row
-            # Header Row - Added Date Columns
-            h_col1, h_col2, h_col3, h_col4, h_col5, h_col6, h_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
-            h_col1.write("**Vehicle**")
-            h_col2.write("**Current Odo**")
-            h_col3.write("**Date of Last Service**")
-            h_col4.write("**Next Service Due (Mi)**")
-            h_col5.write("**New Odo at Service**")
-            h_col6.write("**Date of New Service**")
-            h_col7.write("**Action**")
+            # Display clean table of due vehicles
+            due_display = df_due[[
+                col_map["name"], col_map["loc"], col_map["odo"], 
+                "Date of Last Oil Change", col_map["next_oil"]
+            ]].copy()
+            due_display["Date of Last Oil Change"] = due_display["Date of Last Oil Change"].dt.strftime('%m/%d/%Y').fillna("N/A")
+            st.dataframe(due_display, use_container_width=True, hide_index=True)
+            
             st.divider()
-
-            for idx, row in df_due.iterrows():
-                v_name = row[col_map["name"]]
-                curr_odo = int(row[col_map["odo"]]) if pd.notnull(row[col_map["odo"]]) else 0
-                next_due = int(row[col_map["next_oil"]]) if pd.notnull(row[col_map["next_oil"]]) else 0
-                last_date = row['Date of Last Oil Change']
-                # Surgical Fix: Cast row_id to string and handle potential NaNs
-                row_id = str(int(row["row_id"])) if pd.notnull(row["row_id"]) else str(idx)
+            st.subheader("Update Vehicle Service Record")
+            
+            vehicle_options = {row[col_map["name"]]: row for _, row in df_due.iterrows()}
+            selected_vehicle_name = st.selectbox("Select Vehicle to Update", list(vehicle_options.keys()), key="master_oil_select")
+            
+            if selected_vehicle_name:
+                sel_row = vehicle_options[selected_vehicle_name]
+                sel_row_id = str(int(sel_row["row_id"])) if pd.notnull(sel_row["row_id"]) else "0"
                 
-                r_col1, r_col2, r_col3, r_col4, r_col5, r_col6, r_col7 = st.columns([2, 1, 1, 1, 1, 1, 1])
+                col_up1, col_up2, col_up3 = st.columns([2, 2, 1])
+                with col_up1:
+                    master_mileage = st.text_input("New Mileage at Service", key="master_oil_mileage", placeholder="e.g. 53400")
+                with col_up2:
+                    master_date = st.date_input("Date of Service", value=datetime.today(), key="master_oil_date", format="MM/DD/YYYY")
+                with col_up3:
+                    st.write("")
+                    st.write("")
+                    master_update_btn = st.button("UPDATE RECORD", type="primary", use_container_width=True, key="master_oil_btn")
                 
-                r_col1.write(v_name)
-                r_col2.write(f"{curr_odo:,}")
-                r_col3.write(last_date.strftime('%m/%d/%Y') if pd.notnull(last_date) else "N/A")
-                r_col4.write(f"{next_due:,}")
-                
-                # New Service Odo - using the sanitized string row_id
-                new_mileage = r_col5.text_input("Mileage", key=f"odo_{row_id}", label_visibility="collapsed", placeholder="Odo")
-                
-                # New Service Date - Set to US Format
-                new_service_date = r_col6.date_input("Date", value=None, key=f"date_{row_id}", label_visibility="collapsed", format="MM/DD/YYYY")
-                
-                if r_col7.button("UPDATE", key=f"btn_{row_id}", use_container_width=True):
-                    if new_mileage or new_service_date:
+                if master_update_btn:
+                    if master_mileage or master_date:
                         try:
                             new_row = smartsheet.models.Row()
-                            new_row.id = int(row_id)
+                            new_row.id = int(sel_row_id)
                             
-                            # Logic: Only update fields that are NOT blank
-                            if new_mileage:
+                            if master_mileage:
                                 cell_odo = smartsheet.models.Cell()
                                 cell_odo.column_id = OIL_COL_IDS["last_oil"]
-                                cell_odo.value = force_num(new_mileage)
+                                cell_odo.value = force_num(master_mileage)
                                 new_row.cells.append(cell_odo)
                             
-                            if new_service_date:
+                            if master_date:
                                 cell_date = smartsheet.models.Cell()
                                 cell_date.column_id = OIL_COL_IDS["last_service_date"]
-                                cell_date.value = new_service_date.strftime('%Y-%m-%d')
+                                cell_date.value = master_date.strftime('%Y-%m-%d')
                                 new_row.cells.append(cell_date)
                             
                             smart.Sheets.update_rows(st.secrets["sheet_id"], [new_row])
-                            # Clear session cache so the app re-pulls fresh data from Smartsheet
                             if 'df' in st.session_state:
                                 del st.session_state.df
-                            st.toast(f"Updated {v_name} successfully!", icon="✅")
+                            st.toast(f"Successfully updated oil service for {selected_vehicle_name}!", icon="✅")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Failed to update Smartsheet: {e}")
                     else:
-                        st.warning("Enter data before updating.")
-                st.divider()
+                        st.warning("Please enter a valid mileage or service date.")
 
         # 3. Full Fleet Oil Service Log Table
         st.subheader("Full Fleet Oil Service Log")
