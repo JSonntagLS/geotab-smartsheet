@@ -18,6 +18,20 @@ def check_vehicle_recall(make, model, year):
     except Exception:
         return []
 
+@st.cache_data(ttl=300)
+def load_fleet_sheet(sheet_id, token):
+    smart = smartsheet.Smartsheet(token)
+    sheet = smart.Sheets.get_sheet(sheet_id)
+    if hasattr(sheet, 'columns') and hasattr(sheet, 'rows'):
+        columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
+        rows = []
+        for row in sheet.rows:
+            row_data = [cell.value for cell in row.cells]
+            row_data.append(row.id)
+            rows.append(row_data)
+        return pd.DataFrame(rows, columns=columns + ["row_id"])
+    return pd.DataFrame()
+
 # --- PAGE CONFIG ---
 st.set_page_config(layout="wide")
 # Main title removed to shift content up
@@ -306,23 +320,10 @@ labels = ["Highly Overused", "Moderately Overused", "Slightly Overused", "Balanc
 
 if 'df' not in st.session_state:
     try:
-        smart = smartsheet.Smartsheet(st.secrets["smartsheet_token"])
-        sheet = smart.Sheets.get_sheet(st.secrets["sheet_id"])
-        if hasattr(sheet, 'columns') and hasattr(sheet, 'rows'):
-            columns = [col.title.strip() if col.title else f"Unknown_{i}" for i, col in enumerate(sheet.columns)]
-            rows = []
-            
-            for row in sheet.rows:
-                row_data = [cell.value for cell in row.cells]
-                row_data.append(row.id)
-                rows.append(row_data)
-            
-            # Save directly to session state
-            st.session_state.df = pd.DataFrame(rows, columns=columns + ["row_id"])
-        else:
-            st.error("Error loading Smartsheet: Invalid response structure received from API.")
+        st.session_state.df = load_fleet_sheet(st.secrets["sheet_id"], st.secrets["smartsheet_token"])
     except Exception as e:
         st.error(f"Error loading Smartsheet: {e}")
+        st.session_state.df = pd.DataFrame()
 
 # Always point 'df' to the session state version
 df = st.session_state.get('df', pd.DataFrame())
@@ -955,6 +956,7 @@ elif current_page == "Oil Changes":
     with top_btn_col:
         st.write("")
         if st.button("🔄 Refresh Data", use_container_width=True, key="btn_refresh_oil_top"):
+            st.cache_data.clear()
             if 'df' in st.session_state:
                 del st.session_state.df
             st.toast("Refreshed data directly from Smartsheet!", icon="🔄")
