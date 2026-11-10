@@ -990,7 +990,6 @@ elif current_page == "Vehicle Requests":
                 if new_rows:
                     smart.Sheets.add_rows(target_sheet_id, new_rows)
                 st.toast("Requests submitted to Smartsheet successfully!", icon="✅")
-                st.session_state.vehicle_requests_list = []
                 st.rerun()
             except Exception as e:
                 st.error(f"Failed to submit requests: {e}")
