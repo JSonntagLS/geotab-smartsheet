@@ -868,7 +868,16 @@ elif current_page == "Current Lease Rotations":
         st.error(f"Error loading Smartsheet swaps: {e}")
 
 elif current_page == "Oil Changes":
-    st.title("Oil Change Management")
+    top_title_col, top_btn_col = st.columns([4, 1])
+    with top_title_col:
+        st.title("Oil Change Management")
+    with top_btn_col:
+        st.write("")
+        if st.button("🔄 Refresh Data", use_container_width=True, key="btn_refresh_oil_top"):
+            if 'df' in st.session_state:
+                del st.session_state.df
+            st.toast("Refreshed data directly from Smartsheet!", icon="🔄")
+            st.rerun()
     
     if 'df' in locals() and not df.empty:
         # Fixed: Accessing the column we renamed during data loading
